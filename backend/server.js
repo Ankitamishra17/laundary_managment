@@ -15,9 +15,12 @@ const startServer = async () => {
     console.log(" Database Connected Successfully");
 
     // Create tables if they don't exist
-    await sequelize.sync({ alter: true });
+    // await sequelize.sync({ alter: true });
+    await sequelize.sync();
+
     console.log(" Tables synchronized successfully");
 
+    await superAdminSeeder();
     // Start server
     app.listen(PORT, () => {
       console.log(` Server running on port ${PORT}`);

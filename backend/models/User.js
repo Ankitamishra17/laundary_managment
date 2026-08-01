@@ -32,6 +32,11 @@ const User = sequelize.define("User", {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  //force to admin create new password
+  mustChangePassword: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+},
   role: {
     type: DataTypes.ENUM("super_admin", "admin", "employee", "customer"),
     allowNull: false,

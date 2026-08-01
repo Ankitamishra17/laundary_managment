@@ -35,7 +35,9 @@ export  const login = async (req,res)=>{
                     message:"your account has been deactivated",
                 })
              }
-
+console.log("Email:", email);
+console.log("Entered Password:", password);
+console.log("Database Password:", user.password);
              //Compare password
 
              const isPasswordMatch = await bcrypt.compare(
@@ -50,6 +52,7 @@ export  const login = async (req,res)=>{
                    
                 })
              }
+             console.log("Password Match:", isPasswordMatch);
 
              //Generate JWT Token
 
@@ -64,7 +67,7 @@ export  const login = async (req,res)=>{
                     id:user.id,
                     shopId:user.shopId,
                     name:user.name,
-                    email:user,email,
+                    email:user.email,
                     phone:user.phone,
                     role:user.role,
                 }

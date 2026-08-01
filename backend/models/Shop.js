@@ -58,7 +58,6 @@ const Shop = sequelize.define(
 
     country: {
       type: DataTypes.STRING,
-      allowNull: false,
       defaultValue: "India",
     },
 
@@ -67,39 +66,30 @@ const Shop = sequelize.define(
       allowNull: true,
     },
 
-    // logoUrl: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true,
-    // },
+    // Subscription
+    subscriptionPlan: {
+      type: DataTypes.ENUM("Monthly", "Yearly"),
+      allowNull: false,
+    },
 
-    // website: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true,
-    // },
-
-    // plan: {
-    //   type: DataTypes.ENUM("Trial", "Basic", "Standard", "Premium"),
-    //   defaultValue: "Trial",
-    // },
+    subscriptionAmount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+    },
 
     subscriptionStatus: {
-      type: DataTypes.ENUM("Active", "Expired", "Cancelled"),
+      type: DataTypes.ENUM("Active", "Expired", "Cancelled", "Trial"),
       defaultValue: "Active",
     },
 
     subscriptionStart: {
       type: DataTypes.DATEONLY,
-      allowNull: true,
+      allowNull: false,
     },
 
     subscriptionEnd: {
       type: DataTypes.DATEONLY,
-      allowNull: true,
-    },
-
-    monthlyFee: {
-      type: DataTypes.DECIMAL(10, 2),
-      defaultValue: 0,
+      allowNull: false,
     },
 
     isActive: {
