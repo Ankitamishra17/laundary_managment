@@ -31,10 +31,16 @@ const AppRoutes = () => {
           <Route path="subscriptions" element={<Subscriptions />} />
           <Route path="reports" element={<Reports />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="*" element={<h1>404 - Page Not Found</h1>} />
         </Route>
 
+
+
+
+        
+
         {/* 404 */}
-        <Route path="*" element={<h1>404 - Page Not Found</h1>} />
+        
       </Routes>
     </BrowserRouter>
   );
