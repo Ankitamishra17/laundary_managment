@@ -1,5 +1,6 @@
 import Shop from "./Shop.js";
 import User from "./User.js";
+import Subscription from "./Subscription.js";
 
 Shop.hasMany(User, {
   foreignKey: "shopId",
@@ -11,4 +12,14 @@ User.belongsTo(Shop, {
   as: "shop",
 });
 
-export { Shop, User };
+Shop.hasMany(Subscription, {
+  foreignKey: "shopId",
+  as: "subscriptions",
+});
+
+Subscription.belongsTo(Shop, {
+  foreignKey: "shopId",
+  as: "shop",
+});
+
+export { Shop, User,Subscription };
