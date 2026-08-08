@@ -53,56 +53,56 @@ export default function LaundryLoginPage() {
     [removeToast],
   );
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-
-
-const handleSubmit = async (e) => {
-  e.preventDefault();
-
-  if (!email || !password) {
-    showToast("Please enter your email and password.", "error");
-    return;
-  }
-
-  try {
-    const response = await loginUser({
-      email,
-      password,
-    });
-
-    if (response.success) {
-      login(response.user, response.token);
-
-      showToast("Login successful!", "success");
-
-      switch (response.user.role) {
-        case "super_admin":
-          navigate("/super/dashboard");
-          break;
-
-        case "admin":
-          navigate("/admin/dashboard");
-          break;
-
-        case "employee":
-          navigate("/employee/dashboard");
-          break;
-
-        case "customer":
-          navigate("/customer/dashboard");
-          break;
-
-        default:
-          showToast("Unknown user role.", "error");
-      }
+    if (!email || !password) {
+      showToast("Please enter your email and password.", "error");
+      return;
     }
-  } catch (error) {
-    showToast(
-      error.response?.data?.message || "Login failed",
-      "error"
-    );
-  }
-};
+
+    try {
+      const response = await loginUser({
+        email,
+        password,
+      });
+
+      if (response.success) {
+        login(response.user, response.token);
+
+        showToast("Login successful!", "success");
+
+        // Only Admin must create a new password
+        if (response.user.role === "admin" && response.mustChangePassword) {
+          navigate("/create-password");
+          return;
+        }
+
+        switch (response.user.role) {
+          case "super_admin":
+            navigate("/super/dashboard");
+            break;
+
+          case "admin":
+            navigate("/admin/dashboard");
+            break;
+
+          case "employee":
+            navigate("/employee/dashboard");
+            break;
+
+          case "customer":
+            navigate("/customer/dashboard");
+            break;
+
+          default:
+            showToast("Unknown user role.", "error");
+        }
+      }
+    } catch (error) {
+      showToast(error.response?.data?.message || "Login failed", "error");
+    }
+  };
 
   return (
     <div
