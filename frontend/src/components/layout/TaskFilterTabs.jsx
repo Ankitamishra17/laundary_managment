@@ -9,7 +9,7 @@ const TABS = [
 
 export default function TaskFilterTabs({ active, onChange }) {
   return (
-    <div className="flex items-center gap-2 bg-card-tint p-1 rounded-lg w-fit">
+    <div className="flex items-center gap-2 bg-card-tint p-1 rounded-lg w-full sm:w-fit overflow-x-auto">
       {TABS.map((tab) => (
         <button
           key={tab.key}

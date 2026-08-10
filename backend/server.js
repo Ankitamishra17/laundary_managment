@@ -4,6 +4,7 @@ dotenv.config();
 import app from "./app.js";
 import sequelize from "./config/database.js";
 import "./models/index.js";
+import { ensureSchema } from "./utils/ensureSchema.js";
 import superAdminSeeder from "./seeders/superAdminSeeder.js";
 
 const PORT = process.env.PORT || 5000;
@@ -14,9 +15,13 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log(" Database Connected Successfully");
 
-    // Create tables if they don't exist
+    // Create tables if they don't exist (must run first so the tables exist
+    // before ensureSchema tries to alter them on a fresh database)
     // await sequelize.sync({ alter: true });
     await sequelize.sync();
+
+    // Add any new columns to already-created tables (idempotent)
+    await ensureSchema();
 
     console.log(" Tables synchronized successfully");
 

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Menu, Bell, Search, ChevronDown, Shirt } from "lucide-react";
 import { useSidebar } from "../../context/SidebarContext";
+import { useAuth } from "../../context/AuthContext";
+import Avatar from "./Avatar";
 
 const colors = {
   primaryTeal: "#028090",
@@ -14,30 +16,67 @@ const colors = {
   textMuted: "#5C7A78",
 };
 
+// Maps a route segment to a friendly page title
+const TITLE_OVERRIDES = {
+  dashboard: "Dashboard",
+  mytask: "My Tasks",
+  myattendance: "My Attendance",
+  attendance: "Attendance",
+  settings: "Settings",
+  profile: "Profile",
+  services: "Services",
+  employees: "Employees",
+  subscriptions: "Subscriptions",
+};
+
+function titleize(segment) {
+  if (TITLE_OVERRIDES[segment]) return TITLE_OVERRIDES[segment];
+  return segment
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function getProfileRoute(role) {
+  switch (role) {
+    case "admin":
+      return "/admin/settings/profile";
+    case "super_admin":
+      return "/super/settings";
+    case "employee":
+      return "/employee/profile";
+    case "customer":
+      return "/customer/profile";
+    default:
+      return "/login";
+  }
+}
+
 const Topbar = () => {
   const { openSidebar } = useSidebar();
+  const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const rawTitle =
-    location.pathname.split("/").filter(Boolean).pop() || "dashboard";
-  const pageTitle = rawTitle.charAt(0).toUpperCase() + rawTitle.slice(1);
+  const segments = location.pathname.split("/").filter(Boolean);
+  const pageTitle = titleize(segments[segments.length - 1] || "dashboard");
 
-  // TODO: replace with the logged-in admin from your auth context/store
-  const adminName = "Ankita Mishra";
-  const adminRole = "Super Admin";
-  const initials = adminName
-    .split(" ")
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+  const userName = user?.name || "User";
+  const userRole =
+    user?.role === "super_admin"
+      ? "Super Admin"
+      : user?.role === "employee"
+        ? "Staff Member"
+        : user?.role || "User";
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
+    logout();
     navigate("/login");
   };
+
+  const profileRoute = getProfileRoute(user?.role);
 
   return (
     <header
@@ -70,8 +109,6 @@ const Topbar = () => {
         >
           <Shirt size={14} color="#FFFFFF" />
         </div>
-        {/* On mobile this opens the slide-in drawer (openSidebar).
-            Desktop collapse is a separate control that lives inside SuperSidebar itself. */}
         <h1
           className="text-lg sm:text-xl truncate"
           style={{
@@ -122,21 +159,16 @@ const Topbar = () => {
             aria-haspopup="true"
             aria-expanded={profileOpen}
           >
-            <div
-              className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold text-white flex-shrink-0"
-              style={{ backgroundColor: colors.seafoam }}
-            >
-              {initials}
-            </div>
+            <Avatar user={user} className="w-9 h-9 text-xs" />
             <div className="hidden sm:block text-left leading-tight">
               <div
                 className="text-sm font-medium"
                 style={{ color: colors.textDark }}
               >
-                {adminName}
+                {userName}
               </div>
               <div className="text-xs" style={{ color: colors.textMuted }}>
-                {adminRole}
+                {userRole}
               </div>
             </div>
             <ChevronDown
@@ -165,12 +197,20 @@ const Topbar = () => {
                 <button
                   className="tb-menu-item w-full text-left px-4 py-2 text-sm transition-colors"
                   style={{ color: colors.textDark }}
+                  onClick={() => {
+                    setProfileOpen(false);
+                    navigate(profileRoute);
+                  }}
                 >
                   Profile
                 </button>
                 <button
                   className="tb-menu-item w-full text-left px-4 py-2 text-sm transition-colors"
                   style={{ color: colors.textDark }}
+                  onClick={() => {
+                    setProfileOpen(false);
+                    navigate(profileRoute);
+                  }}
                 >
                   Account Settings
                 </button>

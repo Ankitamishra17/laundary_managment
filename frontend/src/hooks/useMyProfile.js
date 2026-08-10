@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { profileApi } from "../api/profileApi";
+import { useAuth } from "../context/AuthContext";
 
 const DEFAULT_PROFILE = {
   name: "",
@@ -9,9 +10,12 @@ const DEFAULT_PROFILE = {
   role: "",
   status: "",
   avatar: null,
+  is_verified: false,
+  is_phone_verified: false,
 };
 
 export function useMyProfile() {
+  const { updateUser } = useAuth();
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -68,12 +72,41 @@ export function useMyProfile() {
     }
   };
 
+  const runOtpAction = async (fn) => {
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccessMsg(null);
+      const result = await fn();
+      setSuccessMsg(result?.message || "Success");
+      // verification changes live on the server — refresh to show badges
+      if (result?.data?.is_verified || result?.data?.is_phone_verified) {
+        await fetchProfile();
+      }
+      return { ok: true, message: result?.message };
+    } catch (err) {
+      const message = err.response?.data?.message || "Something went wrong";
+      setError(message);
+      return { ok: false, error: message };
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendEmailOtp = () => runOtpAction(() => profileApi.sendEmailOtp());
+  const verifyEmailOtp = (otp) => runOtpAction(() => profileApi.verifyEmailOtp(otp));
+  const sendPhoneOtp = () => runOtpAction(() => profileApi.sendPhoneOtp());
+  const verifyPhoneOtp = (otp) => runOtpAction(() => profileApi.verifyPhoneOtp(otp));
+
   const updateAvatar = async (file) => {
     try {
       setSaving(true);
       setError(null);
       const result = await profileApi.updateAvatar(file);
       setProfile((prev) => ({ ...prev, avatar: result.avatar }));
+      // Push the new photo into the auth context so the Topbar, Sidebar and
+      // Dashboard all show it immediately — no refresh or re-login needed.
+      updateUser({ avatar: result.avatar });
       setSuccessMsg("Photo updated");
       return true;
     } catch (err) {
@@ -97,6 +130,10 @@ export function useMyProfile() {
     updateProfile,
     changePassword,
     updateAvatar,
+    sendEmailOtp,
+    verifyEmailOtp,
+    sendPhoneOtp,
+    verifyPhoneOtp,
     refetch: fetchProfile,
   };
 }

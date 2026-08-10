@@ -1,46 +1,26 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Route, Navigate } from "react-router-dom";
 
-import Login from "../pages/auth/Login";
-
-// Super Admin Layout
 import EmployeeLayout from "../layouts/EmployeeLayout";
 
-// Super Admin Pages
 import Dashboard from "../pages/employee/Dashboard";
+import AssignedPickups from "../pages/employee/AssignedPickups";
 import MyTasks from "../pages/employee/MyTasks";
-import VerifyEmail from "../pages/employee/VerifyEmail";
+import MyAttendance from "../pages/employee/MyAttendance";
 import MyProfile from "../pages/employee/MyProfile";
+import VerifyEmail from "../pages/employee/VerifyEmail";
 
-const AppRoutes = () => {
-  return (
-    <BrowserRouter>
-      <Routes>
-        {/* Default Route */}
-        <Route path="/" element={<Navigate to="/login" replace />} />
+const EmployeeRoute = (
+  <Route path="/employee" element={<EmployeeLayout />}>
+    <Route index element={<Navigate to="dashboard" replace />} />
 
-        {/* Login */}
-        <Route path="/login" element={<Login />} />
+    <Route path="dashboard" element={<Dashboard />} />
+    <Route path="pickups" element={<AssignedPickups />} />
+    <Route path="mytask" element={<MyTasks />} />
+    <Route path="attendance" element={<MyAttendance />} />
+    <Route path="profile" element={<MyProfile />} />
+    <Route path="myProfile" element={<MyProfile />} />
+    <Route path="verifyEmail" element={<VerifyEmail />} />
+  </Route>
+);
 
-        {/*Employee Routes */}
-        <Route path="/employee" element={<EmployeeLayout />}>
-          <Route index element={<Navigate to="dashboard" replace />} />
-
-          <Route path="dashboard" element={<Dashboard />} />
-
-          <Route path="mytask" element ={<MyTasks/>}/>
-
-          <Route path="myProfile" element = {<MyProfile/>}/>
-
-         <Route path="verifyEmail" element={<VerifyEmail />} />
-
-        </Route>
-
-
-        {/* 404 */}
-        <Route path="*" element={<h1>404 - Page Not Found</h1>} />
-      </Routes>
-    </BrowserRouter>
-  );
-};
-
-export default AppRoutes;
+export default EmployeeRoute;

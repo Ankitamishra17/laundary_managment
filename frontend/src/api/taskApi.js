@@ -1,8 +1,11 @@
 import axios from "axios";
+import { setupSessionInterceptor } from "./session";
 
 const api = axios.create({
   baseURL: `${import.meta.env.VITE_API_URL}/api/tasks`,
 });
+
+setupSessionInterceptor(api);
 
 // attach the JWT on every request — no need to pass it manually each call
 api.interceptors.request.use((config) => {

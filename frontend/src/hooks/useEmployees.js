@@ -1,10 +1,6 @@
 // hooks/useEmployees.js
 import { useState, useCallback, useEffect } from "react";
-import axios from "axios"; 
-
-const API_URL = import.meta.env.VITE_API_URL;
-
-console.log("API_URL =", API_URL);
+import api from "../api/axios"; // shared instance — attaches JWT + handles session expiry
 
 export function useEmployees() {
   const [employees, setEmployees] = useState([]);
@@ -18,15 +14,10 @@ export function useEmployees() {
     setSuccessMsg("");
   }, []);
 
-  const authHeaders = () => ({
-    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }, 
-  });
-
   const fetchEmployees = useCallback(async (search = "") => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_URL}/api/admin/employees`, {
-        ...authHeaders(),
+      const res = await api.get("/admin/employees", {
         params: { search },
       });
       setEmployees(res.data.data || []);
@@ -45,7 +36,7 @@ export function useEmployees() {
     setSaving(true);
     setError("");
     try {
-      const res = await axios.post(`${API_URL}/api/admin/employees`, payload, authHeaders());
+      const res = await api.post("/admin/employees", payload);
       setEmployees((prev) => [res.data.data, ...prev]);
       setSuccessMsg("Employee created successfully");
       return { ok: true, employee: res.data.data, tempPassword: res.data.temp_password };
@@ -62,7 +53,7 @@ export function useEmployees() {
     setSaving(true);
     setError("");
     try {
-      const res = await axios.patch(`${API_URL}/api/admin/employees/${id}`, payload, authHeaders());
+      const res = await api.patch(`/admin/employees/${id}`, payload);
       setEmployees((prev) => prev.map((e) => (e.id === id ? res.data.data : e)));
       setSuccessMsg("Employee updated");
       return true;
@@ -78,7 +69,7 @@ export function useEmployees() {
     setSaving(true);
     setError("");
     try {
-      await axios.delete(`${API_URL}/api/admin/employees/${id}`, authHeaders());
+      await api.delete(`/admin/employees/${id}`);
       setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, status: "inactive" } : e)));
       setSuccessMsg("Employee deactivated");
       return true;
@@ -94,7 +85,7 @@ export function useEmployees() {
     setSaving(true);
     setError("");
     try {
-      await axios.patch(`${API_URL}/api/admin/employees/${id}/reactivate`, {}, authHeaders());
+      await api.patch(`/admin/employees/${id}/reactivate`, {});
       setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, status: "active" } : e)));
       setSuccessMsg("Employee reactivated");
       return true;
@@ -110,7 +101,7 @@ export function useEmployees() {
     setSaving(true);
     setError("");
     try {
-      const res = await axios.post(`${API_URL}/api/admin/employees/${id}/reset-password`, {}, authHeaders());
+      const res = await api.post(`/admin/employees/${id}/reset-password`, {});
       setSuccessMsg("Password reset");
       return { ok: true, tempPassword: res.data.temp_password };
     } catch (err) {

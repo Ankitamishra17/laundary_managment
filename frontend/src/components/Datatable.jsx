@@ -25,7 +25,7 @@ export default function DataTable({
   emptyMessage = "Nothing to show yet.",
 }) {
   return (
-    <div className="bg-card-tint/40 bg-white border border-card-border rounded-xl shadow-card p-5">
+    <div className="bg-white border border-card-border rounded-xl shadow-card p-5">
       {title && (
         <h2 className="font-display text-[15px] text-text-dark mb-4">{title}</h2>
       )}

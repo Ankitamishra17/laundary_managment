@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useCallback, useRef, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { loginUser } from "../../api/authApi";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -37,8 +37,21 @@ export default function LaundryLoginPage() {
   const [remember, setRemember] = useState(true);
   const [toasts, setToasts] = useState([]);
   const toastId = useRef(0);
+  const sessionNoticeShown = useRef(false);
   const navigate = useNavigate();
   const { login } = useAuth();
+
+  // Show a friendly notice when the user was bounced back here because their
+  // session expired (redirected by the 401 handler in api/session.js).
+  useEffect(() => {
+    if (sessionNoticeShown.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("session") === "expired") {
+      sessionNoticeShown.current = true;
+      showToast("Your session has expired. Please log in again.", "error");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const removeToast = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -439,9 +452,9 @@ export default function LaundryLoginPage() {
                 >
                   Password
                 </label>
-                <a href="#" className="lp-link text-xs font-medium">
+                <Link to="/forgot-password" className="lp-link text-xs font-medium">
                   Forgot password?
-                </a>
+                </Link>
               </div>
               <div className="relative">
                 <Lock

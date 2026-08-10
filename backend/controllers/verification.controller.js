@@ -1,10 +1,10 @@
-const jwt = require("jsonwebtoken");
-const { Employee } = require("../models");
-const { sendVerificationEmail } = require("../utils/email");
+import jwt from "jsonwebtoken";
+import { Employee } from "../models/index.js";
+import { sendVerificationEmail } from "../utils/Email.js";
 
 // POST /api/auth/send-verification   { email }
 // Call this right after employee signup, or from a "Resend verification email" button.
-exports.sendVerification = async (req, res) => {
+export const sendVerification = async (req, res) => {
   try {
     const { email } = req.body;
     const employee = await Employee.findOne({ where: { email } });
@@ -32,7 +32,7 @@ exports.sendVerification = async (req, res) => {
 };
 
 // GET /api/auth/verify-email?token=...
-exports.verifyEmail = async (req, res) => {
+export const verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;
     if (!token) {

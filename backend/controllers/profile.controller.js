@@ -1,8 +1,7 @@
-const bcrypt = require("bcryptjs");
-const { Employee } = require("../models");
+import { Employee } from "../models/index.js";
 
 // GET /api/profile — the logged-in employee's own profile
-exports.getMyProfile = async (req, res) => {
+export const getMyProfile = async (req, res) => {
   try {
     const employee = await Employee.findByPk(req.user.id, {
       attributes: { exclude: ["password"] },
@@ -20,8 +19,8 @@ exports.getMyProfile = async (req, res) => {
 
 // PUT /api/profile — update editable fields only
 // (email/role/shop_id/status are intentionally NOT editable here — those
-// stay admin-controlled via the employee.controller.js CRUD routes)
-exports.updateMyProfile = async (req, res) => {
+// stay admin-controlled via the adminEmployee.controller.js CRUD routes)
+export const updateMyProfile = async (req, res) => {
   try {
     const employee = await Employee.findByPk(req.user.id);
     if (!employee) {
@@ -43,7 +42,7 @@ exports.updateMyProfile = async (req, res) => {
 };
 
 // PATCH /api/profile/password   { currentPassword, newPassword }
-exports.changePassword = async (req, res) => {
+export const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
@@ -74,24 +73,45 @@ exports.changePassword = async (req, res) => {
 };
 
 // PATCH /api/profile/avatar — multipart/form-data, field name: "avatar"
-// Expects multer's upload.single("avatar") middleware to run before this.
-exports.updateAvatar = async (req, res) => {
+// NOTE: multer is not installed yet, so this only returns a friendly error
+// until the upload middleware is wired up.
+export const updateAvatar = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ success: false, message: "No file uploaded" });
+      return res.status(400).json({
+        success: false,
+        message: "Please upload an avatar image",
+      });
     }
 
     const employee = await Employee.findByPk(req.user.id);
+
     if (!employee) {
-      return res.status(404).json({ success: false, message: "Profile not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Profile not found",
+      });
     }
 
-    // adjust this path to match how middleware/upload.js exposes the saved file
-    employee.avatar = `/uploads/${req.file.filename}`;
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+
+    employee.avatar = avatarUrl;
+
     await employee.save();
 
-    return res.status(200).json({ success: true, data: { avatar: employee.avatar } });
+    const { password: _, ...safeEmployee } = employee.toJSON();
+
+    return res.status(200).json({
+      success: true,
+      message: "Avatar updated successfully",
+      data: safeEmployee,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Avatar upload error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };

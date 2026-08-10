@@ -10,6 +10,8 @@ import Tasks from "../pages/admin/Tasks";
 import Services from "../pages/admin/Services";
 import Inventory from "../pages/admin/Inventory";
 import Attendance from "../pages/admin/Attendance";
+import DailyAttendance from "../pages/admin/DailyAttendance";
+import AttendanceReports from "../pages/admin/AttendanceReports";
 import Payroll from "../pages/admin/Payroll";
 import Payments from "../pages/admin/Payments";
 import Reports from "../pages/admin/Reports";
@@ -34,7 +36,11 @@ const AdminRoute = (
 
     <Route path="inventory" element={<Inventory />} />
 
-    <Route path="attendance" element={<Attendance />} />
+    <Route path="attendance" element={<Attendance />}>
+      <Route index element={<Navigate to="daily" replace />} />
+      <Route path="daily" element={<DailyAttendance />} />
+      <Route path="reports" element={<AttendanceReports />} />
+    </Route>
 
     <Route path="payroll" element={<Payroll />} />
 

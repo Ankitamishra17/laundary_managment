@@ -200,7 +200,7 @@ const Services = () => {
       </h2>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-5">
         {statCards.map((s) => (
           <div
             key={s.label}

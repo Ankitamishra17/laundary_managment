@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 // Auth Pages
 import LoginPage from "../pages/auth/LoginPage";
 import CreatePassword from "../pages/auth/CreatePassword";
+import ForgotPassword from "../pages/auth/ForgotPassword";
+import ResetPassword from "../pages/auth/ResetPassword";
 
 // Route Groups
 import SuperAdminRoute from "./SuperAdminRoute";
@@ -22,6 +24,10 @@ export default function AppRoutes() {
 
         {/* First Login Password */}
         <Route path="/create-password" element={<CreatePassword />} />
+
+        {/* Forgot / Reset Password */}
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* Role-based route groups */}
         {SuperAdminRoute}

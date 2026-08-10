@@ -8,7 +8,6 @@ import {
   MapPin,
   Sparkles,
   Inbox,
-  ChevronRight,
 } from "lucide-react";
 import { useMyTasks } from "../../hooks/useMyTasks";
 import StatusPill from "../../components/layout/StatusPill";

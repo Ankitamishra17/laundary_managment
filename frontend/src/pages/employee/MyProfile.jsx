@@ -1,5 +1,18 @@
 import React, { useState, useEffect, useRef } from "react";
-import { User, Phone, Briefcase, ShieldCheck, Camera, Lock, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  User,
+  Phone,
+  Briefcase,
+  ShieldCheck,
+  Camera,
+  Lock,
+  CheckCircle2,
+  AlertCircle,
+  Mail,
+  BadgeCheck,
+  Send,
+  Loader2,
+} from "lucide-react";
 import { useMyProfile } from "../../hooks/useMyProfile";
 
 function Field({ label, icon: Icon, children }) {
@@ -30,10 +43,66 @@ export default function MyProfile() {
     clearMessages,
     changePassword,
     updateAvatar,
+    sendEmailOtp,
+    verifyEmailOtp,
+    sendPhoneOtp,
+    verifyPhoneOtp,
   } = useMyProfile();
 
   const fileInputRef = useRef(null);
   const [pwForm, setPwForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+
+  // Verification (OTP) state
+  const [emailOtp, setEmailOtp] = useState("");
+  const [phoneOtp, setPhoneOtp] = useState("");
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
+  const [cooldown, setCooldown] = useState({ email: 0, phone: 0 });
+
+  useEffect(() => {
+    if (cooldown.email === 0 && cooldown.phone === 0) return;
+    const t = setTimeout(
+      () =>
+        setCooldown((c) => ({
+          email: Math.max(0, c.email - 1),
+          phone: Math.max(0, c.phone - 1),
+        })),
+      1000,
+    );
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  const handleSendEmailOtp = async () => {
+    const res = await sendEmailOtp();
+    if (res.ok) {
+      setEmailOtpSent(true);
+      setCooldown((c) => ({ ...c, email: 30 }));
+    }
+  };
+
+  const handleVerifyEmailOtp = async () => {
+    const res = await verifyEmailOtp(emailOtp);
+    if (res.ok) {
+      setEmailOtpSent(false);
+      setEmailOtp("");
+    }
+  };
+
+  const handleSendPhoneOtp = async () => {
+    const res = await sendPhoneOtp();
+    if (res.ok) {
+      setPhoneOtpSent(true);
+      setCooldown((c) => ({ ...c, phone: 30 }));
+    }
+  };
+
+  const handleVerifyPhoneOtp = async () => {
+    const res = await verifyPhoneOtp(phoneOtp);
+    if (res.ok) {
+      setPhoneOtpSent(false);
+      setPhoneOtp("");
+    }
+  };
 
   useEffect(() => {
     if (successMsg || error) {
@@ -164,6 +233,130 @@ export default function MyProfile() {
             <p className="text-xs text-[#6B8482] pt-1">
               These details are managed by your admin. Contact them if any of this needs to change.
             </p>
+          </div>
+        </div>
+
+        {/* Verification card */}
+        <div className="bg-white border border-[#D8ECEA] rounded-2xl shadow-[0_1px_2px_rgba(15,44,46,0.04)] p-5 sm:p-7">
+          <div className="flex items-center gap-2 mb-5">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#DFF3F5" }}>
+              <ShieldCheck size={16} style={{ color: "#028090" }} />
+            </div>
+            <div>
+              <div className="font-serif text-lg text-[#0F2C2E]">Verify Your Contact</div>
+              <div className="text-xs text-[#6B8482]">
+                Confirm your email and phone with a one-time code.
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3.5">
+            {/* Email row */}
+            <div className="rounded-xl border border-[#D8ECEA] bg-[#FAFDFC] p-4">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#DFF3F5" }}>
+                  <Mail size={15} style={{ color: "#028090" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-[#0F2C2E]">Email</div>
+                  <div className="text-xs text-[#6B8482] truncate">{profile.email}</div>
+                </div>
+                {profile.is_verified ? (
+                  <span
+                    className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md"
+                    style={{ background: "#DFF7F1", color: "#02724F" }}
+                  >
+                    <BadgeCheck size={13} /> Verified
+                  </span>
+                ) : (
+                  <button
+                    onClick={handleSendEmailOtp}
+                    disabled={saving || cooldown.email > 0}
+                    className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg text-white shadow-sm hover:brightness-105 active:scale-[0.97] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{ background: "linear-gradient(135deg, #028090, #00A896)" }}
+                  >
+                    {saving && !emailOtpSent ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                    {cooldown.email > 0 ? `Resend in ${cooldown.email}s` : emailOtpSent ? "Resend OTP" : "Send OTP"}
+                  </button>
+                )}
+              </div>
+
+              {emailOtpSent && !profile.is_verified && (
+                <div className="mt-3 flex gap-2">
+                  <input
+                    value={emailOtp}
+                    onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="6-digit code"
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="w-40 rounded-lg border border-[#D8ECEA] bg-white px-3 py-2 text-center text-base font-semibold tracking-[0.3em] text-[#0F2C2E] outline-none focus:border-[#028090] focus:ring-2 focus:ring-[#028090]/15 transition-all"
+                  />
+                  <button
+                    onClick={handleVerifyEmailOtp}
+                    disabled={saving || emailOtp.length !== 6}
+                    className="flex items-center gap-1.5 text-[11px] font-semibold px-4 py-2 rounded-lg text-white shadow-sm hover:brightness-105 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: "linear-gradient(135deg, #0B3B3E, #028090)" }}
+                  >
+                    {saving ? <Loader2 size={12} className="animate-spin" /> : <BadgeCheck size={12} />}
+                    Verify
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Phone row */}
+            <div className="rounded-xl border border-[#D8ECEA] bg-[#FAFDFC] p-4">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#FBF0DC" }}>
+                  <Phone size={15} style={{ color: "#9A6A12" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-[#0F2C2E]">Phone Number</div>
+                  <div className="text-xs text-[#6B8482] truncate">{profile.phone || "Not added yet"}</div>
+                </div>
+                {profile.is_phone_verified ? (
+                  <span
+                    className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md"
+                    style={{ background: "#DFF7F1", color: "#02724F" }}
+                  >
+                    <BadgeCheck size={13} /> Verified
+                  </span>
+                ) : (
+                  <button
+                    onClick={handleSendPhoneOtp}
+                    disabled={saving || cooldown.phone > 0 || !profile.phone}
+                    title={!profile.phone ? "No phone number on your profile yet" : undefined}
+                    className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg text-white shadow-sm hover:brightness-105 active:scale-[0.97] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{ background: "linear-gradient(135deg, #028090, #00A896)" }}
+                  >
+                    {saving && !phoneOtpSent ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                    {cooldown.phone > 0 ? `Resend in ${cooldown.phone}s` : phoneOtpSent ? "Resend OTP" : "Send OTP"}
+                  </button>
+                )}
+              </div>
+
+              {phoneOtpSent && !profile.is_phone_verified && (
+                <div className="mt-3 flex gap-2">
+                  <input
+                    value={phoneOtp}
+                    onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="6-digit code"
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="w-40 rounded-lg border border-[#D8ECEA] bg-white px-3 py-2 text-center text-base font-semibold tracking-[0.3em] text-[#0F2C2E] outline-none focus:border-[#028090] focus:ring-2 focus:ring-[#028090]/15 transition-all"
+                  />
+                  <button
+                    onClick={handleVerifyPhoneOtp}
+                    disabled={saving || phoneOtp.length !== 6}
+                    className="flex items-center gap-1.5 text-[11px] font-semibold px-4 py-2 rounded-lg text-white shadow-sm hover:brightness-105 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: "linear-gradient(135deg, #0B3B3E, #028090)" }}
+                  >
+                    {saving ? <Loader2 size={12} className="animate-spin" /> : <BadgeCheck size={12} />}
+                    Verify
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

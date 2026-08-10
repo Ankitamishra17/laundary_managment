@@ -1,21 +1,29 @@
-const express = require("express");
-const router = express.Router();
+import express from "express";
 
-const {
+import protect from "../middleware/authMiddleware.js";
+import allowRoles from "../middleware/roleMiddleware.js";
+
+import {
+  getAllTasks,
+  assignTask,
   getMyTasks,
   getMyTaskStats,
   getTaskById,
   updateTaskStatus,
   updateTaskNotes,
-} = require("../controllers/task.controller");
+} from "../controllers/task.controller.js";
 
-const auth = require("../middleware/auth");
+const router = express.Router();
 
-// every route here is auto-scoped to the logged-in employee inside the controller
-router.get("/my-tasks", auth, getMyTasks);
-router.get("/my-tasks/stats", auth, getMyTaskStats);
-router.get("/:id", auth, getTaskById);
-router.patch("/:id/status", auth, updateTaskStatus);
-router.patch("/:id/notes", auth, updateTaskNotes);
+// ---- Admin — create/assign + list all tasks ----
+router.get("/", protect, allowRoles("admin"), getAllTasks);
+router.post("/", protect, allowRoles("admin"), assignTask);
 
-module.exports = router;
+// ---- Employee — own tasks (auto-scoped inside the controller) ----
+router.get("/my-tasks", protect, getMyTasks);
+router.get("/my-tasks/stats", protect, getMyTaskStats);
+router.get("/:id", protect, getTaskById);
+router.patch("/:id/status", protect, updateTaskStatus);
+router.patch("/:id/notes", protect, updateTaskNotes);
+
+export default router;

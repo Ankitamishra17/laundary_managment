@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Users,
   ShieldCheck,
@@ -14,6 +14,10 @@ import {
   KeyRound,
   Sparkles,
   Inbox,
+  Pencil,
+  Trash2,
+  RotateCcw,
+  AlertTriangle,
 } from "lucide-react";
 import { useEmployees } from "../../hooks/useEmployees";
 
@@ -88,6 +92,20 @@ function EmptyState() {
     </div>
   );
 }
+
+function Field({ label, required, className = "", children }) {
+  return (
+    <div className={className}>
+      <label className="block text-[13px] font-medium text-[#0F2C2E] mb-1.5">
+        {label} {required && <span className="text-[#B3261E]">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+const inputClass =
+  "w-full rounded-lg border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-2.5 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:shadow-[0_0_0_3px_rgba(2,128,144,0.12)] transition";
 
 /* ------------------------------------------------------------------ */
 /* Create Employee Modal                                               */
@@ -192,7 +210,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
                     onChange={handleChange}
                     required
                     placeholder="Rahul Sharma"
-                    className="w-full rounded-lg border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-2.5 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:shadow-[0_0_0_3px_rgba(2,128,144,0.12)] transition"
+                    className={inputClass}
                   />
                 </Field>
 
@@ -206,7 +224,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
                       onChange={handleChange}
                       required
                       placeholder="rahul@laundry.com"
-                      className="w-full rounded-lg border border-[#D8ECEA] bg-[#EEF7F6] pl-9 pr-3 py-2.5 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:shadow-[0_0_0_3px_rgba(2,128,144,0.12)] transition"
+                      className={`${inputClass} pl-9`}
                     />
                   </div>
                 </Field>
@@ -220,7 +238,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
                       onChange={handleChange}
                       required
                       placeholder="9876543210"
-                      className="w-full rounded-lg border border-[#D8ECEA] bg-[#EEF7F6] pl-9 pr-3 py-2.5 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:shadow-[0_0_0_3px_rgba(2,128,144,0.12)] transition"
+                      className={`${inputClass} pl-9`}
                     />
                   </div>
                 </Field>
@@ -231,7 +249,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
                     value={form.designation}
                     onChange={handleChange}
                     placeholder="Laundry Attendant"
-                    className="w-full rounded-lg border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-2.5 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:shadow-[0_0_0_3px_rgba(2,128,144,0.12)] transition"
+                    className={inputClass}
                   />
                 </Field>
               </div>
@@ -259,7 +277,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
                     required
                     minLength={6}
                     placeholder="At least 6 characters"
-                    className="w-full rounded-lg border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-2.5 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:shadow-[0_0_0_3px_rgba(2,128,144,0.12)] transition"
+                    className={inputClass}
                   />
                 </Field>
               )}
@@ -349,13 +367,248 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
   );
 }
 
-function Field({ label, required, className = "", children }) {
+/* ------------------------------------------------------------------ */
+/* Edit Employee Modal                                                 */
+/* ------------------------------------------------------------------ */
+
+function EditEmployeeModal({ employee, onClose, onUpdate }) {
+  const [form, setForm] = useState({
+    name: employee?.name || "",
+    phone: employee?.phone || "",
+    designation: employee?.designation || "",
+    status: employee?.status || "active",
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!employee) return null;
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const ok = await onUpdate(employee.id, {
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+      designation: form.designation.trim() || null,
+      status: form.status,
+    });
+    setLoading(false);
+    if (ok) onClose();
+  };
+
   return (
-    <div className={className}>
-      <label className="block text-[13px] font-medium text-[#0F2C2E] mb-1.5">
-        {label} {required && <span className="text-[#B3261E]">*</span>}
-      </label>
-      {children}
+    <div className="fixed inset-0 z-50 bg-[#05282A]/55 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-[0_20px_50px_rgba(5,40,42,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h2
+              className="text-2xl text-[#0F2C2E] leading-tight"
+              style={{ fontFamily: "'Libre Baskerville', Georgia, serif" }}
+            >
+              Edit Employee
+            </h2>
+            <p className="text-[13px] text-[#5A7A79] mt-1">Update details for {employee.name}</p>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="w-8 h-8 rounded-lg bg-[#EEF7F6] border border-[#D8ECEA] text-[#0F2C2E] flex items-center justify-center hover:bg-[#DFF3F5] transition-colors"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Field label="Full Name" required>
+            <input name="name" value={form.name} onChange={handleChange} required placeholder="Rahul Sharma" className={inputClass} />
+          </Field>
+
+          <Field label="Phone">
+            <div className="relative">
+              <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B8482]" />
+              <input name="phone" value={form.phone} onChange={handleChange} placeholder="9876543210" className={`${inputClass} pl-9`} />
+            </div>
+          </Field>
+
+          <Field label="Designation">
+            <input
+              name="designation"
+              value={form.designation}
+              onChange={handleChange}
+              placeholder="Laundry Attendant"
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Status">
+            <select
+              name="status"
+              value={form.status}
+              onChange={handleChange}
+              className={`${inputClass} cursor-pointer`}
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </Field>
+
+          {error && (
+            <div className="text-[13px] text-[#B3261E] bg-[#FDECEC] border border-[#F5C6C0] rounded-lg px-3.5 py-2.5">
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-xl py-3 text-sm font-medium text-[#0F2C2E] border border-[#D8ECEA] bg-transparent hover:bg-[#EEF7F6] transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition hover:brightness-105 active:scale-[0.98]"
+              style={{ background: "linear-gradient(135deg, #028090, #00A896)" }}
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Saving…
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={16} /> Save Changes
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Delete (Deactivate) / Reactivate Modal                              */
+/* ------------------------------------------------------------------ */
+
+function DeleteEmployeeModal({ employee, onClose, onConfirm }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!employee) return null;
+
+  const isActive = employee.status === "active";
+
+  const handleConfirm = async () => {
+    setError("");
+    setLoading(true);
+    const ok = await onConfirm(employee.id);
+    setLoading(false);
+    if (ok) onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-[#05282A]/55 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl w-full max-w-md p-6 sm:p-8 shadow-[0_20px_50px_rgba(5,40,42,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-col items-center text-center">
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center mb-4"
+            style={{ background: isActive ? "#FDECEC" : "#DFF7F1" }}
+          >
+            {isActive ? (
+              <AlertTriangle size={26} style={{ color: "#B3261E" }} />
+            ) : (
+              <RotateCcw size={26} style={{ color: "#028090" }} />
+            )}
+          </div>
+
+          <h2
+            className="text-2xl text-[#0F2C2E]"
+            style={{ fontFamily: "'Libre Baskerville', Georgia, serif" }}
+          >
+            {isActive ? "Deactivate Employee?" : "Reactivate Employee?"}
+          </h2>
+
+          <p className="text-[13px] text-[#5A7A79] mt-2 leading-relaxed">
+            {isActive ? (
+              <>
+                <span className="font-semibold text-[#0F2C2E]">{employee.name}</span> will lose access to
+                the employee portal. They can be reactivated anytime from this page.
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-[#0F2C2E]">{employee.name}</span> will regain access
+                to the employee portal.
+              </>
+            )}
+          </p>
+
+          <div
+            className="w-full rounded-xl px-4 py-3 mt-5 text-left text-[13px] flex items-start gap-2.5"
+            style={{ background: isActive ? "#FDECEC" : "#EEF7F6", border: `1px solid ${isActive ? "#F5C6C0" : "#D8ECEA"}` }}
+          >
+            <span style={{ color: isActive ? "#B3261E" : "#028090" }}>
+              {isActive ? <AlertTriangle size={16} className="mt-0.5 shrink-0" /> : <RotateCcw size={16} className="mt-0.5 shrink-0" />}
+            </span>
+            <span className="text-[#5A7A79]">
+              {isActive
+                ? "Their tasks and attendance history are preserved — only login access is removed."
+                : "The employee will be able to log in again with their existing credentials."}
+            </span>
+          </div>
+
+          {error && (
+            <div className="w-full mt-4 text-[13px] text-[#B3261E] bg-[#FDECEC] border border-[#F5C6C0] rounded-lg px-3.5 py-2.5">
+              {error}
+            </div>
+          )}
+
+          <div className="w-full flex gap-3 mt-6">
+            <button
+              onClick={onClose}
+              className="flex-1 rounded-xl py-3 text-sm font-medium text-[#0F2C2E] border border-[#D8ECEA] bg-transparent hover:bg-[#EEF7F6] transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition hover:brightness-105 active:scale-[0.98]"
+              style={{
+                background: isActive ? "linear-gradient(135deg, #C4453C, #B3261E)" : "linear-gradient(135deg, #028090, #00A896)",
+              }}
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Working…
+                </>
+              ) : isActive ? (
+                <>
+                  <Trash2 size={16} /> Deactivate
+                </>
+              ) : (
+                <>
+                  <RotateCcw size={16} /> Reactivate
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -365,9 +618,28 @@ function Field({ label, required, className = "", children }) {
 /* ------------------------------------------------------------------ */
 
 export default function Employees() {
-  const { employees, loading, error, createEmployee } = useEmployees();
+  const {
+    employees,
+    loading,
+    error,
+    successMsg,
+    clearMessages,
+    createEmployee,
+    updateEmployee,
+    deactivateEmployee,
+    reactivateEmployee,
+  } = useEmployees();
   const [search, setSearch] = useState("");
-  const [showModal, setShowModal] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState(null);
+  const [deletingEmployee, setDeletingEmployee] = useState(null);
+
+  // Auto-dismiss the success banner
+  useEffect(() => {
+    if (!successMsg) return;
+    const t = setTimeout(clearMessages, 4000);
+    return () => clearTimeout(t);
+  }, [successMsg, clearMessages]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -393,6 +665,17 @@ export default function Employees() {
       tempPassword: result.tempPassword,
       error: result.error,
     };
+  };
+
+  const handleUpdate = async (id, payload) => {
+    return updateEmployee(id, payload); // returns true/false; hook sets error internally
+  };
+
+  const handleDelete = async (id) => {
+    const employee = employees.find((e) => e.id === id);
+    const ok = employee?.status === "active" ? await deactivateEmployee(id) : await reactivateEmployee(id);
+    if (!ok) setError("Failed to update employee status");
+    return ok;
   };
 
   return (
@@ -421,7 +704,7 @@ export default function Employees() {
           </div>
 
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => setShowCreate(true)}
             className="flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-lg hover:brightness-105 hover:-translate-y-0.5 active:scale-[0.97] transition-all"
             style={{ background: "linear-gradient(135deg, #028090, #00A896)" }}
           >
@@ -454,6 +737,14 @@ export default function Employees() {
           </div>
         )}
 
+        {/* Success banner */}
+        {successMsg && (
+          <div className="flex items-center gap-2 text-sm text-[#02735E] bg-[#DFF7F1] border border-[#B8E8D8] rounded-xl px-4 py-3">
+            <CheckCircle2 size={16} className="shrink-0" />
+            {successMsg}
+          </div>
+        )}
+
         {/* Table card */}
         <div className="bg-white border border-[#D8ECEA] rounded-2xl shadow-[0_1px_2px_rgba(15,44,46,0.04)] overflow-hidden">
           {loading ? (
@@ -470,6 +761,7 @@ export default function Employees() {
                     <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Designation</th>
                     <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Status</th>
                     <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Joined</th>
+                    <th className="text-right font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -497,6 +789,30 @@ export default function Employees() {
                       <td className="py-3.5 px-5 text-[#6B8482]">
                         {new Date(e.createdAt).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" })}
                       </td>
+                      <td className="py-3.5 px-5">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setEditingEmployee(e)}
+                            title="Edit employee"
+                            aria-label={`Edit ${e.name}`}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-[#028090] bg-[#DFF3F5] hover:bg-[#028090] hover:text-white active:scale-95 transition-all"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => setDeletingEmployee(e)}
+                            title={e.status === "active" ? "Deactivate employee" : "Reactivate employee"}
+                            aria-label={`${e.status === "active" ? "Deactivate" : "Reactivate"} ${e.name}`}
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center active:scale-95 transition-all ${
+                              e.status === "active"
+                                ? "text-[#B3261E] bg-[#FDECEC] hover:bg-[#B3261E] hover:text-white"
+                                : "text-[#028090] bg-[#DFF7F1] hover:bg-[#028090] hover:text-white"
+                            }`}
+                          >
+                            {e.status === "active" ? <Trash2 size={14} /> : <RotateCcw size={14} />}
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -506,7 +822,13 @@ export default function Employees() {
         </div>
       </div>
 
-      <CreateEmployeeModal isOpen={showModal} onClose={() => setShowModal(false)} onCreate={handleCreate} />
+      <CreateEmployeeModal isOpen={showCreate} onClose={() => setShowCreate(false)} onCreate={handleCreate} />
+      {editingEmployee && (
+        <EditEmployeeModal employee={editingEmployee} onClose={() => setEditingEmployee(null)} onUpdate={handleUpdate} />
+      )}
+      {deletingEmployee && (
+        <DeleteEmployeeModal employee={deletingEmployee} onClose={() => setDeletingEmployee(null)} onConfirm={handleDelete} />
+      )}
     </div>
   );
 }
