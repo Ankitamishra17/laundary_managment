@@ -6,6 +6,11 @@ export const loginUser = async (loginData) => {
   return response.data;
 };
 
+// Create Password (First Login)
+export const createPassword = async (passwordData) => {
+  const response = await api.post("/auth/create-password", passwordData);
+  return response.data;
+};
 // Logout
 export const logoutUser = () => {
   localStorage.removeItem("token");

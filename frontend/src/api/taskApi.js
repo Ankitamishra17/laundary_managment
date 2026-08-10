@@ -12,6 +12,11 @@ api.interceptors.request.use((config) => {
 });
 
 export const taskApi = {
+  // Admin
+  getAllTasks: (params) => api.get("/", { params }).then((r) => r.data.data),
+  assignTask: (payload) => api.post("/", payload).then((r) => r.data.data),
+
+  // Employee
   getMyTasks: (params) => api.get("/my-tasks", { params }).then((r) => r.data.data),
   getMyTaskStats: (params) => api.get("/my-tasks/stats", { params }).then((r) => r.data.data),
   getTaskById: (id) => api.get(`/${id}`).then((r) => r.data.data),
