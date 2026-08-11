@@ -4,6 +4,7 @@ import Subscription from "./Subscription.js";
 import InventoryItem from "./InventoryItem.js";
 import Supplier from "./Supplier.js";
 import InventoryTransaction from "./InventoryTransaction.js";
+import Notification from "./Notification.js";
 
 // =====================================================
 // SHOP ↔ USER
@@ -89,6 +90,42 @@ InventoryTransaction.belongsTo(Supplier, {
   as: "supplier",
 });
 
+
+
+// =====================================================
+// NOTIFICATION
+// =====================================================
+
+Shop.hasMany(Notification, {
+  foreignKey: "shopId",
+  as: "notifications",
+});
+
+Notification.belongsTo(Shop, {
+  foreignKey: "shopId",
+  as: "shop",
+});
+
+User.hasMany(Notification, {
+  foreignKey: "userId",
+  as: "notifications",
+});
+
+Notification.belongsTo(User, {
+  foreignKey: "userId",
+  as: "user",
+});
+
+InventoryItem.hasMany(Notification, {
+  foreignKey: "inventoryItemId",
+  as: "notifications",
+});
+
+Notification.belongsTo(InventoryItem, {
+  foreignKey: "inventoryItemId",
+  as: "inventoryItem",
+});
+
 // =====================================================
 // EXPORT
 // =====================================================
@@ -100,4 +137,5 @@ export {
   InventoryItem,
   Supplier,
   InventoryTransaction,
+  Notification,
 };

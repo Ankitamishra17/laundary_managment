@@ -6,6 +6,7 @@ import serviceRoutes from "./routes/service.routes.js";
 import inventoryRoutes from "./routes/inventory.routes.js";
 import inventoryTransactionRoutes from "./routes/inventoryTransaction.routes.js";
 import supplierRoutes from "./routes/supplier.routes.js"
+import notificationRoutes from "./routes/notification.routes.js"
 
 
 const app = express();
@@ -21,6 +22,7 @@ app.use("/api/services", serviceRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/inventory-transactions",inventoryTransactionRoutes);
 app.use("/api/suppliers", supplierRoutes);
+app.use("/api/notifications",notificationRoutes);
 
 
 app.get("/", (req, res) => {
