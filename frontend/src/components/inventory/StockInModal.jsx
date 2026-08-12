@@ -8,6 +8,7 @@ import {
   FileText,
   Loader2,
   Calculator,
+  ShieldAlert,
 } from "lucide-react";
 
 const initialForm = {
@@ -18,6 +19,22 @@ const initialForm = {
   reason: "",
   notes: "",
 };
+
+const inputBase =
+  "w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] py-2.5 pl-11 pr-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white focus:ring-2 focus:ring-[#028090]/15 disabled:cursor-not-allowed disabled:opacity-70";
+
+const iconWrapBase =
+  "absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-md bg-[#028090]/10 text-[#028090]";
+
+function FieldIcon({ icon: Icon, top }) {
+  return (
+    <span
+      className={top ? `${iconWrapBase} !top-3 !translate-y-0` : iconWrapBase}
+    >
+      <Icon size={14} />
+    </span>
+  );
+}
 
 export default function StockInModal({
   isOpen,
@@ -98,15 +115,10 @@ export default function StockInModal({
     try {
       await onSubmit({
         inventoryItemId: Number(form.inventoryItemId),
-
         supplierId: form.supplierId ? Number(form.supplierId) : null,
-
         quantity: Number(form.quantity),
-
         rate: Number(form.rate),
-
         reason: form.reason.trim() || "Purchase",
-
         notes: form.notes.trim() || null,
       });
 
@@ -122,81 +134,77 @@ export default function StockInModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#05282A]/60 sm:px-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !loading) {
           onClose();
         }
       }}
     >
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div className="flex w-full sm:max-w-lg max-h-[92vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl font-['Inter']">
         {/* =========================
-            HEADER
+            HEADER (sticky, decorative)
         ========================== */}
 
-        <div
-          className="flex items-center justify-between px-6 py-5"
-          style={{ backgroundColor: "#05282A" }}
-        >
-          <div>
-            <h2
-              className="text-xl font-semibold text-white"
-              style={{
-                fontFamily: "'Libre Baskerville', serif",
-              }}
+        <div className="relative shrink-0 overflow-hidden bg-[#05282A] px-5 sm:px-6 py-5">
+          <div
+            className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-[#0B3B3E] opacity-60 pointer-events-none"
+            aria-hidden="true"
+          />
+          <div className="relative flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="font-['Libre_Baskerville'] text-lg sm:text-xl text-white truncate">
+                Stock In
+              </h2>
+
+              <p className="mt-1 text-xs text-white/60">
+                Add purchased stock to your inventory.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="shrink-0 rounded-lg p-2 text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+              aria-label="Close"
             >
-              Stock In
-            </h2>
-
-            <p className="mt-1 text-xs text-white/60">
-              Add purchased stock to your inventory.
-            </p>
+              <X size={20} />
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="rounded-lg p-2 text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
-          >
-            <X size={20} />
-          </button>
         </div>
 
         {/* =========================
-            FORM
+            FORM (scrollable body)
         ========================== */}
 
-        <form onSubmit={handleSubmit} className="space-y-5 p-6">
-          {/* Error */}
-
+        <form
+          id="stock-in-form"
+          onSubmit={handleSubmit}
+          className="flex-1 overflow-y-auto space-y-5 p-5 sm:p-6"
+        >
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-              {error}
+            <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              <ShieldAlert size={16} className="mt-0.5 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
-          {/* =========================
-              INVENTORY ITEM
-          ========================== */}
-
+          {/* INVENTORY ITEM */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+            <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
               Inventory Item <span className="text-red-500">*</span>
             </label>
 
             <div className="relative">
-              <Package
-                size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
+              <FieldIcon icon={Package} />
 
               <select
                 name="inventoryItemId"
                 value={form.inventoryItemId}
                 onChange={handleChange}
                 disabled={Boolean(selectedItem) || loading}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                className={`${inputBase} appearance-none`}
               >
                 <option value="">Select inventory item</option>
 
@@ -209,15 +217,12 @@ export default function StockInModal({
             </div>
           </div>
 
-          {/* =========================
-              CURRENT STOCK
-          ========================== */}
-
+          {/* CURRENT STOCK */}
           {selectedInventoryItem && (
             <div className="rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-4 py-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-gray-500">Current Stock</p>
+                  <p className="text-xs text-[#5A7A79]">Current Stock</p>
 
                   <p className="mt-1 text-lg font-semibold text-[#028090]">
                     {selectedInventoryItem.currentStock}{" "}
@@ -230,27 +235,21 @@ export default function StockInModal({
             </div>
           )}
 
-          {/* =========================
-              SUPPLIER
-          ========================== */}
-
+          {/* SUPPLIER */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+            <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
               Supplier
             </label>
 
             <div className="relative">
-              <Truck
-                size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
+              <FieldIcon icon={Truck} />
 
               <select
                 name="supplierId"
                 value={form.supplierId}
                 onChange={handleChange}
                 disabled={loading}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
+                className={`${inputBase} appearance-none`}
               >
                 <option value="">Select supplier</option>
 
@@ -268,28 +267,20 @@ export default function StockInModal({
               </select>
             </div>
 
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-[#5A7A79]">
               Select the supplier from whom you purchased this stock.
             </p>
           </div>
 
-          {/* =========================
-              QUANTITY + RATE
-          ========================== */}
-
+          {/* QUANTITY + RATE */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {/* Quantity */}
-
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
                 Quantity <span className="text-red-500">*</span>
               </label>
 
               <div className="relative">
-                <Hash
-                  size={17}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+                <FieldIcon icon={Hash} />
 
                 <input
                   type="number"
@@ -300,29 +291,24 @@ export default function StockInModal({
                   onChange={handleChange}
                   placeholder="e.g. 20"
                   disabled={loading}
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
+                  className={inputBase}
                 />
               </div>
 
               {selectedInventoryItem && (
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-[#5A7A79]">
                   Unit: {selectedInventoryItem.unit}
                 </p>
               )}
             </div>
 
-            {/* Rate */}
-
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
                 Rate per Unit <span className="text-red-500">*</span>
               </label>
 
               <div className="relative">
-                <IndianRupee
-                  size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+                <FieldIcon icon={IndianRupee} />
 
                 <input
                   type="number"
@@ -333,22 +319,18 @@ export default function StockInModal({
                   onChange={handleChange}
                   placeholder="e.g. 120"
                   disabled={loading}
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
+                  className={inputBase}
                 />
               </div>
             </div>
           </div>
 
-          {/* =========================
-              TOTAL AMOUNT
-          ========================== */}
-
+          {/* TOTAL AMOUNT */}
           {quantity > 0 && rate >= 0 && (
             <div className="flex items-center justify-between rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-4 py-3">
               <div className="flex items-center gap-2">
                 <Calculator size={17} className="text-[#028090]" />
-
-                <span className="text-sm text-gray-600">Total Amount</span>
+                <span className="text-sm text-[#0F2C2E]">Total Amount</span>
               </div>
 
               <span className="text-lg font-semibold text-[#028090]">
@@ -357,20 +339,14 @@ export default function StockInModal({
             </div>
           )}
 
-          {/* =========================
-              REASON
-          ========================== */}
-
+          {/* REASON */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+            <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
               Reason
             </label>
 
             <div className="relative">
-              <FileText
-                size={17}
-                className="absolute left-3 top-3 text-gray-400"
-              />
+              <FieldIcon icon={FileText} top />
 
               <textarea
                 name="reason"
@@ -379,17 +355,14 @@ export default function StockInModal({
                 rows={2}
                 placeholder="e.g. Purchased stock"
                 disabled={loading}
-                className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
+                className={`${inputBase} resize-none`}
               />
             </div>
           </div>
 
-          {/* =========================
-              NOTES
-          ========================== */}
-
+          {/* NOTES */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+            <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
               Notes
             </label>
 
@@ -400,35 +373,35 @@ export default function StockInModal({
               rows={3}
               placeholder="Additional notes..."
               disabled={loading}
-              className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-[#028090] focus:bg-white"
+              className="w-full resize-none rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-2.5 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white focus:ring-2 focus:ring-[#028090]/15 disabled:cursor-not-allowed disabled:opacity-70"
             />
           </div>
-
-          {/* =========================
-              BUTTONS
-          ========================== */}
-
-          <div className="flex justify-end gap-3 border-t border-gray-100 pt-5">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="rounded-lg border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex min-w-[150px] items-center justify-center gap-2 rounded-lg bg-[#028090] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#026D7A] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading && <Loader2 size={16} className="animate-spin" />}
-
-              {loading ? "Saving..." : "Confirm Stock In"}
-            </button>
-          </div>
         </form>
+
+        {/* =========================
+            FOOTER (sticky, always reachable)
+        ========================== */}
+
+        <div className="shrink-0 flex flex-col-reverse sm:flex-row justify-end gap-3 border-t border-[#D8ECEA] bg-white/95 backdrop-blur px-5 sm:px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-xl border border-[#D8ECEA] px-5 py-2.5 text-sm font-medium text-[#5A7A79] transition hover:bg-[#EEF7F6] disabled:opacity-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            form="stock-in-form"
+            disabled={loading}
+            className="flex min-w-[150px] items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#028090] to-[#00A896] px-5 py-2.5 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading && <Loader2 size={16} className="animate-spin" />}
+            {loading ? "Saving..." : "Confirm Stock In"}
+          </button>
+        </div>
       </div>
     </div>
   );
