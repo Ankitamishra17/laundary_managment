@@ -8,7 +8,13 @@ const colors = {
   textMuted: "#5C7A78",
 };
 
-const categoryOptions = ["Washing", "Dry Clean", "Ironing", "Others"];
+const categoryOptions = [
+  "Washing",
+  "Ironing",
+  "Dry Cleaning",
+  "Premium",
+  "Household",
+];
 const pricingTypeOptions = ["Per Kg", "Per Item", "Per Set"];
 const timeOptions = ["Same Day", "1 Day", "2 Days", "3 Days", "5 Days"];
 

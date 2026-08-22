@@ -69,7 +69,7 @@ const ServiceTable = ({
               className="px-5 py-3.5 font-medium"
               style={{ color: colors.textDark }}
             >
-              {s.name}
+              {s.serviceName}
             </td>
             <td className="px-5 py-3.5" style={{ color: colors.textMuted }}>
               {s.category}

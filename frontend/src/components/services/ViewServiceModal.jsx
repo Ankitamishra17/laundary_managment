@@ -23,7 +23,7 @@ const ViewServiceModal = ({ service, onClose }) => {
   if (!service) return null;
   return (
     <ModalShell title="Service Details" onClose={onClose} maxWidth="max-w-md">
-      <Row label="Service Name" value={service.name} />
+      <Row label="Service Name" value={service.serviceName} />
       <Row label="Category" value={service.category} />
       <Row label="Pricing Type" value={service.pricingType} />
       <Row label="Price" value={`₹${service.price}`} />

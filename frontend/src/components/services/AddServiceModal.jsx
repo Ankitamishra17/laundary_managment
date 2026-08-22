@@ -46,31 +46,28 @@ const AddServiceModal = ({ onClose, onSuccess, showToast }) => {
         price: Number(formData.price),
       });
 
+
+      
       console.log("After API");
       console.log(response);
+
+      // First close modal and refresh list
+      onSuccess();
+
+      // Then show success message
+      showToast("Service added successfully.", "success");
+
     } catch (err) {
-      console.log("ERROR:", err);
-      console.log("Response:", err.response);
-      console.log("Data:", err.response?.data);
+      showToast(
+          err?.response?.data?.message || "Couldn't add service.",
+          "error",
+        );
+      // console.log("ERROR:", err);
+      // console.log("Response:", err.response);
+      // console.log("Data:", err.response?.data);
     }
   };
 
-  //   const handleSubmit = async (e) => {
-  //     e.preventDefault();
-  //     setSubmitting(true);
-  //     try {
-  //       await createService({ ...formData, price: Number(formData.price) });
-  //       showToast("Service added successfully.", "success");
-  //       onSuccess();
-  //     } catch (err) {
-  //       showToast(
-  //         err?.response?.data?.message || "Couldn't add service.",
-  //         "error",
-  //       );
-  //     } finally {
-  //       setSubmitting(false);
-  //     }
-  //   };
 
   return (
     <ModalShell title="Add New Service" onClose={onClose}>

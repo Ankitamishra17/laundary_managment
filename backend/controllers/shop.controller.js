@@ -157,11 +157,13 @@ export const createShop = async (req, res) => {
 export const getShops = async (req, res) => {
   try {
     const shops = await Shop.findAll({
+      where: { isActive: true, },
       include: [
         {
           model: User,
           as: "users",
           attributes: ["id", "name", "email", "phone", "role"],
+       
         },
       ],
       order: [["createdAt", "DESC"]],

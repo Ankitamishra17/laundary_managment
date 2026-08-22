@@ -28,14 +28,15 @@ const InventoryTransaction = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+    // Which purchase caused this stock movement
+    purchaseId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
 
     // Type of stock movement
     type: {
-      type: DataTypes.ENUM(
-        "IN",
-        "OUT",
-        "ADJUSTMENT"
-      ),
+      type: DataTypes.ENUM("IN", "OUT", "ADJUSTMENT"),
       allowNull: false,
     },
 
@@ -43,18 +44,27 @@ const InventoryTransaction = sequelize.define(
     quantity: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+      validate: {
+        min: 0.01,
+      },
     },
 
     // Stock before this transaction
     previousStock: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+      validate: {
+        min: 0,
+      },
     },
 
     // Stock after this transaction
     newStock: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+      validate: {
+        min: 0,
+      },
     },
 
     // Purchase rate per unit
@@ -90,7 +100,7 @@ const InventoryTransaction = sequelize.define(
   {
     tableName: "inventory_transactions",
     timestamps: true,
-  }
+  },
 );
 
 export default InventoryTransaction;

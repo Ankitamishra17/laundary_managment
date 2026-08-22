@@ -9,14 +9,8 @@ import Shop from "../models/Shop.js";
  */
 export const createSubscription = async (req, res) => {
   try {
-    const {
-      shopId,
-      plan,
-      amount,
-      paymentMethod,
-      transactionId,
-      remarks,
-    } = req.body;
+    const { shopId, plan, amount, paymentMethod, transactionId, remarks } =
+      req.body;
 
     // Validation
     if (!shopId || !plan || !amount) {
@@ -104,6 +98,10 @@ export const getSubscriptions = async (req, res) => {
         {
           model: Shop,
           as: "shop",
+          required: true,
+          where: {
+            isDeleted: false,
+          },
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -111,15 +109,14 @@ export const getSubscriptions = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      total: subscriptions.length,
       data: subscriptions,
     });
   } catch (error) {
-    console.error("Get Subscriptions Error:", error);
+    console.error("Get subscriptions error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Internal Server Error",
+      message: "Failed to fetch subscriptions",
       error: error.message,
     });
   }
@@ -141,6 +138,10 @@ export const getSubscriptionById = async (req, res) => {
         {
           model: Shop,
           as: "shop",
+          required: true,
+          where: {
+            isDeleted: false,
+          },
         },
       ],
     });
@@ -318,7 +319,7 @@ export const cancelSubscription = async (req, res) => {
         where: {
           id: subscription.shopId,
         },
-      }
+      },
     );
 
     return res.status(200).json({

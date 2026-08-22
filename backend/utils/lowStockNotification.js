@@ -1,6 +1,6 @@
 import Notification from "../models/Notification.js";
 import User from "../models/User.js";
-import { sendEmail } from "./email.js";
+import { sendEmail } from "./nodemailerEmail.js";
 
 export const createLowStockNotification = async ({ shopId, inventoryItem }) => {
   try {

@@ -28,13 +28,7 @@ const InventoryItem = sequelize.define(
 
     // Kg, Litre, Piece, Box, Pack etc.
     unit: {
-      type: DataTypes.ENUM(
-        "Kg",
-        "Litre",
-        "Piece",
-        "Box",
-        "Pack"
-      ),
+      type: DataTypes.ENUM("Kg", "Litre", "Piece", "Box", "Pack"),
       allowNull: false,
     },
 
@@ -43,6 +37,9 @@ const InventoryItem = sequelize.define(
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
       defaultValue: 0,
+      validate: {
+        min: 0,
+      },
     },
 
     // Alert when stock reaches this level
@@ -50,6 +47,9 @@ const InventoryItem = sequelize.define(
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
       defaultValue: 0,
+      validate: {
+        min: 0,
+      },
     },
 
     status: {
@@ -78,7 +78,7 @@ const InventoryItem = sequelize.define(
   {
     tableName: "inventory_items",
     timestamps: true,
-  }
+  },
 );
 
 export default InventoryItem;

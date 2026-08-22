@@ -24,6 +24,10 @@ const Notification = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+    subscriptionId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
 
     type: {
       type: DataTypes.STRING,
@@ -61,7 +65,7 @@ const Notification = sequelize.define(
   {
     tableName: "notifications",
     timestamps: true,
-  }
+  },
 );
 
 export default Notification;

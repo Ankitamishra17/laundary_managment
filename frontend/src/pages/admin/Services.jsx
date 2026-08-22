@@ -76,7 +76,7 @@ const Services = () => {
       // Defensive parsing — adjust to match your backend's exact response shape.
       const list = res.services || res.data || (Array.isArray(res) ? res : []);
       const total = res.total ?? list.length;
-
+      console.log("LIST:", list);
       setServices(list);
       setTotalPages(
         res.totalPages || Math.max(1, Math.ceil(total / PAGE_SIZE)),
@@ -200,7 +200,7 @@ const Services = () => {
       </h2>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-5">
         {statCards.map((s) => (
           <div
             key={s.label}

@@ -1,47 +1,21 @@
 import { useEffect, useState } from "react";
-import {
-  X,
-  Package,
-  Tag,
-  Ruler,
-  Boxes,
-  Loader2,
-  ShieldAlert,
-} from "lucide-react";
+import { X, Package, Layers, Gauge, Loader2 } from "lucide-react";
+
+// =====================================================
+// INITIAL FORM
+// =====================================================
 
 const initialForm = {
   name: "",
   category: "",
-  unit: "",
-  currentStock: 0,
-  minStock: 0,
+  unit: "Piece",
+  minStock: "",
   status: "Active",
 };
 
-const categories = [
-  "Chemicals",
-  "Packaging",
-  "Accessories",
-  "Cleaning Supplies",
-  "Consumables",
-  "Other",
-];
-
-const units = ["Piece", "Kg", "Litre", "Bottle", "Box", "Packet"];
-
-const inputBase =
-  "w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] py-2.5 pl-11 pr-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white focus:ring-2 focus:ring-[#028090]/15";
-
-const iconWrapBase =
-  "absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-md bg-[#028090]/10 text-[#028090]";
-
-function FieldIcon({ icon: Icon }) {
-  return (
-    <span className={iconWrapBase}>
-      <Icon size={14} />
-    </span>
-  );
-}
+// =====================================================
+// COMPONENT
+// =====================================================
 
 export default function InventoryItemModal({
   isOpen,
@@ -51,280 +25,366 @@ export default function InventoryItemModal({
   loading = false,
 }) {
   const [form, setForm] = useState(initialForm);
+
   const [error, setError] = useState("");
 
-  const isEdit = Boolean(item);
+  // ===================================================
+  // INITIALIZE
+  // ===================================================
 
   useEffect(() => {
+    if (!isOpen) return;
+
     if (item) {
       setForm({
         name: item.name || "",
         category: item.category || "",
-        unit: item.unit || "",
-        currentStock: item.currentStock ?? 0,
-        minStock: item.minStock ?? 0,
+        unit: item.unit || "Piece",
+        minStock: item.minStock ?? "",
         status: item.status || "Active",
       });
     } else {
       setForm(initialForm);
     }
-    setError("");
-  }, [item, isOpen]);
 
-  if (!isOpen) return null;
+    setError("");
+  }, [isOpen, item]);
+
+  // ===================================================
+  // CHANGE
+  // ===================================================
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+
+    setError("");
   };
+
+  // ===================================================
+  // SUBMIT
+  // ===================================================
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     setError("");
+
+    // -----------------------------------------------
+    // VALIDATION
+    // -----------------------------------------------
 
     if (!form.name.trim()) {
       setError("Item name is required.");
       return;
     }
-    if (!form.category) {
-      setError("Please select a category.");
-      return;
-    }
-    if (!form.unit) {
-      setError("Please select a unit.");
-      return;
-    }
-    if (Number(form.minStock) < 0) {
-      setError("Minimum stock cannot be negative.");
-      return;
-    }
-    if (Number(form.currentStock) < 0) {
-      setError("Current stock cannot be negative.");
+
+    if (!form.category.trim()) {
+      setError("Category is required.");
       return;
     }
 
+    if (form.minStock === "") {
+      setError("Minimum stock is required.");
+      return;
+    }
+
+    const minStock = Number(form.minStock);
+
+    if (Number.isNaN(minStock) || minStock < 0) {
+      setError("Minimum stock must be 0 or greater.");
+      return;
+    }
+
+    // -----------------------------------------------
+    // PAYLOAD
+    // -----------------------------------------------
+
+    const payload = {
+      name: form.name.trim(),
+
+      category: form.category.trim(),
+
+      unit: form.unit,
+
+      minStock,
+
+      status: form.status,
+    };
+
     try {
-      await onSubmit({
-        ...form,
-        name: form.name.trim(),
-        currentStock: Number(form.currentStock) || 0,
-        minStock: Number(form.minStock) || 0,
-      });
-      setForm(initialForm);
+      await onSubmit(payload);
     } catch (err) {
-      console.error("Inventory item save error:", err);
       setError(
-        err?.response?.data?.message ||
-          err?.message ||
+        err?.message ||
+          err?.response?.data?.message ||
           "Failed to save inventory item.",
       );
     }
   };
 
+  // ===================================================
+  // CLOSE
+  // ===================================================
+
+  const handleClose = () => {
+    if (loading) return;
+
+    setForm(initialForm);
+
+    setError("");
+
+    onClose();
+  };
+
+  // ===================================================
+  // DON'T RENDER
+  // ===================================================
+
+  if (!isOpen) {
+    return null;
+  }
+
+  // ===================================================
+  // UI
+  // ===================================================
+
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-[#05282A]/60 sm:px-4"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !loading) onClose();
-      }}
-    >
-      <div className="flex w-full sm:max-w-2xl max-h-[92vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl font-['Inter']">
-        {/* ======================================
-            HEADER (sticky, decorative)
-        ====================================== */}
-        <div className="relative shrink-0 overflow-hidden bg-[#05282A] px-5 sm:px-6 py-5">
-          <div
-            className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-[#0B3B3E] opacity-60 pointer-events-none"
-            aria-hidden="true"
-          />
-          <div className="relative flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <h2 className="font-['Libre_Baskerville'] text-lg sm:text-xl text-white truncate">
-                {isEdit ? "Edit Inventory Item" : "Add Inventory Item"}
-              </h2>
-              <p className="mt-1 text-xs text-white/60">
-                {isEdit
-                  ? "Update inventory item information."
-                  : "Add a new item to your laundry inventory."}
-              </p>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+        {/* =================================================
+            HEADER
+        ================================================= */}
+
+        <div className="flex items-center justify-between border-b border-[#D8ECEA] bg-[#F7FAF9] px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#E6F7F5]">
+              <Package size={21} className="text-[#028090]" />
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="shrink-0 rounded-lg p-2 text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
-              aria-label="Close"
-            >
-              <X size={20} />
-            </button>
+            <div>
+              <h2 className="text-lg font-bold text-[#0F2C2E]">
+                {item ? "Edit Inventory Item" : "Add Inventory Item"}
+              </h2>
+
+              <p className="text-xs text-[#718382]">
+                {item
+                  ? "Update inventory item details."
+                  : "Add a new item to your inventory."}
+              </p>
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={loading}
+            className="rounded-xl p-2 text-[#6B7F7E] transition hover:bg-[#EAF4F3] hover:text-[#0F2C2E] disabled:opacity-50"
+          >
+            <X size={20} />
+          </button>
         </div>
 
-        {/* ======================================
-            FORM (scrollable body)
-        ====================================== */}
-        <form
-          id="inventory-item-form"
-          onSubmit={handleSubmit}
-          className="flex-1 overflow-y-auto space-y-5 p-5 sm:p-6"
-        >
+        {/* =================================================
+            FORM
+        ================================================= */}
+
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6">
+          {/* ERROR */}
+
           {error && (
-            <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-              <ShieldAlert size={16} className="mt-0.5 shrink-0" />
-              <span>{error}</span>
+            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              {error}
             </div>
           )}
 
-          {/* ITEM NAME */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
-              Item Name <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <FieldIcon icon={Package} />
-              <input
-                type="text"
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                placeholder="e.g. Laundry Detergent"
-                className={inputBase}
-              />
-            </div>
-          </div>
-
-          {/* CATEGORY + UNIT */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* ITEM NAME */}
+
+            <div className="sm:col-span-2">
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                Item Name <span className="text-red-500">*</span>
+              </label>
+
+              <div className="relative">
+                <Package
+                  size={17}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#028090]"
+                />
+
+                <input
+                  type="text"
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  placeholder="e.g. Detergent"
+                  disabled={loading}
+                  className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-10 py-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white disabled:opacity-60"
+                />
+              </div>
+            </div>
+
+            {/* CATEGORY */}
+
             <div>
               <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
                 Category <span className="text-red-500">*</span>
               </label>
+
               <div className="relative">
-                <FieldIcon icon={Tag} />
-                <select
+                <Layers
+                  size={17}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#028090]"
+                />
+
+                <input
+                  type="text"
                   name="category"
                   value={form.category}
                   onChange={handleChange}
-                  className={`${inputBase} appearance-none`}
-                >
-                  <option value="">Select category</option>
-                  {categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="e.g. Chemicals"
+                  disabled={loading}
+                  className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-10 py-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white disabled:opacity-60"
+                />
               </div>
             </div>
+
+            {/* UNIT */}
 
             <div>
               <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
                 Unit <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
-                <FieldIcon icon={Ruler} />
-                <select
-                  name="unit"
-                  value={form.unit}
-                  onChange={handleChange}
-                  className={`${inputBase} appearance-none`}
-                >
-                  <option value="">Select unit</option>
-                  {units.map((unit) => (
-                    <option key={unit} value={unit}>
-                      {unit}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
 
-          {/* STOCK */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <select
+                name="unit"
+                value={form.unit}
+                onChange={handleChange}
+                disabled={loading}
+                className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white disabled:opacity-60"
+              >
+                <option value="Kg">Kg</option>
+
+                <option value="Litre">Litre</option>
+
+                <option value="Piece">Piece</option>
+
+                <option value="Box">Box</option>
+
+                <option value="Pack">Pack</option>
+              </select>
+            </div>
+
+            {/* MIN STOCK */}
+
             <div>
               <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
-                Opening Stock
+                Minimum Stock <span className="text-red-500">*</span>
               </label>
+
               <div className="relative">
-                <FieldIcon icon={Boxes} />
-                <input
-                  type="number"
-                  name="currentStock"
-                  min="0"
-                  value={form.currentStock}
-                  onChange={handleChange}
-                  className={inputBase}
+                <Gauge
+                  size={17}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#028090]"
                 />
-              </div>
-              <p className="mt-1 text-xs text-[#5A7A79]">
-                Usually keep this 0 and use Stock In for purchases.
-              </p>
-            </div>
 
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
-                Minimum Stock
-              </label>
-              <div className="relative">
-                <FieldIcon icon={Boxes} />
                 <input
                   type="number"
                   name="minStock"
-                  min="0"
                   value={form.minStock}
                   onChange={handleChange}
+                  min="0"
+                  step="0.01"
                   placeholder="e.g. 10"
-                  className={inputBase}
+                  disabled={loading}
+                  className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-10 py-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white disabled:opacity-60"
                 />
               </div>
-              <p className="mt-1 text-xs text-[#5A7A79]">
-                Alert appears when stock reaches this level.
+
+              <p className="mt-1.5 text-xs text-[#718382]">
+                Alert will be generated when current stock reaches this level.
               </p>
+            </div>
+
+            {/* STATUS */}
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                Status
+              </label>
+
+              <select
+                name="status"
+                value={form.status}
+                onChange={handleChange}
+                disabled={loading}
+                className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white disabled:opacity-60"
+              >
+                <option value="Active">Active</option>
+
+                <option value="Inactive">Inactive</option>
+              </select>
             </div>
           </div>
 
-          {/* STATUS */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
-              Status
-            </label>
-            <select
-              name="status"
-              value={form.status}
-              onChange={handleChange}
-              className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-4 py-2.5 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white focus:ring-2 focus:ring-[#028090]/15"
+          {/* STOCK INFORMATION */}
+
+          <div className="mt-5 rounded-xl border border-[#D8ECEA] bg-[#F7FAF9] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E6F7F5]">
+                <Package size={17} className="text-[#028090]" />
+              </div>
+
+              <div>
+                <p className="text-sm font-semibold text-[#0F2C2E]">
+                  Stock is managed separately
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-[#718382]">
+                  Current stock should not be manually changed here. Purchases
+                  create Stock IN transactions, while usage, wastage or other
+                  removals create Stock OUT transactions.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* FOOTER */}
+
+          <div className="mt-6 flex flex-col-reverse gap-3 border-t border-[#D8ECEA] pt-5 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={handleClose}
+              disabled={loading}
+              className="rounded-xl border border-[#D8ECEA] bg-white px-5 py-3 text-sm font-semibold text-[#526968] transition hover:bg-[#EEF7F6] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#028090] to-[#00A896] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={17} className="animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Package size={17} />
+
+                  {item ? "Update Item" : "Add Item"}
+                </>
+              )}
+            </button>
           </div>
         </form>
-
-        {/* ======================================
-            FOOTER (sticky, always reachable)
-        ====================================== */}
-        <div className="shrink-0 flex flex-col-reverse sm:flex-row justify-end gap-3 border-t border-[#D8ECEA] bg-white/95 backdrop-blur px-5 sm:px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="rounded-xl border border-[#D8ECEA] px-5 py-2.5 text-sm font-medium text-[#5A7A79] transition hover:bg-[#EEF7F6] disabled:opacity-50"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            form="inventory-item-form"
-            disabled={loading}
-            className="flex min-w-[140px] items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#028090] to-[#00A896] px-5 py-2.5 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading && <Loader2 size={16} className="animate-spin" />}
-            {loading ? "Saving..." : isEdit ? "Update Item" : "Add Item"}
-          </button>
-        </div>
       </div>
     </div>
   );

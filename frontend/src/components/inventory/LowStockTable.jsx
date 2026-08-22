@@ -1,73 +1,133 @@
-import { Package, AlertTriangle, ShoppingCart, ArrowDown } from "lucide-react";
+import { AlertTriangle, Package, Eye, XCircle } from "lucide-react";
 
-export default function LowStockTable({ items = [], onRestock }) {
-  if (!items.length) {
+// =====================================================
+// COMPONENT
+// =====================================================
+
+export default function LowStockTable({ items = [], loading = false, onView }) {
+  // ===================================================
+  // DON'T SHOW SECTION IF THERE ARE NO LOW STOCK ITEMS
+  // ===================================================
+
+  if (!loading && (!items || items.length === 0)) {
     return (
-      <div className="rounded-2xl border border-[#D8ECEA] bg-white p-12 text-center shadow-sm font-['Inter']">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#02C39A]/10">
-          <Package size={26} className="text-[#00A896]" />
+      <div className="rounded-2xl border border-green-200 bg-green-50 p-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100">
+            <Package size={19} className="text-green-600" />
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-green-800">
+              Stock levels are healthy
+            </h3>
+
+            <p className="mt-0.5 text-xs text-green-700">
+              No inventory items are currently below their minimum stock level.
+            </p>
+          </div>
         </div>
-
-        <h3 className="mt-4 font-['Libre_Baskerville'] text-base text-[#05282A]">
-          No Low Stock Items
-        </h3>
-
-        <p className="mt-1 text-sm text-[#5A7A79]">
-          Great! All your inventory items have sufficient stock.
-        </p>
       </div>
     );
   }
 
-  return (
-    <div className="overflow-hidden rounded-2xl border border-[#D8ECEA] bg-white shadow-sm font-['Inter']">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-[#D8ECEA] px-5 py-4">
-        <div>
-          <h2 className="font-['Libre_Baskerville'] text-[#05282A]">
-            Low Stock Items
-          </h2>
+  // ===================================================
+  // LOADING
+  // ===================================================
 
-          <p className="mt-1 text-xs text-[#5A7A79]">
-            Items that have reached or fallen below their minimum stock.
-          </p>
+  if (loading) {
+    return (
+      <div className="overflow-hidden rounded-2xl border border-amber-200 bg-white">
+        <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-5 py-4">
+          <div className="h-10 w-10 animate-pulse rounded-xl bg-amber-100" />
+
+          <div className="space-y-2">
+            <div className="h-4 w-28 animate-pulse rounded bg-amber-100" />
+            <div className="h-3 w-48 animate-pulse rounded bg-amber-100" />
+          </div>
         </div>
 
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50">
-          <AlertTriangle size={18} className="text-amber-500" />
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[700px]">
+            <tbody>
+              {[1, 2, 3].map((item) => (
+                <tr
+                  key={item}
+                  className="animate-pulse border-b border-gray-100"
+                >
+                  {[1, 2, 3, 4, 5].map((cell) => (
+                    <td key={cell} className="px-5 py-4">
+                      <div className="h-4 w-20 rounded bg-gray-200" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
+    );
+  }
 
-      {/* Table */}
+  // ===================================================
+  // UI
+  // ===================================================
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+      {/* HEADER */}
+
+      <div className="flex flex-col gap-3 border-b border-amber-200 bg-amber-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100">
+            <AlertTriangle size={20} className="text-amber-600" />
+          </div>
+
+          <div>
+            <h2 className="text-sm font-bold text-amber-900">
+              Low Stock Alerts
+            </h2>
+
+            <p className="mt-0.5 text-xs text-amber-700">
+              {items.length} item
+              {items.length !== 1 ? "s" : ""} need attention.
+            </p>
+          </div>
+        </div>
+
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-700">
+          <AlertTriangle size={13} />
+          {items.length} Low Stock
+        </span>
+      </div>
+
+      {/* TABLE */}
+
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[780px] sm:min-w-[850px]">
+        <table className="w-full min-w-[750px]">
           <thead>
-            <tr className="border-b border-[#D8ECEA] bg-[#EEF7F6]">
-              <th className="px-4 sm:px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#5A7A79]">
+            <tr className="border-b border-[#D8ECEA] bg-[#FAFCFC]">
+              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-[#526968]">
                 Item
               </th>
 
-              <th className="px-4 sm:px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#5A7A79]">
+              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-[#526968]">
                 Category
               </th>
 
-              <th className="px-4 sm:px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-[#5A7A79]">
-                Current Stock
+              <th className="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-wide text-[#526968]">
+                Current
               </th>
 
-              <th className="px-4 sm:px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-[#5A7A79]">
-                Minimum Stock
+              <th className="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-wide text-[#526968]">
+                Minimum
               </th>
 
-              <th className="px-4 sm:px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#5A7A79]">
-                Stock Level
-              </th>
-
-              <th className="px-4 sm:px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#5A7A79]">
+              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-[#526968]">
                 Alert
               </th>
 
-              <th className="px-4 sm:px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-[#5A7A79]">
+              <th className="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-wide text-[#526968]">
                 Action
               </th>
             </tr>
@@ -75,136 +135,113 @@ export default function LowStockTable({ items = [], onRestock }) {
 
           <tbody>
             {items.map((item) => {
-              const current = Number(item.currentStock || 0);
+              const current = Number(item.currentStock) || 0;
 
-              const minimum = Number(item.minStock || 0);
+              const minimum = Number(item.minStock) || 0;
 
               const isOutOfStock = current <= 0;
 
-              const percentage =
-                minimum > 0 ? Math.min((current / minimum) * 100, 100) : 0;
-
-              const severity = isOutOfStock
-                ? "out"
-                : current <= minimum * 0.5
-                  ? "critical"
-                  : "low";
+              const shortage = Math.max(minimum - current, 0);
 
               return (
                 <tr
                   key={item.id}
-                  className="border-b border-[#EEF7F6] transition hover:bg-[#EEF7F6]/60"
+                  className="border-b border-[#EDF3F2] transition hover:bg-[#FFFCF5]"
                 >
-                  {/* Item */}
-                  <td className="px-4 sm:px-5 py-4">
-                    <div className="flex items-center gap-3 min-w-0">
+                  {/* ITEM */}
+
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
                       <div
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                        className={`flex h-9 w-9 items-center justify-center rounded-lg ${
                           isOutOfStock ? "bg-red-50" : "bg-amber-50"
                         }`}
                       >
-                        <Package
-                          size={17}
-                          className={
-                            isOutOfStock ? "text-red-500" : "text-amber-500"
-                          }
-                        />
+                        {isOutOfStock ? (
+                          <XCircle size={17} className="text-red-500" />
+                        ) : (
+                          <Package size={17} className="text-amber-600" />
+                        )}
                       </div>
 
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-[#0F2C2E] truncate">
+                      <div>
+                        <p className="text-sm font-semibold text-[#0F2C2E]">
                           {item.name}
                         </p>
 
-                        <p className="mt-0.5 text-xs text-[#5A7A79]">
-                          Unit: {item.unit || "-"}
-                        </p>
+                        <p className="text-xs text-[#718382]">#{item.id}</p>
                       </div>
                     </div>
                   </td>
 
-                  {/* Category */}
-                  <td className="px-4 sm:px-5 py-4">
-                    <span className="whitespace-nowrap rounded-md bg-[#EEF7F6] px-2.5 py-1 text-xs font-medium text-[#0F2C2E]">
+                  {/* CATEGORY */}
+
+                  <td className="px-5 py-4">
+                    <span className="text-xs font-medium text-[#526968]">
                       {item.category || "-"}
                     </span>
                   </td>
 
-                  {/* Current Stock */}
-                  <td className="px-4 sm:px-5 py-4 text-right whitespace-nowrap">
+                  {/* CURRENT */}
+
+                  <td className="px-5 py-4 text-right">
                     <span
-                      className={`text-sm font-semibold ${
+                      className={`text-sm font-bold ${
                         isOutOfStock ? "text-red-600" : "text-amber-600"
                       }`}
                     >
                       {current}
                     </span>
 
-                    <span className="ml-1 text-xs text-[#5A7A79]">
-                      {item.unit || ""}
+                    <span className="ml-1 text-xs text-[#718382]">
+                      {item.unit}
                     </span>
                   </td>
 
-                  {/* Minimum Stock */}
-                  <td className="px-4 sm:px-5 py-4 text-right whitespace-nowrap">
-                    <span className="text-sm text-[#0F2C2E]">{minimum}</span>
+                  {/* MINIMUM */}
 
-                    <span className="ml-1 text-xs text-[#5A7A79]">
-                      {item.unit || ""}
+                  <td className="px-5 py-4 text-right">
+                    <span className="text-sm font-semibold text-[#526968]">
+                      {minimum}
+                    </span>
+
+                    <span className="ml-1 text-xs text-[#718382]">
+                      {item.unit}
                     </span>
                   </td>
 
-                  {/* Stock Level */}
-                  <td className="min-w-[160px] sm:min-w-[180px] px-4 sm:px-5 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#EEF7F6]">
-                        <div
-                          className={`h-full rounded-full ${
-                            isOutOfStock
-                              ? "bg-red-500"
-                              : severity === "critical"
-                                ? "bg-amber-500"
-                                : "bg-yellow-400"
-                          }`}
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
+                  {/* ALERT */}
 
-                      <span className="w-10 shrink-0 text-right text-xs text-[#5A7A79]">
-                        {Math.round(percentage)}%
-                      </span>
-                    </div>
-                  </td>
-
-                  {/* Alert */}
-                  <td className="px-4 sm:px-5 py-4">
+                  <td className="px-5 py-4">
                     {isOutOfStock ? (
-                      <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600">
-                        <AlertTriangle size={12} />
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700">
+                        <XCircle size={13} />
                         Out of Stock
                       </span>
-                    ) : severity === "critical" ? (
-                      <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-600">
-                        <ArrowDown size={12} />
-                        Critical
-                      </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-medium text-yellow-600">
-                        <AlertTriangle size={12} />
-                        Low Stock
-                      </span>
+                      <div>
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                          <AlertTriangle size={13} />
+                          Low Stock
+                        </span>
+
+                        <p className="mt-1 text-[11px] text-[#718382]">
+                          Need {shortage} {item.unit} more
+                        </p>
+                      </div>
                     )}
                   </td>
 
-                  {/* Restock */}
-                  <td className="px-4 sm:px-5 py-4 text-right">
+                  {/* ACTION */}
+
+                  <td className="px-5 py-4 text-right">
                     <button
                       type="button"
-                      onClick={() => onRestock?.(item)}
-                      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-br from-[#028090] to-[#00A896] px-3 py-2 text-xs font-semibold text-white transition hover:opacity-90"
+                      onClick={() => onView?.(item)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[#D8ECEA] px-3 py-2 text-xs font-semibold text-[#028090] transition hover:bg-[#EEF7F6]"
                     >
-                      <ShoppingCart size={14} />
-                      Restock
+                      <Eye size={14} />
+                      View
                     </button>
                   </td>
                 </tr>
@@ -212,15 +249,6 @@ export default function LowStockTable({ items = [], onRestock }) {
             })}
           </tbody>
         </table>
-      </div>
-
-      {/* Footer */}
-      <div className="border-t border-[#D8ECEA] px-4 sm:px-5 py-3">
-        <p className="text-xs text-[#5A7A79]">
-          Showing{" "}
-          <span className="font-semibold text-[#0F2C2E]">{items.length}</span>{" "}
-          low stock item{items.length !== 1 ? "s" : ""}
-        </p>
       </div>
     </div>
   );

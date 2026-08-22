@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+
 import {
   Menu,
   Bell,
@@ -8,16 +9,27 @@ import {
   Shirt,
   AlertTriangle,
   Package,
+  CalendarDays,
 } from "lucide-react";
 
 import { useSidebar } from "../../context/SidebarContext";
 import { useAuth } from "../../context/AuthContext";
-// import Avatar from "./Avatar";
 
 import {
   getNotifications,
   getUnreadNotificationCount,
 } from "../../api/notificationApi";
+
+import {
+  getSuperAdminNotifications,
+  getSuperAdminUnreadNotificationCount,
+} from "../../api/subscriptionNotificationApi";
+
+import Avatar from "./Avatar";
+
+// =====================================================
+// COLORS
+// =====================================================
 
 const colors = {
   primaryTeal: "#028090",
@@ -29,20 +41,43 @@ const colors = {
   textDark: "#0F2C2E",
   textMuted: "#5C7A78",
   danger: "#DC2626",
+
+  warningBg: "#FFFBEB",
+  warningBorder: "#FDE68A",
+  warningText: "#92400E",
+  warningIcon: "#D97706",
 };
+
+// =====================================================
+// PAGE TITLE
+// =====================================================
 
 const TITLE_OVERRIDES = {
   dashboard: "Dashboard",
+
   mytask: "My Tasks",
+  mytasks: "My Tasks",
+
   myattendance: "My Attendance",
   attendance: "Attendance",
+
   settings: "Settings",
   profile: "Profile",
+
   services: "Services",
   employees: "Employees",
+
   subscriptions: "Subscriptions",
   inventory: "Inventory",
   suppliers: "Suppliers",
+
+  orders: "Orders",
+  customers: "Customers",
+
+  tasks: "Tasks",
+  payroll: "Payroll",
+  payments: "Payments",
+  reports: "Reports",
 };
 
 function titleize(segment) {
@@ -56,6 +91,10 @@ function titleize(segment) {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
+
+// =====================================================
+// PROFILE ROUTE
+// =====================================================
 
 function getProfileRoute(role) {
   switch (role) {
@@ -76,6 +115,10 @@ function getProfileRoute(role) {
   }
 }
 
+// =====================================================
+// TOPBAR
+// =====================================================
+
 const Topbar = () => {
   const { openSidebar } = useSidebar();
   const { user, logout } = useAuth();
@@ -83,11 +126,15 @@ const Topbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // ===================================================
+  // PROFILE STATE
+  // ===================================================
+
   const [profileOpen, setProfileOpen] = useState(false);
 
-  // ============================================
+  // ===================================================
   // NOTIFICATION STATE
-  // ============================================
+  // ===================================================
 
   const [notificationOpen, setNotificationOpen] = useState(false);
 
@@ -97,23 +144,27 @@ const Topbar = () => {
 
   const [notificationLoading, setNotificationLoading] = useState(false);
 
-  // ============================================
-  // ONLY ADMIN GETS LOW STOCK NOTIFICATIONS
-  // ============================================
+  // ===================================================
+  // USER ROLES
+  // ===================================================
 
   const isAdmin = user?.role === "admin";
 
-  // ============================================
+  const isSuperAdmin = user?.role === "super_admin";
+
+  const canReceiveNotifications = isAdmin || isSuperAdmin;
+
+  // ===================================================
   // PAGE TITLE
-  // ============================================
+  // ===================================================
 
   const segments = location.pathname.split("/").filter(Boolean);
 
   const pageTitle = titleize(segments[segments.length - 1] || "dashboard");
 
-  // ============================================
-  // USER
-  // ============================================
+  // ===================================================
+  // USER DETAILS
+  // ===================================================
 
   const userName = user?.name || "User";
 
@@ -126,30 +177,58 @@ const Topbar = () => {
           ? "Admin"
           : user?.role || "User";
 
-  // ============================================
+  // ===================================================
   // LOAD NOTIFICATIONS
-  // ============================================
+  // ===================================================
 
   const loadNotifications = async () => {
-    // Don't call notification API for
-    // super_admin / employee / customer
-    if (!isAdmin) {
+    // -----------------------------------------------
+    // Employee / Customer
+    // -----------------------------------------------
+
+    if (!canReceiveNotifications) {
       setNotifications([]);
       setNotificationCount(0);
+
       return;
     }
 
     try {
       setNotificationLoading(true);
 
-      const [notificationResponse, countResponse] = await Promise.all([
-        getNotifications(),
-        getUnreadNotificationCount(),
-      ]);
+      // =================================================
+      // ADMIN
+      // LOW STOCK NOTIFICATIONS
+      // =================================================
 
-      setNotifications(notificationResponse?.data || []);
+      if (isAdmin) {
+        const [notificationResponse, countResponse] = await Promise.all([
+          getNotifications(),
+          getUnreadNotificationCount(),
+        ]);
 
-      setNotificationCount(Number(countResponse?.count || 0));
+        setNotifications(notificationResponse?.data || []);
+
+        setNotificationCount(Number(countResponse?.count || 0));
+
+        return;
+      }
+
+      // =================================================
+      // SUPER ADMIN
+      // SUBSCRIPTION NOTIFICATIONS
+      // =================================================
+
+      if (isSuperAdmin) {
+        const [notificationResponse, countResponse] = await Promise.all([
+          getSuperAdminNotifications(),
+          getSuperAdminUnreadNotificationCount(),
+        ]);
+
+        setNotifications(notificationResponse?.data || []);
+
+        setNotificationCount(Number(countResponse?.count || 0));
+      }
     } catch (error) {
       console.error("Notification Load Error:", error);
 
@@ -160,43 +239,54 @@ const Topbar = () => {
     }
   };
 
-  // ============================================
-  // LOAD WHEN ADMIN LOGS IN / TOPBAR LOADS
-  // ============================================
+  // ===================================================
+  // LOAD NOTIFICATIONS WHEN USER/ROLE CHANGES
+  // ===================================================
 
   useEffect(() => {
-    if (isAdmin) {
+    if (canReceiveNotifications) {
       loadNotifications();
     } else {
       setNotifications([]);
       setNotificationCount(0);
     }
-  }, [isAdmin]);
 
-  // ============================================
-  // OPEN NOTIFICATIONS
-  // ============================================
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canReceiveNotifications, isAdmin, isSuperAdmin]);
+
+  // ===================================================
+  // NOTIFICATION CLICK
+  // ===================================================
 
   const handleNotificationClick = async () => {
     const newState = !notificationOpen;
 
     setNotificationOpen(newState);
 
-    if (newState && isAdmin) {
+    if (newState && canReceiveNotifications) {
       await loadNotifications();
     }
   };
 
-  // ============================================
+  // ===================================================
   // LOGOUT
-  // ============================================
+  // ===================================================
 
   const handleLogout = () => {
-    logout();
+    logout?.();
+
     navigate("/login");
   };
 
+  // ===================================================
+  // PROFILE ROUTE
+  // ===================================================
+
   const profileRoute = getProfileRoute(user?.role);
+
+  // ===================================================
+  // RENDER
+  // ===================================================
 
   return (
     <header
@@ -207,14 +297,16 @@ const Topbar = () => {
         fontFamily: "'Inter', sans-serif",
       }}
     >
-      {/* ========================================
-          STYLES
-      ======================================== */}
+      {/* =================================================
+          CUSTOM STYLES
+      ================================================= */}
 
       <style>{`
+
         .tb-search:focus-within {
           border-color: ${colors.primaryTeal};
-          box-shadow: 0 0 0 3px rgba(2, 128, 144, 0.12);
+          box-shadow:
+            0 0 0 3px rgba(2, 128, 144, 0.12);
         }
 
         .tb-icon-btn:hover {
@@ -228,14 +320,15 @@ const Topbar = () => {
         .notification-item:hover {
           background-color: ${colors.cardTint};
         }
+
       `}</style>
 
-      {/* ========================================
+      {/* =================================================
           LEFT SIDE
-      ======================================== */}
+      ================================================= */}
 
       <div className="flex items-center gap-3 min-w-0">
-        {/* Mobile Menu */}
+        {/* MOBILE MENU */}
 
         <button
           type="button"
@@ -249,7 +342,7 @@ const Topbar = () => {
           <Menu size={22} />
         </button>
 
-        {/* Mobile Logo */}
+        {/* MOBILE LOGO */}
 
         <div
           className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 lg:hidden"
@@ -260,7 +353,7 @@ const Topbar = () => {
           <Shirt size={14} color="#FFFFFF" />
         </div>
 
-        {/* Page Title */}
+        {/* PAGE TITLE */}
 
         <h1
           className="text-lg sm:text-xl truncate"
@@ -273,14 +366,14 @@ const Topbar = () => {
         </h1>
       </div>
 
-      {/* ========================================
+      {/* =================================================
           RIGHT SIDE
-      ======================================== */}
+      ================================================= */}
 
       <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-        {/* ======================================
+        {/* =================================================
             SEARCH
-        ====================================== */}
+        ================================================= */}
 
         <div
           className="tb-search hidden md:flex items-center gap-2 rounded-xl px-3 py-2 w-52 lg:w-72 border transition-shadow"
@@ -307,12 +400,23 @@ const Topbar = () => {
           />
         </div>
 
-        {/* ======================================
-            NOTIFICATION
-            ONLY ADMIN
-        ====================================== */}
+        {/* =================================================
+            NOTIFICATION BELL
 
-        {isAdmin && (
+            ADMIN:
+            Low stock
+
+            SUPER ADMIN:
+            Subscription expiry
+
+            EMPLOYEE:
+            Hidden
+
+            CUSTOMER:
+            Hidden
+        ================================================= */}
+
+        {canReceiveNotifications && (
           <div className="relative flex-shrink-0">
             <button
               type="button"
@@ -331,7 +435,7 @@ const Topbar = () => {
                 }}
               />
 
-              {/* Notification Count */}
+              {/* UNREAD BADGE */}
 
               {notificationCount > 0 && (
                 <span
@@ -345,29 +449,31 @@ const Topbar = () => {
               )}
             </button>
 
-            {/* ==================================
+            {/* =================================================
                 NOTIFICATION DROPDOWN
-            ================================== */}
+            ================================================= */}
 
             {notificationOpen && (
               <>
-                {/* Overlay */}
+                {/* OVERLAY */}
 
                 <div
                   className="fixed inset-0 z-30"
                   onClick={() => setNotificationOpen(false)}
                 />
 
-                {/* Dropdown */}
+                {/* DROPDOWN */}
 
                 <div
-                  className="absolute right-0 mt-3 w-[360px] max-w-[calc(100vw-24px)] rounded-2xl shadow-xl border z-40 overflow-hidden"
+                  className="absolute right-0 mt-3 w-[380px] max-w-[calc(100vw-24px)] rounded-2xl shadow-xl border z-40 overflow-hidden"
                   style={{
                     backgroundColor: colors.bgLight,
                     borderColor: colors.cardBorder,
                   }}
                 >
-                  {/* Header */}
+                  {/* =================================================
+                      HEADER
+                  ================================================= */}
 
                   <div
                     className="px-4 py-4 border-b"
@@ -392,7 +498,9 @@ const Topbar = () => {
                             color: colors.textMuted,
                           }}
                         >
-                          Low stock alerts
+                          {isSuperAdmin
+                            ? "Subscription expiry alerts"
+                            : "Low stock alerts"}
                         </p>
                       </div>
 
@@ -400,8 +508,13 @@ const Topbar = () => {
                         <span
                           className="text-xs font-semibold px-2 py-1 rounded-full"
                           style={{
-                            backgroundColor: "#FEE2E2",
-                            color: colors.danger,
+                            backgroundColor: isSuperAdmin
+                              ? colors.warningBg
+                              : "#FEE2E2",
+
+                            color: isSuperAdmin
+                              ? colors.warningText
+                              : colors.danger,
                           }}
                         >
                           {notificationCount} Alert
@@ -411,7 +524,9 @@ const Topbar = () => {
                     </div>
                   </div>
 
-                  {/* Loading */}
+                  {/* =================================================
+                      LOADING
+                  ================================================= */}
 
                   {notificationLoading ? (
                     <div className="p-8 text-center">
@@ -433,7 +548,9 @@ const Topbar = () => {
                       </p>
                     </div>
                   ) : notifications.length === 0 ? (
-                    /* Empty */
+                    /* =================================================
+                       EMPTY
+                    ================================================= */
 
                     <div className="p-8 text-center">
                       <div
@@ -456,7 +573,9 @@ const Topbar = () => {
                           color: colors.textDark,
                         }}
                       >
-                        No low stock alerts
+                        {isSuperAdmin
+                          ? "No subscription alerts"
+                          : "No low stock alerts"}
                       </p>
 
                       <p
@@ -465,15 +584,24 @@ const Topbar = () => {
                           color: colors.textMuted,
                         }}
                       >
-                        Your inventory is looking good.
+                        {isSuperAdmin
+                          ? "All subscriptions are currently active."
+                          : "Your inventory is looking good."}
                       </p>
                     </div>
                   ) : (
-                    /* Notifications */
+                    /* =================================================
+                       NOTIFICATIONS
+                    ================================================= */
 
                     <div className="max-h-[420px] overflow-y-auto">
                       {notifications.map((notification) => {
                         const item = notification.inventoryItem;
+
+                        const isSubscriptionNotification =
+                          isSuperAdmin &&
+                          (notification.type === "SUBSCRIPTION_EXPIRING" ||
+                            notification.type === "SUBSCRIPTION_EXPIRES_TODAY");
 
                         return (
                           <div
@@ -484,116 +612,181 @@ const Topbar = () => {
                             }}
                           >
                             <div className="flex gap-3">
-                              {/* Icon */}
+                              {/* =================================================
+                                    ICON
+                                ================================================= */}
 
                               <div
                                 className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center"
                                 style={{
-                                  backgroundColor: "#FEF2F2",
+                                  backgroundColor: isSubscriptionNotification
+                                    ? colors.warningBg
+                                    : "#FEF2F2",
                                 }}
                               >
-                                <AlertTriangle
-                                  size={17}
-                                  className="text-red-500"
-                                />
-                              </div>
-
-                              {/* Content */}
-
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-start justify-between gap-2">
-                                  <p
-                                    className="text-sm font-semibold"
+                                {isSubscriptionNotification ? (
+                                  <CalendarDays
+                                    size={17}
                                     style={{
-                                      color: colors.textDark,
-                                    }}
-                                  >
-                                    {notification.title}
-                                  </p>
-                                </div>
-
-                                {/* Item Name */}
-
-                                <div className="flex items-center gap-1.5 mt-2">
-                                  <Package
-                                    size={14}
-                                    style={{
-                                      color: colors.primaryTeal,
+                                      color: colors.warningIcon,
                                     }}
                                   />
-
-                                  <p
-                                    className="text-sm font-semibold truncate"
+                                ) : (
+                                  <AlertTriangle
+                                    size={17}
                                     style={{
-                                      color: colors.primaryTeal,
+                                      color: colors.danger,
                                     }}
-                                  >
-                                    {item?.name || "Inventory Item"}
-                                  </p>
-                                </div>
+                                  />
+                                )}
+                              </div>
 
-                                {/* Stock */}
+                              {/* =================================================
+                                    CONTENT
+                                ================================================= */}
 
-                                <div className="mt-2 grid grid-cols-2 gap-2">
-                                  <div
-                                    className="rounded-lg px-2.5 py-2"
-                                    style={{
-                                      backgroundColor: "#FEF2F2",
-                                    }}
-                                  >
-                                    <p
-                                      className="text-[10px]"
-                                      style={{
-                                        color: colors.textMuted,
-                                      }}
-                                    >
-                                      Current Stock
-                                    </p>
-
-                                    <p className="text-xs font-semibold text-red-600 mt-0.5">
-                                      {item?.currentStock ?? 0}{" "}
-                                      {item?.unit || ""}
-                                    </p>
-                                  </div>
-
-                                  <div
-                                    className="rounded-lg px-2.5 py-2"
-                                    style={{
-                                      backgroundColor: colors.cardTint,
-                                    }}
-                                  >
-                                    <p
-                                      className="text-[10px]"
-                                      style={{
-                                        color: colors.textMuted,
-                                      }}
-                                    >
-                                      Minimum Stock
-                                    </p>
-
-                                    <p
-                                      className="text-xs font-semibold mt-0.5"
-                                      style={{
-                                        color: colors.textDark,
-                                      }}
-                                    >
-                                      {item?.minStock ?? 0} {item?.unit || ""}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                {/* Message */}
+                              <div className="min-w-0 flex-1">
+                                {/* TITLE */}
 
                                 <p
-                                  className="text-xs mt-2 leading-5"
+                                  className="text-sm font-semibold"
                                   style={{
-                                    color: colors.textMuted,
+                                    color: colors.textDark,
                                   }}
                                 >
-                                  {notification.message}
+                                  {notification.title}
                                 </p>
 
-                                {/* Date */}
+                                {/* =================================================
+                                      ADMIN → INVENTORY
+                                  ================================================= */}
+
+                                {isAdmin && (
+                                  <>
+                                    {/* ITEM */}
+
+                                    <div className="flex items-center gap-1.5 mt-2">
+                                      <Package
+                                        size={14}
+                                        style={{
+                                          color: colors.primaryTeal,
+                                        }}
+                                      />
+
+                                      <p
+                                        className="text-sm font-semibold truncate"
+                                        style={{
+                                          color: colors.primaryTeal,
+                                        }}
+                                      >
+                                        {item?.name || "Inventory Item"}
+                                      </p>
+                                    </div>
+
+                                    {/* STOCK DETAILS */}
+
+                                    <div className="mt-2 grid grid-cols-2 gap-2">
+                                      {/* CURRENT */}
+
+                                      <div
+                                        className="rounded-lg px-2.5 py-2"
+                                        style={{
+                                          backgroundColor: "#FEF2F2",
+                                        }}
+                                      >
+                                        <p
+                                          className="text-[10px]"
+                                          style={{
+                                            color: colors.textMuted,
+                                          }}
+                                        >
+                                          Current Stock
+                                        </p>
+
+                                        <p className="text-xs font-semibold text-red-600 mt-0.5">
+                                          {item?.currentStock ?? 0}{" "}
+                                          {item?.unit || ""}
+                                        </p>
+                                      </div>
+
+                                      {/* MINIMUM */}
+
+                                      <div
+                                        className="rounded-lg px-2.5 py-2"
+                                        style={{
+                                          backgroundColor: colors.cardTint,
+                                        }}
+                                      >
+                                        <p
+                                          className="text-[10px]"
+                                          style={{
+                                            color: colors.textMuted,
+                                          }}
+                                        >
+                                          Minimum Stock
+                                        </p>
+
+                                        <p
+                                          className="text-xs font-semibold mt-0.5"
+                                          style={{
+                                            color: colors.textDark,
+                                          }}
+                                        >
+                                          {item?.minStock ?? 0}{" "}
+                                          {item?.unit || ""}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    {/* ADMIN MESSAGE */}
+
+                                    <p
+                                      className="text-xs mt-2 leading-5"
+                                      style={{
+                                        color: colors.textMuted,
+                                      }}
+                                    >
+                                      {notification.message}
+                                    </p>
+                                  </>
+                                )}
+
+                                {/* =================================================
+                                      SUPER ADMIN → SUBSCRIPTION
+                                  ================================================= */}
+
+                                {isSubscriptionNotification && (
+                                  <div
+                                    className="mt-2 rounded-lg px-3 py-3"
+                                    style={{
+                                      backgroundColor: colors.warningBg,
+                                      border: `1px solid ${colors.warningBorder}`,
+                                    }}
+                                  >
+                                    <div className="flex items-start gap-2">
+                                      <CalendarDays
+                                        size={14}
+                                        className="mt-0.5 flex-shrink-0"
+                                        style={{
+                                          color: colors.warningIcon,
+                                        }}
+                                      />
+
+                                      <p
+                                        className="text-xs leading-5"
+                                        style={{
+                                          color: colors.warningText,
+                                        }}
+                                      >
+                                        {notification.message}
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* =================================================
+                                      DATE
+                                  ================================================= */}
 
                                 <p
                                   className="text-[10px] mt-2"
@@ -620,9 +813,9 @@ const Topbar = () => {
           </div>
         )}
 
-        {/* ======================================
+        {/* =================================================
             PROFILE
-        ====================================== */}
+        ================================================= */}
 
         <div className="relative flex-shrink-0">
           <button
@@ -632,7 +825,7 @@ const Topbar = () => {
             aria-haspopup="true"
             aria-expanded={profileOpen}
           >
-            {/* <Avatar user={user} className="w-9 h-9 text-xs" /> */}
+            <Avatar user={user} className="w-9 h-9 text-xs" />
 
             <div className="hidden sm:block text-left leading-tight">
               <div
@@ -659,12 +852,15 @@ const Topbar = () => {
               className="hidden sm:block transition-transform"
               style={{
                 color: colors.textMuted,
+
                 transform: profileOpen ? "rotate(180deg)" : "none",
               }}
             />
           </button>
 
-          {/* Profile Dropdown */}
+          {/* =================================================
+              PROFILE DROPDOWN
+          ================================================= */}
 
           {profileOpen && (
             <>
@@ -680,19 +876,7 @@ const Topbar = () => {
                   borderColor: colors.cardBorder,
                 }}
               >
-                <button
-                  type="button"
-                  className="tb-menu-item w-full text-left px-4 py-2 text-sm transition-colors"
-                  style={{
-                    color: colors.textDark,
-                  }}
-                  onClick={() => {
-                    setProfileOpen(false);
-                    navigate(profileRoute);
-                  }}
-                >
-                  Profile
-                </button>
+                {/* PROFILE */}
 
                 <button
                   type="button"
@@ -702,11 +886,31 @@ const Topbar = () => {
                   }}
                   onClick={() => {
                     setProfileOpen(false);
+
+                    navigate(profileRoute);
+                  }}
+                >
+                  Profile
+                </button>
+
+                {/* SETTINGS */}
+
+                <button
+                  type="button"
+                  className="tb-menu-item w-full text-left px-4 py-2 text-sm transition-colors"
+                  style={{
+                    color: colors.textDark,
+                  }}
+                  onClick={() => {
+                    setProfileOpen(false);
+
                     navigate(profileRoute);
                   }}
                 >
                   Account Settings
                 </button>
+
+                {/* DIVIDER */}
 
                 <div
                   className="my-1 h-px"
@@ -714,6 +918,8 @@ const Topbar = () => {
                     backgroundColor: colors.cardBorder,
                   }}
                 />
+
+                {/* LOGOUT */}
 
                 <button
                   type="button"

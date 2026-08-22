@@ -19,7 +19,7 @@ const Subscription = sequelize.define(
     },
     amount: {
       type: DataTypes.DECIMAL(10, 2),
-      allowNull: "false",
+      allowNull: false,
     },
     startDate: {
       type: DataTypes.DATEONLY,
