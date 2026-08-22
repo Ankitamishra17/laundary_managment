@@ -35,43 +35,20 @@ const AddServiceModal = ({ onClose, onSuccess, showToast }) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    console.log("FORM DATA:", formData);
-
+    setSubmitting(true);
     try {
-      console.log("Before API");
-
-      const response = await createService({
-        ...formData,
-        price: Number(formData.price),
-      });
-
-      console.log("After API");
-      console.log(response);
+      await createService({ ...formData, price: Number(formData.price) });
+      showToast("Service added successfully.", "success");
+      onSuccess();
     } catch (err) {
-      console.log("ERROR:", err);
-      console.log("Response:", err.response);
-      console.log("Data:", err.response?.data);
+      showToast(
+        err?.response?.data?.message || "Couldn't add service.",
+        "error",
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
-
-  //   const handleSubmit = async (e) => {
-  //     e.preventDefault();
-  //     setSubmitting(true);
-  //     try {
-  //       await createService({ ...formData, price: Number(formData.price) });
-  //       showToast("Service added successfully.", "success");
-  //       onSuccess();
-  //     } catch (err) {
-  //       showToast(
-  //         err?.response?.data?.message || "Couldn't add service.",
-  //         "error",
-  //       );
-  //     } finally {
-  //       setSubmitting(false);
-  //     }
-  //   };
-
   return (
     <ModalShell title="Add New Service" onClose={onClose}>
       <form onSubmit={handleSubmit}>

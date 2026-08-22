@@ -5,13 +5,15 @@ const fieldList = [
   { name: "name", label: "Shop Name", placeholder: "Fresh Laundry" },
   { name: "ownerName", label: "Owner Name", placeholder: "Rahul Sharma" },
   { name: "email", label: "Email", placeholder: "rahul@gmail.com", type: "email" },
-  { name: "phone", label: "Phone", placeholder: "9876543210" },
+  { name: "phone", label: "Phone", placeholder: "99XXXXXXXX" },
   { name: "address", label: "Address", placeholder: "Sector 62", fullWidth: true },
   { name: "city", label: "City", placeholder: "Noida" },
   { name: "state", label: "State", placeholder: "Uttar Pradesh" },
   { name: "gstNumber", label: "GST Number (optional)", placeholder: "09ABCDE1234F1Z5", required: false },
   { name: "subscriptionAmount", label: "Subscription Amount", placeholder: "999", type: "number" },
 ];
+
+const PLAN_TIERS = ["Free", "Basic", "Pro", "Premium"];
 
 export default function EditShopModal({ isOpen, shop, onClose, onShopUpdated }) {
   const [form, setForm] = useState(null);
@@ -31,6 +33,9 @@ export default function EditShopModal({ isOpen, shop, onClose, onShopUpdated }) 
         gstNumber: shop.gstNumber || "",
         subscriptionPlan: shop.subscriptionPlan || "Monthly",
         subscriptionAmount: shop.subscriptionAmount || "",
+        planName: shop.planName || "Basic",
+        primaryColor: shop.primaryColor || "",
+        secondaryColor: shop.secondaryColor || "",
       });
       setError("");
     }
@@ -229,7 +234,26 @@ export default function EditShopModal({ isOpen, shop, onClose, onShopUpdated }) 
             ))}
 
             <div className="form-field">
-              <label htmlFor="subscriptionPlan">Subscription Plan</label>
+              <label htmlFor="planName">Plan Tier</label>
+              <select
+                id="planName"
+                name="planName"
+                value={form.planName}
+                onChange={handleChange}
+              >
+                {PLAN_TIERS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+              <small style={{ color: "#5A7A79", fontSize: 11 }}>
+                Sets employee &amp; monthly order limits
+              </small>
+            </div>
+
+            <div className="form-field">
+              <label htmlFor="subscriptionPlan">Billing Cycle</label>
               <select
                 id="subscriptionPlan"
                 name="subscriptionPlan"
@@ -240,6 +264,48 @@ export default function EditShopModal({ isOpen, shop, onClose, onShopUpdated }) 
                 <option value="Monthly">Monthly</option>
                 <option value="Yearly">Yearly</option>
               </select>
+            </div>
+
+            <div className="form-field">
+              <label htmlFor="primaryColor">Brand Primary Color</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  id="primaryColor"
+                  name="primaryColor"
+                  type="color"
+                  value={form.primaryColor || "#028090"}
+                  onChange={handleChange}
+                  style={{ width: 48, padding: 2, height: 40 }}
+                />
+                <input
+                  name="primaryColor"
+                  type="text"
+                  placeholder="#028090"
+                  value={form.primaryColor}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+
+            <div className="form-field">
+              <label htmlFor="secondaryColor">Brand Secondary Color</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  id="secondaryColor"
+                  name="secondaryColor"
+                  type="color"
+                  value={form.secondaryColor || "#02C39A"}
+                  onChange={handleChange}
+                  style={{ width: 48, padding: 2, height: 40 }}
+                />
+                <input
+                  name="secondaryColor"
+                  type="text"
+                  placeholder="#02C39A"
+                  value={form.secondaryColor}
+                  onChange={handleChange}
+                />
+              </div>
             </div>
           </div>
 

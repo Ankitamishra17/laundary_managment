@@ -53,6 +53,18 @@ const Notification = sequelize.define(
       defaultValue: "system",
     },
 
+    // tasks.id — the task this notification is about (optional)
+    taskId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    // orders.id — the order this notification is about (optional)
+    orderId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
     // Frontend route the notification should open, e.g. "/admin/orders"
     link: {
       type: DataTypes.STRING(255),

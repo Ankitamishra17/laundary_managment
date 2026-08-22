@@ -83,8 +83,7 @@ export const stockIn = async (req, res) => {
         where: {
           id: supplierId,
           shopId,
-          status: "Active",
-          isDeleted: false,
+          isActive: true,
         },
         transaction,
       });
@@ -393,7 +392,8 @@ export const adjustStock = async (req, res) => {
       where: {
         id: inventoryItemId,
         shopId,
-        isActive: true,
+        status: "Active",
+        isDeleted: false,
       },
       transaction,
       lock: transaction.LOCK.UPDATE,
@@ -404,7 +404,7 @@ export const adjustStock = async (req, res) => {
 
       return res.status(404).json({
         success: false,
-        message: "Inventory item not found.",
+        message: "Inventory item not found or inactive.",
       });
     }
 

@@ -61,14 +61,18 @@ export default function ShopsPage() {
           font-family: 'Inter', sans-serif;
           background: var(--bg-light);
           min-height: 100vh;
-          padding: 40px;
+          padding: 20px;
         }
+        @media (min-width: 640px) { .shops-page { padding: 28px; } }
+        @media (min-width: 1024px) { .shops-page { padding: 40px; } }
 
         .shops-header {
           display: flex;
+          flex-wrap: wrap;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 28px;
+          gap: 12px;
+          margin-bottom: 24px;
         }
 
         .shops-header h1 {
@@ -85,15 +89,17 @@ export default function ShopsPage() {
         }
 
         .create-shop-btn {
-          padding: 12px 20px;
+          padding: 10px 16px;
           border: none;
           border-radius: 10px;
           background: linear-gradient(135deg, var(--teal-primary), var(--seafoam));
           color: white;
           font-weight: 600;
-          font-size: 14px;
+          font-size: 13px;
           cursor: pointer;
+          white-space: nowrap;
         }
+        @media (min-width: 640px) { .create-shop-btn { padding: 12px 20px; font-size: 14px; } }
 
         .table-scroll {
           overflow-x: auto;
@@ -215,7 +221,7 @@ export default function ShopsPage() {
                   <td>{shop.email}</td>
                   <td>{shop.phone}</td>
                   <td>{shop.city}</td>
-                  <td>{shop.subscriptionPlan}</td>
+                  <td>{shop.planName || shop.subscriptionPlan}</td>
                   <td>
                     <span className="status-pill">{shop.subscriptionStatus}</span>
                   </td>

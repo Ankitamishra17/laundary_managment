@@ -6,13 +6,14 @@ import sequelize from "./config/database.js";
 import "./models/index.js";
 import { ensureSchema } from "./utils/ensureSchema.js";
 import superAdminSeeder from "./seeders/superAdminSeeder.js";
+import seedDefaultServices from "./seeders/defaultServicesSeeder.js";
 
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
     // Check database connection
-    await sequelize.authenticate();
+    await sequelize.authenticate(); 
     console.log(" Database Connected Successfully");
 
     // Create tables if they don't exist (must run first so the tables exist
@@ -26,6 +27,11 @@ const startServer = async () => {
     console.log(" Tables synchronized successfully");
 
     await superAdminSeeder();
+
+    // Give every shop with no catalog the standard services so customers
+    // can order the full range (wash, iron, dry clean, ...).
+    await seedDefaultServices();
+
     // Start server
     app.listen(PORT, () => {
       console.log(` Server running on port ${PORT}`);

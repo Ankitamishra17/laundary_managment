@@ -24,7 +24,7 @@ const ServiceCard = ({ service, onView, onEdit, onDelete, onToggleStatus }) => (
           className="font-medium truncate"
           style={{ color: colors.textDark }}
         >
-          {service.name}
+          {service.serviceName}
         </div>
         <div className="text-xs mt-0.5" style={{ color: colors.textMuted }}>
           {service.category}

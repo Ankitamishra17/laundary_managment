@@ -24,7 +24,7 @@ function maskEmail(email = "") {
   return `${user.slice(0, 2)}${"*".repeat(Math.max(3, user.length - 2))}@${domain}`;
 }
 
-// "9876543210" -> "98*****210"
+// "99XXXXXXXX" -> "98*****210"
 function maskPhone(phone = "") {
   if (phone.length < 6) return phone;
   return `${phone.slice(0, 2)}${"*".repeat(Math.max(3, phone.length - 4))}${phone.slice(-2)}`;

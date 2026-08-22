@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  register,
   login,
   createPassword,
   forgotPassword,
@@ -8,6 +9,9 @@ import {
 } from "../controllers/auth.controller.js";
 import protect from "../middleware/authMiddleware.js";
 const router = express.Router();
+
+// Customer sign-up (public)
+router.post("/register", register);
 
 // Login
 router.post("/login", login);

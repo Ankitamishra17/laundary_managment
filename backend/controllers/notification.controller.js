@@ -16,6 +16,8 @@ export const createNotification = async ({
   message,
   type = "system",
   link,
+  taskId,
+  orderId,
 }) => {
   try {
     return await Notification.create({
@@ -26,6 +28,8 @@ export const createNotification = async ({
       message: message || null,
       type,
       link: link || null,
+      taskId: taskId || null,
+      orderId: orderId || null,
     });
   } catch (error) {
     console.error("Create Notification Error:", error.message);

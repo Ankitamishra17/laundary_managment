@@ -97,6 +97,22 @@ export function useEmployees() {
     }
   };
 
+  const deleteEmployeePermanently = async (id) => {
+    setSaving(true);
+    setError("");
+    try {
+      await api.delete(`/admin/employees/${id}/permanent`);
+      setEmployees((prev) => prev.filter((e) => e.id !== id));
+      setSuccessMsg("Employee permanently deleted");
+      return true;
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to delete employee");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const resetEmployeePassword = async (id) => {
     setSaving(true);
     setError("");
@@ -124,6 +140,7 @@ export function useEmployees() {
     updateEmployee,
     deactivateEmployee,
     reactivateEmployee,
+    deleteEmployeePermanently,
     resetEmployeePassword,
   };
 }

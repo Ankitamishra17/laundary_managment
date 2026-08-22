@@ -8,8 +8,27 @@ const colors = {
   textMuted: "#5C7A78",
 };
 
-const categoryOptions = ["Washing", "Dry Clean", "Ironing", "Others"];
-const pricingTypeOptions = ["Per Kg", "Per Item", "Per Set"];
+// Common categories — suggestions only, the shop admin can type any
+// custom category (the backend stores it as free text).
+const categoryOptions = [
+  "Washing",
+  "Dry Cleaning",
+  "Ironing",
+  "Steam Iron",
+  "Wash & Fold",
+  "Wash & Iron",
+  "Stain Removal",
+  "Shoe Cleaning",
+  "Carpet Cleaning",
+  "Blanket Cleaning",
+  "Curtain Cleaning",
+  "Express Laundry",
+  "Household",
+  "Others",
+];
+
+// Customer-facing pricing units.
+const pricingTypeOptions = ["Per Kg", "Per Piece", "Per Pair", "Per Item", "Fixed"];
 const timeOptions = ["Same Day", "1 Day", "2 Days", "3 Days", "5 Days"];
 
 const inputClass = "sf-input w-full rounded-xl border px-4 py-2.5 text-sm";
@@ -44,27 +63,25 @@ const ServiceFormFields = ({ formData, onChange }) => (
       <label className={labelClass} style={{ color: colors.textDark }}>
         Category *
       </label>
-      <select
+      <input
         required
+        list="sf-category-suggestions"
         value={formData.category}
         onChange={(e) => onChange("category", e.target.value)}
+        placeholder="e.g. Dry Cleaning (or type your own)"
         className={inputClass}
         style={{ backgroundColor: colors.cardTint, color: colors.textDark }}
-      >
-        <option value="" disabled>
-          Select category
-        </option>
+      />
+      <datalist id="sf-category-suggestions">
         {categoryOptions.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
+          <option key={o} value={o} />
         ))}
-      </select>
+      </datalist>
     </div>
 
     <div>
       <label className={labelClass} style={{ color: colors.textDark }}>
-        Pricing Type *
+        Unit (pricing) *
       </label>
       <select
         required
@@ -103,7 +120,7 @@ const ServiceFormFields = ({ formData, onChange }) => (
 
     <div>
       <label className={labelClass} style={{ color: colors.textDark }}>
-        Estimated Time *
+        Processing time *
       </label>
       <select
         required

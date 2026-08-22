@@ -40,7 +40,7 @@ const DeleteServiceModal = ({ service, onClose, onSuccess, showToast }) => {
           <AlertTriangle size={22} color={colors.danger} />
         </div>
         <p className="text-sm" style={{ color: colors.textDark }}>Are you sure you want to delete</p>
-        <p className="text-lg" style={{ color: colors.textDark, fontFamily: "'Libre Baskerville', serif" }}>{service?.name}</p>
+        <p className="text-lg" style={{ color: colors.textDark, fontFamily: "'Libre Baskerville', serif" }}>{service?.serviceName}</p>
         <p className="text-xs mt-1" style={{ color: colors.textMuted }}>This action cannot be undone.</p>
       </div>
 

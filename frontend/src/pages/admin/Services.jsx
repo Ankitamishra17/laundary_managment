@@ -38,6 +38,7 @@ const Services = () => {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState("All Categories");
   const [status, setStatus] = useState("All Status");
   const [page, setPage] = useState(1);
@@ -100,15 +101,28 @@ const Services = () => {
     }
   }, [search, category, status, page, showToast]);
 
+  // Categories are free text, so build the filter from the full catalog
+  // (a big page, not just the 8 rows currently visible).
+  const loadCategories = useCallback(async () => {
+    try {
+      const res = await getServices({ limit: 500 });
+      const list = res.services || res.data || (Array.isArray(res) ? res : []);
+      setCategories([...new Set(list.map((s) => s.category).filter(Boolean))]);
+    } catch {
+      /* best-effort — filter just won't list custom categories */
+    }
+  }, []);
+
   useEffect(() => {
     loadServices();
-  }, [loadServices]);
+    loadCategories();
+  }, [loadServices, loadCategories]);
 
   const handleToggleStatus = async (service) => {
     try {
       await toggleServiceStatus(service._id || service.id);
       showToast(
-        `Marked "${service.name}" as ${service.status === "Active" ? "Inactive" : "Active"}.`,
+        `Marked "${service.serviceName}" as ${service.status === "Active" ? "Inactive" : "Active"}.`,
         "success",
       );
       loadServices();
@@ -127,6 +141,7 @@ const Services = () => {
   const handleSuccess = () => {
     closeModal();
     loadServices();
+    loadCategories();
   };
 
   const statCards = [
@@ -240,6 +255,7 @@ const Services = () => {
             }}
           />
           <ServiceFilters
+            categories={categories}
             category={category}
             onCategoryChange={(v) => {
               setCategory(v);

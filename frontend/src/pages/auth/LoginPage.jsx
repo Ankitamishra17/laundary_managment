@@ -105,7 +105,9 @@ export default function LaundryLoginPage() {
             break;
 
           case "customer":
-            navigate("/customer/dashboard");
+            // Customers stay on the same website — the navbar now shows
+            // their profile instead of the Login button.
+            navigate("/");
             break;
 
           default:
@@ -531,9 +533,13 @@ export default function LaundryLoginPage() {
             style={{ color: colors.textMuted }}
           >
             Don't have an account?{" "}
-            <a href="#" className="lp-link font-medium">
-              Contact your facility administrator
-            </a>
+            <Link to="/signup" className="lp-link font-medium">
+              Create one free
+            </Link>
+            <span className="mx-1.5" style={{ color: colors.cardBorder }}>•</span>
+            <Link to="/" className="lp-link font-medium">
+              Visit our site
+            </Link>
           </p>
         </div>
       </div>

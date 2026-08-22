@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Plus, Search, Edit, Trash2, Phone, Mail } from "lucide-react";
+import toast from "react-hot-toast";
 
 import {
   getSuppliers,
@@ -39,7 +40,7 @@ const Suppliers = () => {
     } catch (error) {
       console.error("Failed to load suppliers:", error);
 
-      alert(error?.response?.data?.message || "Failed to load suppliers.");
+      toast.error(error?.response?.data?.message || "Failed to load suppliers.");
     } finally {
       setLoading(false);
     }
@@ -89,11 +90,11 @@ const Suppliers = () => {
       if (editingSupplier) {
         await updateSupplier(editingSupplier.id, formData);
 
-        alert("Supplier updated successfully.");
+        toast.success("Supplier updated successfully.");
       } else {
         await createSupplier(formData);
 
-        alert("Supplier created successfully.");
+        toast.success("Supplier created successfully.");
       }
 
       // Close modal
@@ -127,13 +128,13 @@ const Suppliers = () => {
     try {
       await deleteSupplier(id);
 
-      alert("Supplier deleted successfully.");
+      toast.success("Supplier deleted successfully.");
 
       await loadSuppliers();
     } catch (error) {
       console.error("Delete supplier error:", error);
 
-      alert(error?.response?.data?.message || "Failed to delete supplier.");
+      toast.error(error?.response?.data?.message || "Failed to delete supplier.");
     }
   };
 

@@ -8,7 +8,6 @@ const colors = {
   textMuted: "#5C7A78",
 };
 
-const categoryOptions = ["All Categories", "Washing", "Dry Clean", "Ironing", "Others"];
 const statusOptions = ["All Status", "Active", "Inactive"];
 
 const SelectField = ({ value, onChange, options }) => (
@@ -29,11 +28,16 @@ const SelectField = ({ value, onChange, options }) => (
   </div>
 );
 
-const ServiceFilters = ({ category, onCategoryChange, status, onStatusChange }) => (
-  <div className="flex gap-3">
-    <SelectField value={category} onChange={onCategoryChange} options={categoryOptions} />
-    <SelectField value={status} onChange={onStatusChange} options={statusOptions} />
-  </div>
-);
+// Categories are dynamic (shop admins can type custom ones), so the list is
+// built from the categories actually present in the loaded services.
+const ServiceFilters = ({ category, onCategoryChange, status, onStatusChange, categories = [] }) => {
+  const categoryOptions = ["All Categories", ...categories.filter(Boolean)];
+  return (
+    <div className="flex gap-3">
+      <SelectField value={category} onChange={onCategoryChange} options={categoryOptions} />
+      <SelectField value={status} onChange={onStatusChange} options={statusOptions} />
+    </div>
+  );
+};
 
 export default ServiceFilters;

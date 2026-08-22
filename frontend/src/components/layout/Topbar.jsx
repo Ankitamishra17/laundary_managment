@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Menu, Bell, Search, ChevronDown, Shirt } from "lucide-react";
+import { Menu, Search, ChevronDown, Shirt } from "lucide-react";
 import { useSidebar } from "../../context/SidebarContext";
 import { useAuth } from "../../context/AuthContext";
 import Avatar from "./Avatar";
+import NotificationBell from "./NotificationBell";
 
 const colors = {
   primaryTeal: "#028090",
@@ -140,17 +141,7 @@ const Topbar = () => {
           />
         </div>
 
-        <button
-          className="tb-icon-btn relative w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
-          style={{ backgroundColor: colors.cardTint }}
-          aria-label="Notifications"
-        >
-          <Bell size={16} style={{ color: colors.textDark }} />
-          <span
-            className="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: colors.mint }}
-          />
-        </button>
+        <NotificationBell />
 
         <div className="relative flex-shrink-0">
           <button

@@ -20,19 +20,23 @@ const Service = sequelize.define(
       allowNull: false,
     },
 
+    // Free-text category so the shop admin can add custom categories
+    // (Washing, Dry Cleaning, Ironing, Shoe Cleaning, ...) — the form
+    // suggests common ones but never restricts.
     category: {
-      type: DataTypes.ENUM(
-        "Washing",
-        "Ironing",
-        "Dry Cleaning",
-        "Premium",
-        "Household",
-      ),
+      type: DataTypes.STRING(150),
       allowNull: false,
     },
 
+    // How the service is priced — the customer-facing unit list.
     pricingType: {
-      type: DataTypes.ENUM("Per Item", "Per Kg", "Fixed Price"),
+      type: DataTypes.ENUM(
+        "Per Kg",
+        "Per Piece",
+        "Per Pair",
+        "Per Item",
+        "Fixed",
+      ),
       allowNull: false,
     },
 

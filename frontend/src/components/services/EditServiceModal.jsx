@@ -20,7 +20,7 @@ const colors = {
  */
 const EditServiceModal = ({ service, onClose, onSuccess, showToast }) => {
   const [formData, setFormData] = useState({
-    name: service?.name || "",
+    serviceName: service?.serviceName || "",
     category: service?.category || "",
     pricingType: service?.pricingType || "",
     price: service?.price ?? "",

@@ -2,6 +2,65 @@ import api from "./axios";
 
 /**
  * ===============================
+ * PUBLIC — list active shops (no auth)
+ * Used by the landing page & signup form
+ * ===============================
+ */
+export const getPublicShops = async () => {
+  try {
+    const { data } = await api.get("/shops/public");
+    return data;
+  } catch (error) {
+    throw (
+      error.response?.data || {
+        success: false,
+        message: "Unable to fetch laundries.",
+      }
+    );
+  }
+};
+
+/**
+ * ===============================
+ * PUBLIC — active services of one shop (no auth)
+ * ===============================
+ */
+export const getPublicShopServices = async (shopId) => {
+  try {
+    const { data } = await api.get(`/shops/public/${shopId}/services`);
+    return data;
+  } catch (error) {
+    throw (
+      error.response?.data || {
+        success: false,
+        message: "Unable to fetch services.",
+      }
+    );
+  }
+};
+
+/**
+ * ===============================
+ * CUSTOMER — the WashFlow laundry serving this customer
+ * Returns { shop, services } so the customer never picks a laundry.
+ * ===============================
+ */
+export const getMyShopContext = async () => {
+  try {
+    const { data } = await api.get("/shops/context");
+    return data;
+  } catch (error) {
+    throw (
+      error.response?.data || {
+        success: false,
+        message: "Unable to load the laundry.",
+      }
+    );
+  }
+};
+
+/**
+ * ===============================
  * CREATE SHOP
  * ===============================
  */

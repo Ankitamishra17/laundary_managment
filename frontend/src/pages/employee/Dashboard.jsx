@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import toast from "react-hot-toast";
 import {
   Truck,
   Clock,
@@ -12,9 +13,14 @@ import {
   Sparkles,
   Inbox,
   MapPinned,
+  AlertTriangle,
+  LogIn,
+  LogOut,
+  Fingerprint,
 } from "lucide-react";
 import { useMyPickups } from "../../hooks/useMyPickups";
 import { taskApi } from "../../api/taskApi";
+import { attendanceApi } from "../../api/attendanceApi";
 import { useAuth } from "../../context/AuthContext";
 import StatusPill from "../../components/layout/StatusPill";
 import Avatar from "../../components/layout/Avatar";
@@ -161,6 +167,62 @@ export default function Dashboard() {
   const [schedule, setSchedule] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(true);
 
+  // --- Attendance state ---
+  const [attendance, setAttendance] = useState(null); // today's record or null
+  const [attLoading, setAttLoading] = useState(true);
+  const [attBusy, setAttBusy] = useState(false);
+
+  const fetchAttendance = async () => {
+    try {
+      const res = await attendanceApi.getMyToday();
+      setAttendance(res?.data || null);
+    } catch {
+      setAttendance(null);
+    } finally {
+      setAttLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAttendance();
+  }, []);
+
+  const handleCheckIn = async () => {
+    setAttBusy(true);
+    try {
+      const res = await attendanceApi.checkIn();
+      if (res.success) {
+        toast.success(res.message || "Checked in successfully!");
+        setAttendance(res.data);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Check-in failed.");
+    } finally {
+      setAttBusy(false);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    setAttBusy(true);
+    try {
+      const res = await attendanceApi.checkOut();
+      if (res.success) {
+        toast.success(res.message || "Checked out successfully!");
+        setAttendance(res.data);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Check-out failed.");
+    } finally {
+      setAttBusy(false);
+    }
+  };
+
+  // Derived attendance states
+  const isCheckedIn = !!attendance?.check_in;
+  const isCheckedOut = !!attendance?.check_out;
+  const notCheckedIn = !attLoading && !isCheckedIn;
+  const checkedInNotOut = isCheckedIn && !isCheckedOut;
+
   useEffect(() => {
     let cancelled = false;
     taskApi
@@ -243,6 +305,74 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* ------------------------------------------------ Attendance Reminder */}
+        {notCheckedIn && (
+          <div
+            className="rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4"
+            style={{ backgroundColor: "#FFFBF3", border: "1px solid #F0DFB8" }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: "#FBF0DC" }}
+              >
+                <AlertTriangle size={20} style={{ color: "#9A6A12" }} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "#0F2C2E" }}>
+                  Attendance Not Marked
+                </p>
+                <p className="text-xs" style={{ color: "#6B8482" }}>
+                  You haven't checked in today. Please check in to mark your attendance.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleCheckIn}
+              disabled={attBusy}
+              className="flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:brightness-105 active:scale-[0.97] disabled:opacity-60 shrink-0"
+              style={{ background: "linear-gradient(135deg, #028090, #00A896)" }}
+            >
+              {attBusy ? <Loader2 size={15} className="animate-spin" /> : <LogIn size={15} />}
+              Check In Now
+            </button>
+          </div>
+        )}
+
+        {/* Checked in but not checked out — end-of-day reminder */}
+        {checkedInNotOut && (
+          <div
+            className="rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4"
+            style={{ backgroundColor: "#EEF7F6", border: "1px solid #D8ECEA" }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: "#DFF3F5" }}
+              >
+                <Clock size={20} style={{ color: "#028090" }} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "#0F2C2E" }}>
+                  Don't forget to check out
+                </p>
+                <p className="text-xs" style={{ color: "#6B8482" }}>
+                  You checked in at {new Date(attendance.check_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleCheckOut}
+              disabled={attBusy}
+              className="flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:brightness-105 active:scale-[0.97] disabled:opacity-60 shrink-0"
+              style={{ background: "linear-gradient(135deg, #9A6A12, #D4A017)" }}
+            >
+              {attBusy ? <Loader2 size={15} className="animate-spin" /> : <LogOut size={15} />}
+              Check Out
+            </button>
+          </div>
+        )}
+
         {/* ------------------------------------------------ KPI row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard icon={Truck} label="Pickups Today" value={stats.total} color="#028090" bg="#DFF3F5" to="/employee/pickups" />
@@ -255,6 +385,81 @@ export default function Dashboard() {
         {error && (
           <div className="text-sm text-[#9A2E12] bg-[#FBE4DC] border border-[#F3C7B8] rounded-xl px-4 py-3">
             {error}
+          </div>
+        )}
+
+        {/* ------------------------------------------------ Attendance Status Card */}
+        {attLoading ? (
+          <div className="bg-white border border-[#D8ECEA] rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,44,46,0.04)]">
+            <div className="h-20 rounded-xl bg-[#EEF7F6] animate-pulse" />
+          </div>
+        ) : (
+          <div className="bg-white border border-[#D8ECEA] rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,44,46,0.04)]">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#DFF3F5" }}>
+                <Fingerprint size={15} style={{ color: "#028090" }} />
+              </div>
+              <h3 className="text-[15px] font-semibold" style={{ color: "#0F2C2E", fontFamily: "'Libre Baskerville', serif" }}>
+                Today's Attendance
+              </h3>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {/* Check-in */}
+              <div className="rounded-xl p-3" style={{ backgroundColor: isCheckedIn ? "#DFF7F1" : "#EEF7F6" }}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  {isCheckedIn ? (
+                    <CheckCircle2 size={13} style={{ color: "#02C39A" }} />
+                  ) : (
+                    <LogIn size={13} style={{ color: "#A9C9C6" }} />
+                  )}
+                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#6B8482" }}>
+                    Check In
+                  </span>
+                </div>
+                <p className="text-sm font-semibold" style={{ color: isCheckedIn ? "#0F2C2E" : "#A9C9C6" }}>
+                  {isCheckedIn
+                    ? new Date(attendance.check_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : "—"
+                  }
+                </p>
+              </div>
+              {/* Check-out */}
+              <div className="rounded-xl p-3" style={{ backgroundColor: isCheckedOut ? "#DFF7F1" : "#EEF7F6" }}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  {isCheckedOut ? (
+                    <CheckCircle2 size={13} style={{ color: "#02C39A" }} />
+                  ) : (
+                    <LogOut size={13} style={{ color: "#A9C9C6" }} />
+                  )}
+                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#6B8482" }}>
+                    Check Out
+                  </span>
+                </div>
+                <p className="text-sm font-semibold" style={{ color: isCheckedOut ? "#0F2C2E" : "#A9C9C6" }}>
+                  {isCheckedOut
+                    ? new Date(attendance.check_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : "— Not yet"
+                  }
+                </p>
+              </div>
+              {/* Status */}
+              <div className="rounded-xl p-3" style={{ backgroundColor: isCheckedOut ? "#DFF7F1" : isCheckedIn ? "#DFF3F5" : "#FBF0DC" }}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <div
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{
+                      backgroundColor: isCheckedOut ? "#02C39A" : isCheckedIn ? "#028090" : "#9A6A12",
+                    }}
+                  />
+                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#6B8482" }}>
+                    Status
+                  </span>
+                </div>
+                <p className="text-sm font-semibold" style={{ color: "#0F2C2E" }}>
+                  {isCheckedOut ? "Completed" : isCheckedIn ? "Working" : "Not Checked In"}
+                </p>
+              </div>
+            </div>
           </div>
         )}
 

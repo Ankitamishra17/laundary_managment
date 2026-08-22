@@ -171,7 +171,7 @@ export default function SupplierModal({
                   name="phone"
                   value={form.phone}
                   onChange={handleChange}
-                  placeholder="9876543210"
+                  placeholder="99XXXXXXXX"
                   className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
                 />
               </div>

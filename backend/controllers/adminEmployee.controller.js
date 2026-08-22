@@ -1,10 +1,24 @@
 import crypto from "crypto";
 import { Op } from "sequelize";
 import { Employee, Shop } from "../models/index.js";
+import { getShopPlan } from "../utils/subscription.js";
 
 // Helper — generates a readable temp password like "LMS-4F2A9K"
 function generateTempPassword() {
   return "LMS-" + crypto.randomBytes(4).toString("hex").toUpperCase();
+}
+
+// ------------------------------------------------------------
+// Tenant scoping
+// ------------------------------------------------------------
+// Shop admins may only touch employees of their OWN shop — the shop_id is
+// derived from the authenticated account, never from the request body/query.
+// Super admins (no shopId) operate platform-wide and may pass an explicit
+// shop_id where required.
+function employeeScope(req) {
+  const where = {};
+  if (req.user.shopId) where.shop_id = req.user.shopId;
+  return where;
 }
 
 // POST /api/admin/employees  — Admin creates a new employee
@@ -27,19 +41,44 @@ export const createEmployee = async (req, res) => {
       });
     }
 
-    const existing = await Employee.findOne({ where: { email } });
+    // The employee belongs to the admin's shop — never trust shop_id from the
+    // frontend. Only a super admin (platform-wide) can pick a different shop.
+    let resolvedShopId = req.user.shopId || null;
+    if (!req.user.shopId && shop_id) resolvedShopId = Number(shop_id);
+
+    if (resolvedShopId) {
+      const shop = await Shop.findByPk(resolvedShopId);
+      if (!shop) {
+        return res.status(400).json({ success: false, message: "Invalid shop" });
+      }
+
+      // Subscription plan limits — reject going over the plan's employee cap.
+      const plan = await getShopPlan(resolvedShopId);
+      if (plan && !plan.allowed) {
+        return res.status(403).json({
+          success: false,
+          message: plan.message,
+        });
+      }
+      if (plan?.limits?.maxEmployees) {
+        const count = await Employee.count({ where: { shop_id: resolvedShopId } });
+        if (count >= plan.limits.maxEmployees) {
+          return res.status(403).json({
+            success: false,
+            message: `Your ${plan.planName} plan allows up to ${plan.limits.maxEmployees} employees. Please upgrade to add more.`,
+          });
+        }
+      }
+    }
+
+    const existing = await Employee.findOne({
+      where: { email, ...(req.user.shopId ? {} : {}) },
+    });
     if (existing) {
       return res.status(409).json({
         success: false,
         message: "An employee with this email already exists",
       });
-    }
-
-    if (shop_id) {
-      const shop = await Shop.findByPk(shop_id);
-      if (!shop) {
-        return res.status(400).json({ success: false, message: "Invalid shop_id" });
-      }
     }
 
     const finalPassword = auto_generate_password ? generateTempPassword() : password;
@@ -55,7 +94,7 @@ export const createEmployee = async (req, res) => {
       email,
       phone,
       designation: designation || null,
-      shop_id: shop_id || null,
+      shop_id: resolvedShopId,
       password: finalPassword, // hashed automatically by Employee model's hook
       status: "active",
     });
@@ -79,14 +118,14 @@ export const createEmployee = async (req, res) => {
   }
 };
 
-// GET /api/admin/employees — Admin sees all employees
+// GET /api/admin/employees — Admin sees only their own shop's employees
 export const getEmployees = async (req, res) => {
   try {
-    const { search = "", status, shop_id } = req.query;
+    const { search = "", status } = req.query;
 
     const where = {
+      ...employeeScope(req),
       ...(status ? { status } : {}),
-      ...(shop_id ? { shop_id } : {}),
       ...(search
         ? {
             [Op.or]: [
@@ -111,10 +150,11 @@ export const getEmployees = async (req, res) => {
   }
 };
 
-// GET /api/admin/employees/:id — Admin views one employee
+// GET /api/admin/employees/:id — Admin views one employee (own shop only)
 export const getEmployeeById = async (req, res) => {
   try {
-    const employee = await Employee.findByPk(req.params.id, {
+    const employee = await Employee.findOne({
+      where: { id: req.params.id, ...employeeScope(req) },
       attributes: { exclude: ["password"] },
       include: [{ model: Shop, as: "shop", attributes: ["id", "name", "shopCode", "city"] }],
     });
@@ -129,16 +169,25 @@ export const getEmployeeById = async (req, res) => {
   }
 };
 
-// PATCH /api/admin/employees/:id — Admin edits an employee
+// PATCH /api/admin/employees/:id — Admin edits an employee (own shop only)
 export const updateEmployeeByAdmin = async (req, res) => {
   try {
     const { name, phone, designation, shop_id, status } = req.body;
 
-    const employee = await Employee.findByPk(req.params.id);
+    const employee = await Employee.findOne({
+      where: { id: req.params.id, ...employeeScope(req) },
+    });
     if (!employee) {
       return res.status(404).json({ success: false, message: "Employee not found" });
     }
 
+    // Shop admins can't move an employee to another shop.
+    if (shop_id !== undefined && req.user.shopId) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot change the shop of an employee.",
+      });
+    }
     if (shop_id) {
       const shop = await Shop.findByPk(shop_id);
       if (!shop) {
@@ -149,7 +198,7 @@ export const updateEmployeeByAdmin = async (req, res) => {
     if (name !== undefined) employee.name = name;
     if (phone !== undefined) employee.phone = phone;
     if (designation !== undefined) employee.designation = designation;
-    if (shop_id !== undefined) employee.shop_id = shop_id;
+    if (shop_id !== undefined && !req.user.shopId) employee.shop_id = shop_id;
     if (status !== undefined) employee.status = status;
 
     await employee.save();
@@ -161,10 +210,33 @@ export const updateEmployeeByAdmin = async (req, res) => {
   }
 };
 
+// DELETE /api/admin/employees/:id/permanent — Admin permanently deletes an
+// employee record (only used for accounts with no future use — deactivation
+// is the safer default). Their task history keeps the employee_id but no
+// longer resolves to an account.
+export const deleteEmployeePermanently = async (req, res) => {
+  try {
+    const employee = await Employee.findOne({
+      where: { id: req.params.id, ...employeeScope(req) },
+    });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    await employee.destroy();
+
+    return res.status(200).json({ success: true, message: "Employee permanently deleted" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // DELETE /api/admin/employees/:id — Admin deactivates an employee (soft delete)
 export const deactivateEmployee = async (req, res) => {
   try {
-    const employee = await Employee.findByPk(req.params.id);
+    const employee = await Employee.findOne({
+      where: { id: req.params.id, ...employeeScope(req) },
+    });
     if (!employee) {
       return res.status(404).json({ success: false, message: "Employee not found" });
     }
@@ -181,7 +253,9 @@ export const deactivateEmployee = async (req, res) => {
 // PATCH /api/admin/employees/:id/reactivate
 export const reactivateEmployee = async (req, res) => {
   try {
-    const employee = await Employee.findByPk(req.params.id);
+    const employee = await Employee.findOne({
+      where: { id: req.params.id, ...employeeScope(req) },
+    });
     if (!employee) {
       return res.status(404).json({ success: false, message: "Employee not found" });
     }
@@ -198,7 +272,9 @@ export const reactivateEmployee = async (req, res) => {
 // POST /api/admin/employees/:id/reset-password — Admin resets a forgotten password
 export const adminResetEmployeePassword = async (req, res) => {
   try {
-    const employee = await Employee.findByPk(req.params.id);
+    const employee = await Employee.findOne({
+      where: { id: req.params.id, ...employeeScope(req) },
+    });
     if (!employee) {
       return res.status(404).json({ success: false, message: "Employee not found" });
     }

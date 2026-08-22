@@ -13,6 +13,7 @@ import {
   Send,
   Loader2,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import { useMyProfile } from "../../hooks/useMyProfile";
 
 function Field({ label, icon: Icon, children }) {
@@ -114,7 +115,7 @@ export default function MyProfile() {
   const handleChangePassword = (e) => {
     e.preventDefault();
     if (pwForm.newPassword !== pwForm.confirmPassword) {
-      alert("New password and confirm password don't match");
+      toast.error("New password and confirm password don't match");
       return;
     }
     changePassword(pwForm.currentPassword, pwForm.newPassword).then((ok) => {

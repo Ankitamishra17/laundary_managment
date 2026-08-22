@@ -108,16 +108,18 @@ export default function SubscriptionsPage() {
           font-family: 'Inter', sans-serif;
           background: var(--bg-light);
           min-height: 100vh;
-          padding: 40px;
+          padding: 20px;
         }
+        @media (min-width: 640px) { .subs-page { padding: 28px; } }
+        @media (min-width: 1024px) { .subs-page { padding: 40px; } }
 
         .subs-header {
           display: flex;
+          flex-wrap: wrap;
           justify-content: space-between;
           align-items: center;
           margin-bottom: 24px;
-          flex-wrap: wrap;
-          gap: 16px;
+          gap: 12px;
         }
 
         .subs-header h1 {
@@ -134,22 +136,26 @@ export default function SubscriptionsPage() {
         }
 
         .create-sub-btn {
-          padding: 12px 20px;
+          padding: 10px 16px;
           border: none;
           border-radius: 10px;
           background: linear-gradient(135deg, var(--teal-primary), var(--seafoam));
           color: white;
           font-weight: 600;
-          font-size: 14px;
+          font-size: 13px;
           cursor: pointer;
+          white-space: nowrap;
         }
+        @media (min-width: 640px) { .create-sub-btn { padding: 12px 20px; font-size: 14px; } }
 
         .summary-grid {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 16px;
-          margin-bottom: 28px;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 12px;
+          margin-bottom: 24px;
         }
+        @media (min-width: 640px) { .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; } }
+        @media (min-width: 1024px) { .summary-grid { grid-template-columns: repeat(4, 1fr); } }
 
         .summary-card {
           background: var(--card-tint);
@@ -168,9 +174,10 @@ export default function SubscriptionsPage() {
 
         .summary-card .value {
           font-family: 'Libre Baskerville', serif;
-          font-size: 24px;
+          font-size: 20px;
           color: var(--text-dark);
         }
+        @media (min-width: 640px) { .summary-card .value { font-size: 24px; } }
 
         .summary-card.accent .value { color: var(--teal-primary); }
 
