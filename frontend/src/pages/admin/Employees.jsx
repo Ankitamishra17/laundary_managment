@@ -237,7 +237,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
                       value={form.phone}
                       onChange={handleChange}
                       required
-                      placeholder="9876543210"
+                      placeholder="99XXXXXXXX"
                       className={`${inputClass} pl-9`}
                     />
                   </div>
@@ -435,7 +435,7 @@ function EditEmployeeModal({ employee, onClose, onUpdate }) {
           <Field label="Phone">
             <div className="relative">
               <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B8482]" />
-              <input name="phone" value={form.phone} onChange={handleChange} placeholder="9876543210" className={`${inputClass} pl-9`} />
+              <input name="phone" value={form.phone} onChange={handleChange} placeholder="99XXXXXXXX" className={`${inputClass} pl-9`} />
             </div>
           </Field>
 
@@ -499,11 +499,105 @@ function EditEmployeeModal({ employee, onClose, onUpdate }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Employee Details Modal (view-only, opened by clicking a row)        */
+/* ------------------------------------------------------------------ */
+
+function DetailRow({ label, value }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-2.5 border-b border-[#EEF7F6] last:border-0">
+      <span className="text-[11px] uppercase tracking-wider text-[#6B8482] flex-shrink-0">{label}</span>
+      <span className="text-sm font-medium text-[#0F2C2E] text-right break-words min-w-0">{value || "—"}</span>
+    </div>
+  );
+}
+
+function EmployeeDetailsModal({ employee, onClose, onEdit, onDeactivate }) {
+  if (!employee) return null;
+
+  const isActive = employee.status === "active";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-[#05282A]/55 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-[0_20px_50px_rgba(5,40,42,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex items-center gap-3.5">
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-semibold shrink-0"
+              style={{ background: "#DFF3F5", color: "#028090" }}
+            >
+              {initials(employee.name)}
+            </div>
+            <div>
+              <h2
+                className="text-xl text-[#0F2C2E] leading-tight"
+                style={{ fontFamily: "'Libre Baskerville', Georgia, serif" }}
+              >
+                {employee.name}
+              </h2>
+              <div className="mt-1">
+                <EmployeeStatusPill status={employee.status} />
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="w-8 h-8 rounded-lg bg-[#EEF7F6] border border-[#D8ECEA] text-[#0F2C2E] flex items-center justify-center hover:bg-[#DFF3F5] transition-colors shrink-0"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="rounded-xl px-4 py-2" style={{ backgroundColor: "#FAFDFC", border: "1px solid #EEF7F6" }}>
+          <DetailRow label="Email" value={employee.email} />
+          <DetailRow label="Phone" value={employee.phone} />
+          <DetailRow label="Designation" value={employee.designation} />
+          <DetailRow label="Shop" value={employee.shop?.name} />
+          <DetailRow
+            label="Joined"
+            value={employee.createdAt ? new Date(employee.createdAt).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+          />
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onEdit}
+            className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white shadow-lg transition hover:brightness-105 active:scale-[0.98]"
+            style={{ background: "linear-gradient(135deg, #028090, #00A896)" }}
+          >
+            <Pencil size={15} /> Edit
+          </button>
+          <button
+            onClick={onDeactivate}
+            className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition active:scale-[0.98] ${
+              isActive
+                ? "text-[#B3261E] bg-[#FDECEC] border border-[#F5C6C0] hover:bg-[#FBE4DC]"
+                : "text-[#028090] bg-[#DFF7F1] border border-[#B8E8D8] hover:bg-[#D3F0E6]"
+            }`}
+          >
+            {isActive ? <Trash2 size={15} /> : <RotateCcw size={15} />}
+            {isActive ? "Deactivate" : "Reactivate"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Delete (Deactivate) / Reactivate Modal                              */
 /* ------------------------------------------------------------------ */
 
-function DeleteEmployeeModal({ employee, onClose, onConfirm }) {
+function DeleteEmployeeModal({ employee, onClose, onConfirm, onDeletePermanent }) {
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
 
   if (!employee) return null;
@@ -515,6 +609,19 @@ function DeleteEmployeeModal({ employee, onClose, onConfirm }) {
     setLoading(true);
     const ok = await onConfirm(employee.id);
     setLoading(false);
+    if (ok) onClose();
+  };
+
+  const handleDeletePermanent = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 4000);
+      return;
+    }
+    setError("");
+    setDeleting(true);
+    const ok = await onDeletePermanent(employee.id);
+    setDeleting(false);
     if (ok) onClose();
   };
 
@@ -607,6 +714,39 @@ function DeleteEmployeeModal({ employee, onClose, onConfirm }) {
               )}
             </button>
           </div>
+
+          {/* Permanent delete — only offered for already-deactivated accounts */}
+          {!isActive && (
+            <>
+              <div className="w-full mt-4 h-px" style={{ backgroundColor: "#D8ECEA" }} />
+              <button
+                onClick={handleDeletePermanent}
+                disabled={deleting}
+                className={`w-full mt-4 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition ${
+                  confirmDelete
+                    ? "text-white bg-[#B3261E] hover:brightness-110"
+                    : "text-[#B3261E] bg-[#FDECEC] border border-[#F5C6C0] hover:bg-[#FBE4DC]"
+                } disabled:opacity-60 disabled:cursor-not-allowed`}
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" /> Deleting…
+                  </>
+                ) : confirmDelete ? (
+                  <>
+                    <AlertTriangle size={16} /> Click again to permanently delete
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={16} /> Delete permanently
+                  </>
+                )}
+              </button>
+              <p className="w-full mt-2 text-[11px] text-center" style={{ color: "#9A6A12" }}>
+                This removes the employee forever. Deactivation is reversible — deletion is not.
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -628,9 +768,11 @@ export default function Employees() {
     updateEmployee,
     deactivateEmployee,
     reactivateEmployee,
+    deleteEmployeePermanently,
   } = useEmployees();
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [viewingEmployee, setViewingEmployee] = useState(null);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [deletingEmployee, setDeletingEmployee] = useState(null);
 
@@ -675,6 +817,12 @@ export default function Employees() {
     const employee = employees.find((e) => e.id === id);
     const ok = employee?.status === "active" ? await deactivateEmployee(id) : await reactivateEmployee(id);
     if (!ok) setError("Failed to update employee status");
+    return ok;
+  };
+
+  const handleDeletePermanent = async (id) => {
+    const ok = await deleteEmployeePermanently(id);
+    if (!ok) setError("Failed to delete employee");
     return ok;
   };
 
@@ -766,7 +914,11 @@ export default function Employees() {
                 </thead>
                 <tbody>
                   {filtered.map((e) => (
-                    <tr key={e.id} className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC] transition-colors duration-150">
+                    <tr
+                      key={e.id}
+                      onClick={() => setViewingEmployee(e)}
+                      className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC] transition-colors duration-150 cursor-pointer"
+                    >
                       <td className="py-3.5 px-5">
                         <div className="flex items-center gap-3">
                           <div
@@ -792,7 +944,11 @@ export default function Employees() {
                       <td className="py-3.5 px-5">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => setEditingEmployee(e)}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setViewingEmployee(null);
+                              setEditingEmployee(e);
+                            }}
                             title="Edit employee"
                             aria-label={`Edit ${e.name}`}
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-[#028090] bg-[#DFF3F5] hover:bg-[#028090] hover:text-white active:scale-95 transition-all"
@@ -800,7 +956,11 @@ export default function Employees() {
                             <Pencil size={14} />
                           </button>
                           <button
-                            onClick={() => setDeletingEmployee(e)}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setViewingEmployee(null);
+                              setDeletingEmployee(e);
+                            }}
                             title={e.status === "active" ? "Deactivate employee" : "Reactivate employee"}
                             aria-label={`${e.status === "active" ? "Deactivate" : "Reactivate"} ${e.name}`}
                             className={`w-8 h-8 rounded-lg flex items-center justify-center active:scale-95 transition-all ${
@@ -823,11 +983,32 @@ export default function Employees() {
       </div>
 
       <CreateEmployeeModal isOpen={showCreate} onClose={() => setShowCreate(false)} onCreate={handleCreate} />
+      {viewingEmployee && (
+        <EmployeeDetailsModal
+          employee={viewingEmployee}
+          onClose={() => setViewingEmployee(null)}
+          onEdit={() => {
+            const emp = viewingEmployee;
+            setViewingEmployee(null);
+            setEditingEmployee(emp);
+          }}
+          onDeactivate={() => {
+            const emp = viewingEmployee;
+            setViewingEmployee(null);
+            setDeletingEmployee(emp);
+          }}
+        />
+      )}
       {editingEmployee && (
         <EditEmployeeModal employee={editingEmployee} onClose={() => setEditingEmployee(null)} onUpdate={handleUpdate} />
       )}
       {deletingEmployee && (
-        <DeleteEmployeeModal employee={deletingEmployee} onClose={() => setDeletingEmployee(null)} onConfirm={handleDelete} />
+        <DeleteEmployeeModal
+          employee={deletingEmployee}
+          onClose={() => setDeletingEmployee(null)}
+          onConfirm={handleDelete}
+          onDeletePermanent={handleDeletePermanent}
+        />
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   ClipboardList,
   Clock,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { taskApi } from "../../api/taskApi";
 import { useEmployees } from "../../hooks/useEmployees";
+import { getShopCustomers } from "../../api/customerApi";
 import StatusPill from "../../components/layout/StatusPill";
 import TaskFilterTabs from "../../components/layout/TaskFilterTabs";
 
@@ -128,6 +130,7 @@ const EMPTY_FORM = {
   task_type: "pickup",
   priority: "normal",
   scheduled_time: "",
+  customer_id: "",
   customer_name: "",
   customer_phone: "",
   customer_address: "",
@@ -138,8 +141,56 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [customers, setCustomers] = useState([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+
+  // Load the shop's customers so the admin can pick one instead of typing
+  // the customer details by hand.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    setCustomersLoading(true);
+    getShopCustomers()
+      .then((res) => {
+        if (!cancelled) setCustomers(res.data || []);
+      })
+      .catch(() => {
+        /* customers are optional — manual entry still works */
+      })
+      .finally(() => {
+        if (!cancelled) setCustomersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
+
+  // Picking a customer from the dropdown auto-fills name / phone / address.
+  const handleCustomerSelect = (e) => {
+    const id = e.target.value;
+    const customer = customers.find((c) => String(c.id) === id);
+    setForm((prev) => ({
+      ...prev,
+      customer_id: id,
+      customer_name: customer?.name || "",
+      customer_phone: customer?.phone || "",
+      customer_address: customer
+        ? [customer.address, customer.city].filter(Boolean).join(", ")
+        : "",
+    }));
+  };
+
+  const handleNameChange = (e) => {
+    const { value } = e.target;
+    setForm((prev) => ({
+      ...prev,
+      customer_name: value,
+      // Once the admin edits the name manually, the dropdown selection is stale
+      customer_id: "",
+    }));
+  };
 
   const resetAndClose = () => {
     setForm(EMPTY_FORM);
@@ -254,11 +305,36 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
             />
           </Field>
 
+          <Field label="Customer" required>
+            <select
+              value={form.customer_id}
+              onChange={handleCustomerSelect}
+              className={`${inputCls} cursor-pointer`}
+            >
+              <option value="" disabled>
+                {customersLoading
+                  ? "Loading customers…"
+                  : "Choose from saved customers"}
+              </option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.phone ? ` · ${c.phone}` : ""}
+                </option>
+              ))}
+            </select>
+            {!customersLoading && customers.length > 0 && (
+              <p className="mt-1 text-[11px] text-[#6B8482]">
+                Pick a customer to auto-fill their details below.
+              </p>
+            )}
+          </Field>
+
           <Field label="Customer Name" required>
             <input
               name="customer_name"
               value={form.customer_name}
-              onChange={handleChange}
+              onChange={handleNameChange}
               required
               placeholder="e.g. Ananya Verma"
               className={inputCls}
@@ -271,7 +347,7 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
                 name="customer_phone"
                 value={form.customer_phone}
                 onChange={handleChange}
-                placeholder="9876543210"
+                placeholder="99XXXXXXXX"
                 className={inputCls}
               />
             </Field>
@@ -458,6 +534,15 @@ export default function Tasks() {
                           #{t.id}
                         </div>
                         <div className="text-xs text-[#6B8482] mt-0.5">{TASK_TYPE_LABEL[t.task_type] || t.task_type}</div>
+                        {t.order && (
+                          <Link
+                            to={`/admin/orders`}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium mt-1 px-2 py-0.5 rounded-md"
+                            style={{ backgroundColor: "#DFF3F5", color: "#028090" }}
+                          >
+                            <ClipboardList size={11} /> Order #{t.order.id}
+                          </Link>
+                        )}
                       </td>
                       <td className="py-3.5 px-5">
                         <div className="text-[#0F2C2E] font-medium">{t.employee?.name || "—"}</div>
