@@ -8,6 +8,7 @@ import serviceRoutes from "./routes/service.routes.js";
 import subscriptionRoutes from "./routes/subscription.routes.js";
 import superadminReportRoutes from "./routes/superadminReport.routes.js";
 
+import adminDashboardRoutes from "./routes/adminDashboard.routes.js";
 import inventoryRoutes from "./routes/inventory.routes.js";
 import inventoryTransactionRoutes from "./routes/inventoryTransaction.routes.js";
 import supplierRoutes from "./routes/supplier.routes.js";
@@ -35,9 +36,13 @@ app.use("/api/auth", verificationRoutes);
 app.use("/api/shops", shopRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
-app.use("/api/super/subscription-notifications",subscriptionNotificationRoutes,);
-app.use("/api/superadmin/reports",superadminReportRoutes);
+app.use(
+  "/api/super/subscription-notifications",
+  subscriptionNotificationRoutes,
+);
+app.use("/api/superadmin/reports", superadminReportRoutes);
 
+app.use("/api/admin/dashboard", adminDashboardRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/inventory-transactions", inventoryTransactionRoutes);
 app.use("/api/suppliers", supplierRoutes);

@@ -538,16 +538,7 @@ const NAV_ITEMS = [
     icon: BarChart3,
     to: "/admin/reports",
   },
-  {
-    label: "Settings",
-    icon: Settings,
-    children: [
-      {
-        label: "Profile",
-        to: "/admin/settings/profile",
-      },
-    ],
-  },
+
 ];
 
 export default function AdminSidebar() {

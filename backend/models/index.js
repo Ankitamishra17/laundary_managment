@@ -14,9 +14,8 @@ import Employee from "./Employee.js";
 import Task from "./Tasks.js";
 import Attendance from "./Attendance.js";
 import Payroll from "./Payroll.js";
-
-// If Customer model exists in your project, uncomment:
-// import Customer from "./Customer.js";
+import Customer from "./Customer.js";
+import Order from "./Order.js";
 
 // =====================================================
 // SHOP ↔ USER
@@ -72,6 +71,66 @@ Shop.hasMany(Supplier, {
 Supplier.belongsTo(Shop, {
   foreignKey: "shopId",
   as: "shop",
+});
+
+// =====================================================
+// SHOP ↔ CUSTOMER
+// IMPORTANT: This assumes Customer.js uses shopId
+// =====================================================
+
+Shop.hasMany(Customer, {
+  foreignKey: "shopId",
+  as: "customers",
+});
+
+Customer.belongsTo(Shop, {
+  foreignKey: "shopId",
+  as: "shop",
+});
+
+// =====================================================
+// SHOP ↔ ORDER
+// Order.js uses shop_id
+// =====================================================
+
+Shop.hasMany(Order, {
+  foreignKey: "shop_id",
+  as: "orders",
+});
+
+Order.belongsTo(Shop, {
+  foreignKey: "shop_id",
+  as: "shop",
+});
+
+// =====================================================
+// CUSTOMER ↔ ORDER
+// Order.js uses customer_id
+// =====================================================
+
+Customer.hasMany(Order, {
+  foreignKey: "customer_id",
+  as: "orders",
+});
+
+Order.belongsTo(Customer, {
+  foreignKey: "customer_id",
+  as: "customer",
+});
+
+// =====================================================
+// EMPLOYEE ↔ ORDER
+// Order.js uses employee_id
+// =====================================================
+
+Employee.hasMany(Order, {
+  foreignKey: "employee_id",
+  as: "orders",
+});
+
+Order.belongsTo(Employee, {
+  foreignKey: "employee_id",
+  as: "employee",
 });
 
 // =====================================================
@@ -189,6 +248,20 @@ Payment.belongsTo(Shop, {
 });
 
 // =====================================================
+// CUSTOMER ↔ PAYMENT
+// =====================================================
+
+Customer.hasMany(Payment, {
+  foreignKey: "customerId",
+  as: "payments",
+});
+
+Payment.belongsTo(Customer, {
+  foreignKey: "customerId",
+  as: "customer",
+});
+
+// =====================================================
 // SUPPLIER ↔ PAYMENT
 // =====================================================
 
@@ -231,20 +304,18 @@ Payment.belongsTo(Employee, {
 });
 
 // =====================================================
-// CUSTOMER ↔ PAYMENT
+// PAYROLL ↔ PAYMENT
 // =====================================================
 
-// Uncomment only if Customer model exists
+Payroll.hasMany(Payment, {
+  foreignKey: "payrollId",
+  as: "payments",
+});
 
-// Customer.hasMany(Payment, {
-//   foreignKey: "customerId",
-//   as: "payments",
-// });
-
-// Payment.belongsTo(Customer, {
-//   foreignKey: "customerId",
-//   as: "customer",
-// });
+Payment.belongsTo(Payroll, {
+  foreignKey: "payrollId",
+  as: "payroll",
+});
 
 // =====================================================
 // NOTIFICATION ↔ SHOP
@@ -290,9 +361,8 @@ Notification.belongsTo(InventoryItem, {
 
 // =====================================================
 // SHOP ↔ EMPLOYEE
+// Employee.js uses shop_id
 // =====================================================
-
-// Your Employee model currently uses shop_id
 
 Shop.hasMany(Employee, {
   foreignKey: "shop_id",
@@ -308,35 +378,33 @@ Employee.belongsTo(Shop, {
 // EMPLOYEE ↔ TASK
 // =====================================================
 
-Task.belongsTo(Employee, {
-  foreignKey: "employee_id",
-  as: "employee",
-});
-
 Employee.hasMany(Task, {
   foreignKey: "employee_id",
   as: "tasks",
+});
+
+Task.belongsTo(Employee, {
+  foreignKey: "employee_id",
+  as: "employee",
 });
 
 // =====================================================
 // EMPLOYEE ↔ ATTENDANCE
 // =====================================================
 
-Attendance.belongsTo(Employee, {
-  foreignKey: "employee_id",
-  as: "employee",
-});
-
 Employee.hasMany(Attendance, {
   foreignKey: "employee_id",
   as: "attendance",
 });
 
+Attendance.belongsTo(Employee, {
+  foreignKey: "employee_id",
+  as: "employee",
+});
+
 // =====================================================
 // SHOP ↔ PAYROLL
 // =====================================================
-
-// Payroll model uses shopId
 
 Shop.hasMany(Payroll, {
   foreignKey: "shopId",
@@ -352,8 +420,6 @@ Payroll.belongsTo(Shop, {
 // EMPLOYEE ↔ PAYROLL
 // =====================================================
 
-// Payroll model uses employeeId
-
 Employee.hasMany(Payroll, {
   foreignKey: "employeeId",
   as: "payrolls",
@@ -362,22 +428,6 @@ Employee.hasMany(Payroll, {
 Payroll.belongsTo(Employee, {
   foreignKey: "employeeId",
   as: "employee",
-});
-
-// =====================================================
-// PAYROLL ↔ PAYMENT
-// =====================================================
-
-// Payment.payrollId points to Payroll.id
-
-Payroll.hasMany(Payment, {
-  foreignKey: "payrollId",
-  as: "payments",
-});
-
-Payment.belongsTo(Payroll, {
-  foreignKey: "payrollId",
-  as: "payroll",
 });
 
 // =====================================================
@@ -393,11 +443,13 @@ export {
   Supplier,
   InventoryTransaction,
   Notification,
+  Payment,
+  Purchase,
+  PurchaseItem,
   Employee,
   Task,
   Attendance,
   Payroll,
-  Payment,
-  Purchase,
-  PurchaseItem,
+  Customer,
+  Order,
 };
