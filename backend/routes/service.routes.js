@@ -14,28 +14,33 @@ import allowRoles from "../middleware/roleMiddleware.js";
 const router = express.Router();
 
 /* =====================================================
+   Services are managed exclusively by the Shop Admin.
+   Super admins create shops; shop admins run the catalog.
+===================================================== */
+
+/* =====================================================
    Create Service
    POST /api/services
 ===================================================== */
-router.post("/", protect, allowRoles("admin", "super_admin"), createService);
+router.post("/", protect, allowRoles("admin"), createService);
 
 /* =====================================================
    Get All Services
    GET /api/services
 ===================================================== */
-router.get("/", protect, allowRoles("admin", "super_admin"), getServices);
+router.get("/", protect, allowRoles("admin"), getServices);
 
 /* =====================================================
    Get Service By Id
    GET /api/services/:id
 ===================================================== */
-router.get("/:id", protect, allowRoles("admin", "super_admin"), getServiceById);
+router.get("/:id", protect, allowRoles("admin"), getServiceById);
 
 /* =====================================================
    Update Service
    PUT /api/services/:id
 ===================================================== */
-router.put("/:id", protect, allowRoles("admin", "super_admin"), updateService);
+router.put("/:id", protect, allowRoles("admin"), updateService);
 
 /* =====================================================
    Soft Delete Service
@@ -44,7 +49,7 @@ router.put("/:id", protect, allowRoles("admin", "super_admin"), updateService);
 router.delete(
   "/:id",
   protect,
-  allowRoles("admin", "super_admin"),
+  allowRoles("admin"),
   deleteService,
 );
 
@@ -55,7 +60,7 @@ router.delete(
 router.patch(
   "/:id/status",
   protect,
-  allowRoles("admin", "super_admin"),
+  allowRoles("admin"),
   toggleStatus,
 );
 

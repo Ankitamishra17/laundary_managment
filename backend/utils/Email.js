@@ -1,12 +1,17 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 /**
  * Sends a verification email with a clickable link.
  * `token` should already be a signed JWT (see auth logic below).
  */
 async function sendVerificationEmail(toEmail, name, token) {
+  if (!resend) {
+    console.log(`[DEV EMAIL] Verification link for ${toEmail}: ${process.env.CLIENT_VERIFY_URL}?token=${token}`);
+    return null;
+  }
+
   const verifyLink = `${process.env.CLIENT_VERIFY_URL}?token=${token}`;
 
   const { data, error } = await resend.emails.send({

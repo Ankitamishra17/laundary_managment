@@ -35,11 +35,14 @@ const colors = {
   primaryTeal: "#028090",
   seafoam: "#00A896",
   mint: "#02C39A",
+
   bgLight: "#FFFFFF",
   cardTint: "#EEF7F6",
   cardBorder: "#D8ECEA",
+
   textDark: "#0F2C2E",
   textMuted: "#5C7A78",
+
   danger: "#DC2626",
 
   warningBg: "#FFFBEB",
@@ -76,11 +79,29 @@ const TITLE_OVERRIDES = {
 
   tasks: "Tasks",
   payroll: "Payroll",
+
   payments: "Payments",
+  transactions: "All Transactions",
+  customer: "Customer Payments",
+  supplier: "Supplier Payments",
+  salary: "Employee Payments",
+
   reports: "Reports",
+
+  stock: "Stock In / Out",
+  purchases: "Purchase",
+  "low-stock": "Low Stock Alerts",
+
+  daily: "Daily Attendance",
 };
 
+// =====================================================
+// TITLE FORMATTER
+// =====================================================
+
 function titleize(segment) {
+  if (!segment) return "Dashboard";
+
   if (TITLE_OVERRIDES[segment]) {
     return TITLE_OVERRIDES[segment];
   }
@@ -116,7 +137,7 @@ function getProfileRoute(role) {
 }
 
 // =====================================================
-// TOPBAR
+// TOPBAR COMPONENT
 // =====================================================
 
 const Topbar = () => {
@@ -137,11 +158,8 @@ const Topbar = () => {
   // ===================================================
 
   const [notificationOpen, setNotificationOpen] = useState(false);
-
   const [notifications, setNotifications] = useState([]);
-
   const [notificationCount, setNotificationCount] = useState(0);
-
   const [notificationLoading, setNotificationLoading] = useState(false);
 
   // ===================================================
@@ -149,7 +167,6 @@ const Topbar = () => {
   // ===================================================
 
   const isAdmin = user?.role === "admin";
-
   const isSuperAdmin = user?.role === "super_admin";
 
   const canReceiveNotifications = isAdmin || isSuperAdmin;
@@ -182,24 +199,18 @@ const Topbar = () => {
   // ===================================================
 
   const loadNotifications = async () => {
-    // -----------------------------------------------
-    // Employee / Customer
-    // -----------------------------------------------
-
     if (!canReceiveNotifications) {
       setNotifications([]);
       setNotificationCount(0);
-
       return;
     }
 
     try {
       setNotificationLoading(true);
 
-      // =================================================
-      // ADMIN
-      // LOW STOCK NOTIFICATIONS
-      // =================================================
+      // ===============================================
+      // ADMIN → LOW STOCK NOTIFICATIONS
+      // ===============================================
 
       if (isAdmin) {
         const [notificationResponse, countResponse] = await Promise.all([
@@ -208,16 +219,14 @@ const Topbar = () => {
         ]);
 
         setNotifications(notificationResponse?.data || []);
-
         setNotificationCount(Number(countResponse?.count || 0));
 
         return;
       }
 
-      // =================================================
-      // SUPER ADMIN
-      // SUBSCRIPTION NOTIFICATIONS
-      // =================================================
+      // ===============================================
+      // SUPER ADMIN → SUBSCRIPTION NOTIFICATIONS
+      // ===============================================
 
       if (isSuperAdmin) {
         const [notificationResponse, countResponse] = await Promise.all([
@@ -226,7 +235,6 @@ const Topbar = () => {
         ]);
 
         setNotifications(notificationResponse?.data || []);
-
         setNotificationCount(Number(countResponse?.count || 0));
       }
     } catch (error) {
@@ -240,7 +248,7 @@ const Topbar = () => {
   };
 
   // ===================================================
-  // LOAD NOTIFICATIONS WHEN USER/ROLE CHANGES
+  // LOAD WHEN USER ROLE CHANGES
   // ===================================================
 
   useEffect(() => {
@@ -250,9 +258,7 @@ const Topbar = () => {
       setNotifications([]);
       setNotificationCount(0);
     }
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canReceiveNotifications, isAdmin, isSuperAdmin]);
+  }, [user?.role]);
 
   // ===================================================
   // NOTIFICATION CLICK
@@ -263,9 +269,30 @@ const Topbar = () => {
 
     setNotificationOpen(newState);
 
+    // Close profile if notification opens
+    if (newState) {
+      setProfileOpen(false);
+    }
+
     if (newState && canReceiveNotifications) {
       await loadNotifications();
     }
+  };
+
+  // ===================================================
+  // PROFILE CLICK
+  // ===================================================
+
+  const handleProfileClick = () => {
+    setProfileOpen((prev) => {
+      const newState = !prev;
+
+      if (newState) {
+        setNotificationOpen(false);
+      }
+
+      return newState;
+    });
   };
 
   // ===================================================
@@ -274,7 +301,6 @@ const Topbar = () => {
 
   const handleLogout = () => {
     logout?.();
-
     navigate("/login");
   };
 
@@ -290,7 +316,7 @@ const Topbar = () => {
 
   return (
     <header
-      className="sticky top-0 z-30 flex items-center justify-between gap-3 px-4 sm:px-6 py-4"
+      className="sticky top-0 z-30 flex items-center justify-between gap-3 px-4 py-4 sm:px-6"
       style={{
         backgroundColor: colors.bgLight,
         borderBottom: `1px solid ${colors.cardBorder}`,
@@ -302,11 +328,9 @@ const Topbar = () => {
       ================================================= */}
 
       <style>{`
-
         .tb-search:focus-within {
           border-color: ${colors.primaryTeal};
-          box-shadow:
-            0 0 0 3px rgba(2, 128, 144, 0.12);
+          box-shadow: 0 0 0 3px rgba(2, 128, 144, 0.12);
         }
 
         .tb-icon-btn:hover {
@@ -320,19 +344,18 @@ const Topbar = () => {
         .notification-item:hover {
           background-color: ${colors.cardTint};
         }
-
       `}</style>
 
       {/* =================================================
           LEFT SIDE
       ================================================= */}
 
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex min-w-0 items-center gap-3">
         {/* MOBILE MENU */}
 
         <button
           type="button"
-          className="lg:hidden flex-shrink-0"
+          className="flex-shrink-0 lg:hidden"
           onClick={openSidebar}
           style={{
             color: colors.textDark,
@@ -345,7 +368,7 @@ const Topbar = () => {
         {/* MOBILE LOGO */}
 
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 lg:hidden"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full lg:hidden"
           style={{
             backgroundColor: colors.primaryTeal,
           }}
@@ -356,7 +379,7 @@ const Topbar = () => {
         {/* PAGE TITLE */}
 
         <h1
-          className="text-lg sm:text-xl truncate"
+          className="truncate text-lg sm:text-xl"
           style={{
             color: colors.textDark,
             fontFamily: "'Libre Baskerville', serif",
@@ -370,13 +393,13 @@ const Topbar = () => {
           RIGHT SIDE
       ================================================= */}
 
-      <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
         {/* =================================================
             SEARCH
         ================================================= */}
 
         <div
-          className="tb-search hidden md:flex items-center gap-2 rounded-xl px-3 py-2 w-52 lg:w-72 border transition-shadow"
+          className="tb-search hidden w-52 items-center gap-2 rounded-xl border px-3 py-2 transition-shadow md:flex lg:w-72"
           style={{
             backgroundColor: colors.cardTint,
             borderColor: colors.cardBorder,
@@ -384,16 +407,16 @@ const Topbar = () => {
         >
           <Search
             size={15}
+            className="flex-shrink-0"
             style={{
               color: colors.textMuted,
             }}
-            className="flex-shrink-0"
           />
 
           <input
             type="text"
             placeholder="Search..."
-            className="bg-transparent text-sm outline-none w-full"
+            className="w-full bg-transparent text-sm outline-none"
             style={{
               color: colors.textDark,
             }}
@@ -402,18 +425,6 @@ const Topbar = () => {
 
         {/* =================================================
             NOTIFICATION BELL
-
-            ADMIN:
-            Low stock
-
-            SUPER ADMIN:
-            Subscription expiry
-
-            EMPLOYEE:
-            Hidden
-
-            CUSTOMER:
-            Hidden
         ================================================= */}
 
         {canReceiveNotifications && (
@@ -421,7 +432,7 @@ const Topbar = () => {
             <button
               type="button"
               onClick={handleNotificationClick}
-              className="tb-icon-btn relative w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+              className="tb-icon-btn relative flex h-9 w-9 items-center justify-center rounded-full transition-colors"
               style={{
                 backgroundColor: colors.cardTint,
               }}
@@ -439,7 +450,7 @@ const Topbar = () => {
 
               {notificationCount > 0 && (
                 <span
-                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                  className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white"
                   style={{
                     backgroundColor: colors.danger,
                   }}
@@ -449,9 +460,9 @@ const Topbar = () => {
               )}
             </button>
 
-            {/* =================================================
+            {/* =============================================
                 NOTIFICATION DROPDOWN
-            ================================================= */}
+            ============================================= */}
 
             {notificationOpen && (
               <>
@@ -465,23 +476,21 @@ const Topbar = () => {
                 {/* DROPDOWN */}
 
                 <div
-                  className="absolute right-0 mt-3 w-[380px] max-w-[calc(100vw-24px)] rounded-2xl shadow-xl border z-40 overflow-hidden"
+                  className="absolute right-0 z-40 mt-3 w-[380px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl border shadow-xl"
                   style={{
                     backgroundColor: colors.bgLight,
                     borderColor: colors.cardBorder,
                   }}
                 >
-                  {/* =================================================
-                      HEADER
-                  ================================================= */}
+                  {/* HEADER */}
 
                   <div
-                    className="px-4 py-4 border-b"
+                    className="border-b px-4 py-4"
                     style={{
                       borderColor: colors.cardBorder,
                     }}
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <h3
                           className="text-sm font-semibold"
@@ -493,7 +502,7 @@ const Topbar = () => {
                         </h3>
 
                         <p
-                          className="text-xs mt-1"
+                          className="mt-1 text-xs"
                           style={{
                             color: colors.textMuted,
                           }}
@@ -506,7 +515,7 @@ const Topbar = () => {
 
                       {notificationCount > 0 && (
                         <span
-                          className="text-xs font-semibold px-2 py-1 rounded-full"
+                          className="rounded-full px-2 py-1 text-xs font-semibold"
                           style={{
                             backgroundColor: isSuperAdmin
                               ? colors.warningBg
@@ -524,14 +533,12 @@ const Topbar = () => {
                     </div>
                   </div>
 
-                  {/* =================================================
-                      LOADING
-                  ================================================= */}
+                  {/* LOADING */}
 
                   {notificationLoading ? (
                     <div className="p-8 text-center">
                       <div
-                        className="w-6 h-6 border-2 rounded-full animate-spin mx-auto"
+                        className="mx-auto h-6 w-6 animate-spin rounded-full border-2"
                         style={{
                           borderColor: colors.cardBorder,
                           borderTopColor: colors.primaryTeal,
@@ -539,7 +546,7 @@ const Topbar = () => {
                       />
 
                       <p
-                        className="text-xs mt-3"
+                        className="mt-3 text-xs"
                         style={{
                           color: colors.textMuted,
                         }}
@@ -548,13 +555,11 @@ const Topbar = () => {
                       </p>
                     </div>
                   ) : notifications.length === 0 ? (
-                    /* =================================================
-                       EMPTY
-                    ================================================= */
+                    /* EMPTY STATE */
 
                     <div className="p-8 text-center">
                       <div
-                        className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"
+                        className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full"
                         style={{
                           backgroundColor: colors.cardTint,
                         }}
@@ -579,7 +584,7 @@ const Topbar = () => {
                       </p>
 
                       <p
-                        className="text-xs mt-1"
+                        className="mt-1 text-xs"
                         style={{
                           color: colors.textMuted,
                         }}
@@ -590,9 +595,7 @@ const Topbar = () => {
                       </p>
                     </div>
                   ) : (
-                    /* =================================================
-                       NOTIFICATIONS
-                    ================================================= */
+                    /* NOTIFICATION LIST */
 
                     <div className="max-h-[420px] overflow-y-auto">
                       {notifications.map((notification) => {
@@ -600,24 +603,24 @@ const Topbar = () => {
 
                         const isSubscriptionNotification =
                           isSuperAdmin &&
-                          (notification.type === "SUBSCRIPTION_EXPIRING" ||
-                            notification.type === "SUBSCRIPTION_EXPIRES_TODAY");
+                          [
+                            "SUBSCRIPTION_EXPIRING",
+                            "SUBSCRIPTION_EXPIRES_TODAY",
+                          ].includes(notification.type);
 
                         return (
                           <div
                             key={notification.id}
-                            className="notification-item p-4 border-b transition-colors"
+                            className="notification-item border-b p-4 transition-colors"
                             style={{
                               borderColor: colors.cardBorder,
                             }}
                           >
                             <div className="flex gap-3">
-                              {/* =================================================
-                                    ICON
-                                ================================================= */}
+                              {/* ICON */}
 
                               <div
-                                className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center"
+                                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full"
                                 style={{
                                   backgroundColor: isSubscriptionNotification
                                     ? colors.warningBg
@@ -641,9 +644,7 @@ const Topbar = () => {
                                 )}
                               </div>
 
-                              {/* =================================================
-                                    CONTENT
-                                ================================================= */}
+                              {/* CONTENT */}
 
                               <div className="min-w-0 flex-1">
                                 {/* TITLE */}
@@ -657,15 +658,15 @@ const Topbar = () => {
                                   {notification.title}
                                 </p>
 
-                                {/* =================================================
-                                      ADMIN → INVENTORY
-                                  ================================================= */}
+                                {/* =====================================
+                                    ADMIN → INVENTORY
+                                ===================================== */}
 
                                 {isAdmin && (
                                   <>
-                                    {/* ITEM */}
+                                    {/* ITEM NAME */}
 
-                                    <div className="flex items-center gap-1.5 mt-2">
+                                    <div className="mt-2 flex items-center gap-1.5">
                                       <Package
                                         size={14}
                                         style={{
@@ -674,7 +675,7 @@ const Topbar = () => {
                                       />
 
                                       <p
-                                        className="text-sm font-semibold truncate"
+                                        className="truncate text-sm font-semibold"
                                         style={{
                                           color: colors.primaryTeal,
                                         }}
@@ -686,7 +687,7 @@ const Topbar = () => {
                                     {/* STOCK DETAILS */}
 
                                     <div className="mt-2 grid grid-cols-2 gap-2">
-                                      {/* CURRENT */}
+                                      {/* CURRENT STOCK */}
 
                                       <div
                                         className="rounded-lg px-2.5 py-2"
@@ -703,13 +704,13 @@ const Topbar = () => {
                                           Current Stock
                                         </p>
 
-                                        <p className="text-xs font-semibold text-red-600 mt-0.5">
+                                        <p className="mt-0.5 text-xs font-semibold text-red-600">
                                           {item?.currentStock ?? 0}{" "}
                                           {item?.unit || ""}
                                         </p>
                                       </div>
 
-                                      {/* MINIMUM */}
+                                      {/* MINIMUM STOCK */}
 
                                       <div
                                         className="rounded-lg px-2.5 py-2"
@@ -727,7 +728,7 @@ const Topbar = () => {
                                         </p>
 
                                         <p
-                                          className="text-xs font-semibold mt-0.5"
+                                          className="mt-0.5 text-xs font-semibold"
                                           style={{
                                             color: colors.textDark,
                                           }}
@@ -738,10 +739,10 @@ const Topbar = () => {
                                       </div>
                                     </div>
 
-                                    {/* ADMIN MESSAGE */}
+                                    {/* MESSAGE */}
 
                                     <p
-                                      className="text-xs mt-2 leading-5"
+                                      className="mt-2 text-xs leading-5"
                                       style={{
                                         color: colors.textMuted,
                                       }}
@@ -751,11 +752,11 @@ const Topbar = () => {
                                   </>
                                 )}
 
-                                {/* =================================================
-                                      SUPER ADMIN → SUBSCRIPTION
-                                  ================================================= */}
+                                {/* =====================================
+                                    SUPER ADMIN → SUBSCRIPTION
+                                ===================================== */}
 
-                                {isSubscriptionNotification && (
+                                {isSuperAdmin && (
                                   <div
                                     className="mt-2 rounded-lg px-3 py-3"
                                     style={{
@@ -784,12 +785,10 @@ const Topbar = () => {
                                   </div>
                                 )}
 
-                                {/* =================================================
-                                      DATE
-                                  ================================================= */}
+                                {/* DATE */}
 
                                 <p
-                                  className="text-[10px] mt-2"
+                                  className="mt-2 text-[10px]"
                                   style={{
                                     color: colors.textMuted,
                                   }}
@@ -820,14 +819,14 @@ const Topbar = () => {
         <div className="relative flex-shrink-0">
           <button
             type="button"
-            onClick={() => setProfileOpen((value) => !value)}
+            onClick={handleProfileClick}
             className="flex items-center gap-2"
             aria-haspopup="true"
             aria-expanded={profileOpen}
           >
-            <Avatar user={user} className="w-9 h-9 text-xs" />
+            <Avatar user={user} className="h-9 w-9 text-xs" />
 
-            <div className="hidden sm:block text-left leading-tight">
+            <div className="hidden text-left leading-tight sm:block">
               <div
                 className="text-sm font-medium"
                 style={{
@@ -849,28 +848,31 @@ const Topbar = () => {
 
             <ChevronDown
               size={14}
-              className="hidden sm:block transition-transform"
+              className="hidden transition-transform sm:block"
               style={{
                 color: colors.textMuted,
-
                 transform: profileOpen ? "rotate(180deg)" : "none",
               }}
             />
           </button>
 
-          {/* =================================================
+          {/* ===============================================
               PROFILE DROPDOWN
-          ================================================= */}
+          =============================================== */}
 
           {profileOpen && (
             <>
+              {/* OVERLAY */}
+
               <div
                 className="fixed inset-0 z-30"
                 onClick={() => setProfileOpen(false)}
               />
 
+              {/* MENU */}
+
               <div
-                className="absolute right-0 mt-2 w-44 rounded-xl shadow-xl py-1.5 z-40 border"
+                className="absolute right-0 z-40 mt-2 w-48 rounded-xl border py-1.5 shadow-xl"
                 style={{
                   backgroundColor: colors.bgLight,
                   borderColor: colors.cardBorder,
@@ -880,30 +882,28 @@ const Topbar = () => {
 
                 <button
                   type="button"
-                  className="tb-menu-item w-full text-left px-4 py-2 text-sm transition-colors"
+                  className="tb-menu-item w-full px-4 py-2 text-left text-sm transition-colors"
                   style={{
                     color: colors.textDark,
                   }}
                   onClick={() => {
                     setProfileOpen(false);
-
                     navigate(profileRoute);
                   }}
                 >
                   Profile
                 </button>
 
-                {/* SETTINGS */}
+                {/* ACCOUNT SETTINGS */}
 
                 <button
                   type="button"
-                  className="tb-menu-item w-full text-left px-4 py-2 text-sm transition-colors"
+                  className="tb-menu-item w-full px-4 py-2 text-left text-sm transition-colors"
                   style={{
                     color: colors.textDark,
                   }}
                   onClick={() => {
                     setProfileOpen(false);
-
                     navigate(profileRoute);
                   }}
                 >
@@ -924,7 +924,7 @@ const Topbar = () => {
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="tb-menu-item w-full text-left px-4 py-2 text-sm transition-colors"
+                  className="tb-menu-item w-full px-4 py-2 text-left text-sm transition-colors"
                   style={{
                     color: "#E0645C",
                   }}

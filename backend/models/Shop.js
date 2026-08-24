@@ -66,6 +66,35 @@ const Shop = sequelize.define(
       allowNull: true,
     },
 
+    // Tenant branding — the customer storefront renders these dynamically
+    logo: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
+    favicon: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
+    primaryColor: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
+    secondaryColor: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
+    // Subscription plan tier (Free / Basic / Pro / Premium) — limits are
+    // enforced server-side via utils/subscription.js
+    planName: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: "Basic",
+    },
+
     // Subscription
     subscriptionPlan: {
       type: DataTypes.ENUM("Monthly", "Yearly"),

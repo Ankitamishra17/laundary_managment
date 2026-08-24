@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { WashingMachine, Lock, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import toast from "react-hot-toast";
 import { createPassword } from "../../api/authApi";
 
 export default function CreatePassword() {
@@ -51,7 +52,7 @@ export default function CreatePassword() {
     try {
       await createPassword(form);
 
-      alert("Password created successfully. Please login again.");
+      toast.success("Password created successfully. Please login again.");
 
       localStorage.removeItem("token");
       localStorage.removeItem("user");

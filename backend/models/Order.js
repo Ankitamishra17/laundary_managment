@@ -1,6 +1,9 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
 
+// ============================================================
+// ORDER — a customer's laundry order for a shop
+// ============================================================
 const Order = sequelize.define(
   "Order",
   {
@@ -43,25 +46,45 @@ const Order = sequelize.define(
       defaultValue: "pending",
     },
 
-    // Pickup Date & Time
+    // Pickup Date
     pickup_date: {
-      type: DataTypes.DATE,
+      type: DataTypes.DATEONLY,
       allowNull: true,
     },
 
+    // Pickup Time
     pickup_time: {
-      type: DataTypes.DATE,
+      type: DataTypes.STRING,
       allowNull: true,
     },
 
-    // Delivery Date & Time
+    // Pickup Address
+    pickup_address: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+
+    // Delivery Address
+    delivery_address: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+
+    // Delivery Instructions / Notes
+    delivery_note: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+
+    // Delivery Date
     delivery_date: {
-      type: DataTypes.DATE,
+      type: DataTypes.DATEONLY,
       allowNull: true,
     },
 
+    // Delivery Time
     delivery_time: {
-      type: DataTypes.DATE,
+      type: DataTypes.STRING,
       allowNull: true,
     },
 

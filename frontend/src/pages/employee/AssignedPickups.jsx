@@ -94,7 +94,7 @@ function EmptyState() {
       <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: "#EEF7F6" }}>
         <Truck size={24} className="text-[#028090]" strokeWidth={1.7} />
       </div>
-      <p className="text-sm font-medium text-[#0F2C2E]">No pickups scheduled for today</p>
+      <p className="text-sm font-medium text-[#0F2C2E]">No pickups scheduled</p>
       <p className="text-xs text-[#6B8482] mt-1">When your admin assigns a pickup, it will show up here.</p>
     </div>
   );
@@ -145,7 +145,7 @@ export default function AssignedPickups() {
                 Assigned Pickups
               </h1>
               <p className="text-xs sm:text-sm text-[#6B8482] mt-0.5">
-                Pickups scheduled for you today — collect them on time.
+                Your pickups from today onwards — collect them on time.
               </p>
             </div>
           </div>

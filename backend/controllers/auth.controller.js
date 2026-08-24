@@ -3,6 +3,8 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import Employee from "../models/Employee.js";
+import Customer from "../models/Customer.js";
+import Shop from "../models/Shop.js";
 import generateToken from "../utils/generateToken.js";
 import { sendResetOtpEmail } from "../utils/Email.js";
 
@@ -230,6 +232,116 @@ export const resetPassword = async (req, res) => {
   }
 };
 
+// ============================================================
+// Customer self sign-up (public)
+// Creates the login account (users table, role "customer") plus
+// the customer profile record (customers table).
+// ============================================================
+export const register = async (req, res) => {
+  try {
+    const { name, email, phone, password, shopId, address, city } = req.body;
+
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Please fill all required fields.",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters.",
+      });
+    }
+
+    // Unique email
+    const existing = await User.findOne({ where: { email } });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email already exists.",
+      });
+    }
+
+    // Resolve the laundry this customer belongs to. If the frontend
+    // supplies a shopId (e.g. deep link from a specific laundry), use it;
+    // otherwise auto-assign the platform's first active laundry so the
+    // customer is never orphaned with a null shopId.
+    let resolvedShopId = null;
+    if (shopId) {
+      const shop = await Shop.findOne({
+        where: { id: shopId, isActive: true, subscriptionStatus: "Active" },
+      });
+      if (shop) {
+        resolvedShopId = Number(shopId);
+      }
+    }
+    if (!resolvedShopId) {
+      const defaultShop = await Shop.findOne({
+        where: { isActive: true, subscriptionStatus: "Active" },
+        order: [["createdAt", "ASC"]],
+      });
+      if (defaultShop) resolvedShopId = defaultShop.id;
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await User.create({
+      name,
+      email,
+      phone,
+      password: hashedPassword,
+      role: "customer",
+      shopId: resolvedShopId,
+      mustChangePassword: false,
+      isActive: true,
+    });
+
+    await Customer.create({
+      userId: user.id,
+      shopId: resolvedShopId,
+      name,
+      email,
+      phone,
+      address: address || null,
+      city: city || null,
+    });
+
+    const token = generateToken(user, "user");
+
+    return res.status(201).json({
+      success: true,
+      message: "Account created successfully. Welcome aboard!",
+      token,
+      mustChangePassword: false,
+      user: {
+        id: user.id,
+        shopId: user.shopId,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        avatar: user.avatar,
+      },
+    });
+  } catch (error) {
+    console.error("Register Error:", error);
+
+    if (error.name === "SequelizeUniqueConstraintError") {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email or phone already exists.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -284,6 +396,7 @@ export const login = async (req, res) => {
           email: user.email,
           phone: user.phone,
           role: user.role,
+          avatar: user.avatar,
         },
       });
     }

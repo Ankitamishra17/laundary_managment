@@ -1,28 +1,20 @@
-import axios from "axios";
-import { setupSessionInterceptor } from "./session";
+import api from "./axios";
 
-const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL}/api/tasks`,
-});
-
-setupSessionInterceptor(api);
-
-// attach the JWT on every request — no need to pass it manually each call
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
+// All paths are relative to the shared baseURL (/api).
 export const taskApi = {
   // Admin
-  getAllTasks: (params) => api.get("/", { params }).then((r) => r.data.data),
-  assignTask: (payload) => api.post("/", payload).then((r) => r.data.data),
+  getAllTasks: (params) => api.get("/tasks", { params }).then((r) => r.data.data),
+  assignTask: (payload) => api.post("/tasks", payload).then((r) => r.data.data),
+  getOrderTasks: (orderId) => api.get(`/tasks/order/${orderId}`).then((r) => r.data.data),
+  reassignTask: (taskId, employee_id) => api.patch(`/tasks/${taskId}/reassign`, { employee_id }).then((r) => r.data.data),
+  getAdminTaskHistory: (params) => api.get("/tasks/history", { params }).then((r) => r.data.data),
 
   // Employee
-  getMyTasks: (params) => api.get("/my-tasks", { params }).then((r) => r.data.data),
-  getMyTaskStats: (params) => api.get("/my-tasks/stats", { params }).then((r) => r.data.data),
-  getTaskById: (id) => api.get(`/${id}`).then((r) => r.data.data),
-  updateStatus: (id, status) => api.patch(`/${id}/status`, { status }).then((r) => r.data.data),
-  updateNotes: (id, notes) => api.patch(`/${id}/notes`, { notes }).then((r) => r.data.data),
+  getMyTasks: (params) => api.get("/tasks/my-tasks", { params }).then((r) => r.data.data),
+  getMyTaskStats: (params) => api.get("/tasks/my-tasks/stats", { params }).then((r) => r.data.data),
+  getMyTaskHistory: (params) => api.get("/tasks/my-history", { params }).then((r) => r.data.data),
+  getTaskById: (id) => api.get(`/tasks/${id}`).then((r) => r.data.data),
+  updateStatus: (id, status) => api.patch(`/tasks/${id}/status`, { status }).then((r) => r.data.data),
+  updateNotes: (id, notes) => api.patch(`/tasks/${id}/notes`, { notes }).then((r) => r.data.data),
+  getMyCustomerTasks: () => api.get("/tasks/my-customer-tasks").then((r) => r.data.data),
 };

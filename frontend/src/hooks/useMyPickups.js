@@ -1,29 +1,35 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import toast from "react-hot-toast";
 import { taskApi } from "../api/taskApi";
 
-function todayStr() {
+function startOfToday() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
 /**
- * useMyPickups — loads the logged-in employee's pickup tasks scheduled for
- * today, and derives stats + status filtering client-side (the dataset is
- * small, so no extra server round-trips are needed).
+ * useMyPickups — loads the logged-in employee's pickup tasks scheduled from
+ * today onward (so pickups assigned for tomorrow are visible too, not just
+ * today's), derives stats + status filters client-side, and polls every 30s
+ * so new assignments appear without a manual refresh.
  */
 export function useMyPickups() {
-  const [all, setAll] = useState([]); // every pickup task for today
+  const [all, setAll] = useState([]); // every pickup task from today onwards
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
 
-  const fetchPickups = useCallback(async () => {
+  const fetchPickups = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
-      const data = await taskApi.getMyTasks({ type: "pickup", date: todayStr() });
-      setAll(Array.isArray(data) ? data : []);
+      const data = await taskApi.getMyTasks({ type: "pickup" });
+      const fromToday = (Array.isArray(data) ? data : []).filter(
+        (t) => new Date(t.scheduled_time) >= startOfToday(),
+      );
+      setAll(fromToday);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to load pickups");
     } finally {
@@ -33,6 +39,8 @@ export function useMyPickups() {
 
   useEffect(() => {
     fetchPickups();
+    const t = setInterval(() => fetchPickups(true), 10000);
+    return () => clearInterval(t);
   }, [fetchPickups]);
 
   const stats = useMemo(() => {
@@ -56,9 +64,15 @@ export function useMyPickups() {
     try {
       await taskApi.updateStatus(taskId, newStatus);
       setError(null);
+      // Refresh silently so the derived stats reflect the change
+      fetchPickups(true);
+      if (newStatus === "in_progress") toast.success("Pickup started");
+      else if (newStatus === "completed") toast.success("Pickup completed");
     } catch (err) {
       setAll(previous);
-      setError(err.response?.data?.message || "Failed to update pickup");
+      const msg = err.response?.data?.message || "Failed to update pickup";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setUpdatingId(null);
     }
@@ -66,7 +80,7 @@ export function useMyPickups() {
 
   return {
     tasks, // filtered by statusFilter
-    all, // unfiltered pickup tasks (today)
+    all, // unfiltered pickup tasks (today onwards)
     stats,
     statusFilter,
     setStatusFilter,

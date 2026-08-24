@@ -1,19 +1,28 @@
-const express = require("express");
+import express from "express";
+import protect from "../middleware/authMiddleware.js";
+import allowRoles from "../middleware/roleMiddleware.js";
+import {
+  getMyAssignedOrders,
+  getMyOrderById,
+  updateOrderStatus,
+  markPickupDone,
+  markDeliveryDone,
+  generateReceipt,
+  getMyProfile,
+} from "../controllers/employee.controller.js";
+
 const router = express.Router();
-const employeeOrderController = require("../controllers/employeeOrder.controller");
-const { protect } = require("../middleware/auth");
-const { authorizeRoles } = require("../middleware/role");
 
-router.use(protect); // login required
-router.use(authorizeRoles("employee")); // sirf employee access kar sake
+router.use(protect);
+router.use(allowRoles("employee"));
 
-router.get("/my-orders", employeeOrderController.getMyAssignedOrders);
-router.get("/my-orders/:id", employeeOrderController.getMyOrderById);
-router.patch("/my-orders/:id/status", employeeOrderController.updateOrderStatus);
-router.patch("/my-orders/:id/pickup", employeeOrderController.markPickupDone);
-router.patch("/my-orders/:id/delivery", employeeOrderController.markDeliveryDone);
-router.get("/my-orders/:id/receipt", employeeOrderController.generateReceipt);
-router.get("/profile/me", employeeOrderController.getMyProfile);
+router.get("/my-orders", getMyAssignedOrders);
+router.get("/my-orders/:id", getMyOrderById);
+router.patch("/my-orders/:id/status", updateOrderStatus);
+router.patch("/my-orders/:id/pickup", markPickupDone);
+router.patch("/my-orders/:id/delivery", markDeliveryDone);
+router.get("/my-orders/:id/receipt", generateReceipt);
+router.get("/profile/me", getMyProfile);
 
-module.exports = router;
+export default router;
  

@@ -1,8 +1,7 @@
-const PDFDocument = require("pdfkit");
-const { Order, Customer, Shop, Service, Employee, Salary } = require("../models");
+import { Order, Customer, Shop, Employee, Service, OrderItem } from "../models/index.js";
 
-// 1. Employee ke saare assigned orders dekhna
-exports.getMyAssignedOrders = async (req, res) => {
+// 1. Employee orders
+export const getMyAssignedOrders = async (req, res) => {
   try {
     const employeeId = req.user.id; // auth middleware se aayega
     const { status } = req.query;
@@ -13,8 +12,9 @@ exports.getMyAssignedOrders = async (req, res) => {
     const orders = await Order.findAll({
       where,
       include: [
-        { model: Customer, attributes: ["id", "name", "phone", "address"] },
-        { model: Shop, attributes: ["id", "name", "location"] },
+        { model: Customer, as: "customer", attributes: ["id", "name", "phone", "address"] },
+        { model: Shop, as: "shop", attributes: ["id", "name", "address", "city"] },
+        { model: OrderItem, as: "items" },
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -26,15 +26,15 @@ exports.getMyAssignedOrders = async (req, res) => {
 };
 
 // 2. Single order ki detail dekhna (sirf apna assigned order)
-exports.getMyOrderById = async (req, res) => {
+export const getMyOrderById = async (req, res) => {
   try {
     const employeeId = req.user.id;
     const order = await Order.findOne({
       where: { id: req.params.id, employee_id: employeeId },
       include: [
-        { model: Customer, attributes: ["id", "name", "phone", "address"] },
-        { model: Shop, attributes: ["id", "name", "location"] },
-        { model: Service },
+        { model: Customer, as: "customer", attributes: ["id", "name", "phone", "address"] },
+        { model: Shop, as: "shop", attributes: ["id", "name", "address", "city"] },
+        { model: OrderItem, as: "items" },
       ],
     });
 
@@ -49,7 +49,7 @@ exports.getMyOrderById = async (req, res) => {
 };
 
 // 3. Order status update karna (employee ke allowed statuses)
-exports.updateOrderStatus = async (req, res) => {
+export const updateOrderStatus = async (req, res) => {
   try {
     const employeeId = req.user.id;
     const { status } = req.body;
@@ -93,7 +93,7 @@ exports.updateOrderStatus = async (req, res) => {
 };
 
 // 4. Pickup complete mark karna (shortcut endpoint)
-exports.markPickupDone = async (req, res) => {
+export const markPickupDone = async (req, res) => {
   try {
     const employeeId = req.user.id;
     const order = await Order.findOne({
@@ -115,7 +115,7 @@ exports.markPickupDone = async (req, res) => {
 };
 
 // 5. Delivery complete mark karna (shortcut endpoint)
-exports.markDeliveryDone = async (req, res) => {
+export const markDeliveryDone = async (req, res) => {
   try {
     const employeeId = req.user.id;
     const order = await Order.findOne({
@@ -137,15 +137,15 @@ exports.markDeliveryDone = async (req, res) => {
 };
 
 // 6. Receipt data generate karna
-exports.generateReceipt = async (req, res) => {
+export const generateReceipt = async (req, res) => {
   try {
     const employeeId = req.user.id;
     const order = await Order.findOne({
       where: { id: req.params.id, employee_id: employeeId },
       include: [
-        { model: Customer, attributes: ["id", "name", "phone", "address"] },
-        { model: Shop, attributes: ["id", "name", "location"] },
-        { model: Service },
+        { model: Customer, as: "customer", attributes: ["id", "name", "phone", "address"] },
+        { model: Shop, as: "shop", attributes: ["id", "name", "address", "city"] },
+        { model: OrderItem, as: "items" },
       ],
     });
 
@@ -156,10 +156,10 @@ exports.generateReceipt = async (req, res) => {
     const receipt = {
       receipt_no: `RCPT-${order.id}`,
       date: new Date().toLocaleDateString(),
-      customer_name: order.Customer?.name,
-      customer_phone: order.Customer?.phone,
-      shop_name: order.Shop?.name,
-      services: order.Services || order.Service,
+      customer_name: order.customer?.name,
+      customer_phone: order.customer?.phone,
+      shop_name: order.shop?.name,
+      items: order.items || [],
       total_amount: order.total_amount,
       payment_status: order.payment_status,
       order_status: order.status,
@@ -172,7 +172,7 @@ exports.generateReceipt = async (req, res) => {
 };
 
 // 7. Employee ka apna profile dekhna
-exports.getMyProfile = async (req, res) => {
+export const getMyProfile = async (req, res) => {
   try {
     const employee = await Employee.findByPk(req.user.id, {
       attributes: { exclude: ["password"] },
@@ -187,7 +187,7 @@ exports.getMyProfile = async (req, res) => {
 };
 
 // 8. Employee reset password (logged-in employee apna password badal sakta hai)
-exports.resetPassword = async (req, res) => {
+export const resetPassword = async (req, res) => {
   try {
     const employeeId = req.user.id;
     const { old_password, new_password, confirm_password } = req.body;
@@ -235,7 +235,7 @@ exports.resetPassword = async (req, res) => {
 };
 
 // 9. Update employee profile (sirf apni profile ke allowed fields)
-exports.updateMyProfile = async (req, res) => {
+export const updateMyProfile = async (req, res) => {
   try {
     const employeeId = req.user.id;
     const { name, phone, designation, email } = req.body;
@@ -275,15 +275,15 @@ exports.updateMyProfile = async (req, res) => {
 };
 
 // 10. Payment receipt (order ke payment details ki receipt)
-exports.getPaymentReceipt = async (req, res) => {
+export const getPaymentReceipt = async (req, res) => {
   try {
     const employeeId = req.user.id;
     const order = await Order.findOne({
       where: { id: req.params.id, employee_id: employeeId },
       include: [
-        { model: Customer, attributes: ["id", "name", "phone", "address"] },
-        { model: Shop, attributes: ["id", "name", "location"] },
-        { model: Service },
+        { model: Customer, as: "customer", attributes: ["id", "name", "phone", "address"] },
+        { model: Shop, as: "shop", attributes: ["id", "name", "address", "city"] },
+        { model: OrderItem, as: "items" },
       ],
     });
 
@@ -294,9 +294,9 @@ exports.getPaymentReceipt = async (req, res) => {
     const paymentReceipt = {
       receipt_no: `PAY-${order.id}`,
       date: new Date().toLocaleDateString(),
-      customer_name: order.Customer?.name,
-      customer_phone: order.Customer?.phone,
-      shop_name: order.Shop?.name,
+      customer_name: order.customer?.name,
+      customer_phone: order.customer?.phone,
+      shop_name: order.shop?.name,
       total_amount: order.total_amount,
       payment_status: order.payment_status, // "paid" | "unpaid" | "partial"
       order_status: order.status,
@@ -308,124 +308,17 @@ exports.getPaymentReceipt = async (req, res) => {
   }
 };
 
-// 11. Employee ki apni saari salary history dekhna
-exports.getMySalaries = async (req, res) => {
-  try {
-    const employeeId = req.user.id;
-    const { year, month } = req.query;
-
-    const where = { employee_id: employeeId };
-    if (year) where.year = year;
-    if (month) where.month = month;
-
-    const salaries = await Salary.findAll({
-      where,
-      order: [
-        ["year", "DESC"],
-        ["month", "DESC"],
-      ],
-    });
-
-    return res.status(200).json({ success: true, data: salaries });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+// 11. Employee salary history — requires Salary model (not yet available)
+export const getMySalaries = async (req, res) => {
+  return res.status(501).json({ success: false, message: "Salary module is not yet available." });
 };
 
-// 12. Ek specific salary record ki detail (sirf apni)
-exports.getMySalaryById = async (req, res) => {
-  try {
-    const employeeId = req.user.id;
-    const salary = await Salary.findOne({
-      where: { id: req.params.id, employee_id: employeeId },
-    });
-
-    if (!salary) {
-      return res.status(404).json({ success: false, message: "Salary record not found" });
-    }
-
-    return res.status(200).json({ success: true, data: salary });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+// 12. Specific salary record
+export const getMySalaryById = async (req, res) => {
+  return res.status(501).json({ success: false, message: "Salary module is not yet available." });
 };
 
-// 13. Salary slip PDF generate karke download karna
-exports.downloadSalarySlip = async (req, res) => {
-  try {
-    const employeeId = req.user.id;
-
-    const salary = await Salary.findOne({
-      where: { id: req.params.id, employee_id: employeeId },
-    });
-
-    if (!salary) {
-      return res.status(404).json({ success: false, message: "Salary record not found" });
-    }
-
-    const employee = await Employee.findByPk(employeeId, {
-      attributes: { exclude: ["password"] },
-      include: [{ model: Shop, attributes: ["id", "name", "location"] }],
-    });
-
-    if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
-    }
-
-    const monthNames = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December",
-    ];
-    const monthLabel = monthNames[salary.month - 1] || salary.month;
-
-    const fileName = `salary-slip-${employee.id}-${salary.month}-${salary.year}.pdf`;
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
-    doc.pipe(res);
-
-    // Header
-    doc.fontSize(18).text("Salary Slip", { align: "center" });
-    doc.moveDown(0.3);
-    doc.fontSize(11).text(`${monthLabel} ${salary.year}`, { align: "center" });
-    doc.moveDown(1.5);
-
-    // Employee details
-    doc.fontSize(12).text(`Employee Name: ${employee.name}`);
-    doc.text(`Employee ID: ${employee.id}`);
-    doc.text(`Designation: ${employee.designation || "-"}`);
-    doc.text(`Shop: ${employee.Shop?.name || "-"}`);
-    doc.text(`Email: ${employee.email}`);
-    doc.moveDown(1);
-
-    // Salary breakdown table (simple layout)
-    doc.fontSize(13).text("Salary Breakdown", { underline: true });
-    doc.moveDown(0.5);
-
-    const rows = [
-      ["Basic Salary", salary.basic_salary],
-      ["Allowances", salary.allowances],
-      ["Deductions", `- ${salary.deductions}`],
-      ["Net Salary", salary.net_salary],
-    ];
-
-    rows.forEach(([label, value]) => {
-      doc.fontSize(11).text(`${label}:`, { continued: true }).text(`  ${value}`, { align: "right" });
-    });
-
-    doc.moveDown(1);
-    doc.fontSize(11).text(`Payment Status: ${salary.payment_status}`);
-    doc.text(`Payment Mode: ${salary.payment_mode || "-"}`);
-    doc.text(
-      `Payment Date: ${salary.payment_date ? new Date(salary.payment_date).toLocaleDateString() : "-"}`
-    );
-
-    doc.moveDown(2);
-    doc.fontSize(9).text("This is a system-generated salary slip.", { align: "center" });
-
-    doc.end();
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+// 13. Salary slip PDF
+export const downloadSalarySlip = async (req, res) => {
+  return res.status(501).json({ success: false, message: "Salary module is not yet available." });
 };

@@ -1,5 +1,11 @@
 import api from "./axios";
 
+// Customer sign-up (creates account, returns token + user)
+export const registerUser = async (signupData) => {
+  const response = await api.post("/auth/register", signupData);
+  return response.data;
+};
+
 // Login
 export const loginUser = async (loginData) => {
   const response = await api.post("/auth/login", loginData);

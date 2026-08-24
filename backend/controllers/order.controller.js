@@ -1,154 +1,286 @@
-const { Order, Customer, Shop, Employee, Service, sequelize } = require("../models");
-const { Op } = require("sequelize");
+import { Op } from "sequelize";
+import sequelize from "../config/database.js";
 
-// 1. Naya order create karna
-exports.createOrder = async (req, res) => {
+import Order from "../models/Order.js";
+import OrderItem from "../models/OrderItem.js";
+import Customer from "../models/Customer.js";
+import Shop from "../models/Shop.js";
+import Service from "../models/Service.js";
+import Employee from "../models/Employee.js";
+import { notifyShopAdmins, notifyCustomer } from "./notification.controller.js";
+import { getShopPlan, countShopOrdersThisMonth } from "../utils/subscription.js";
+
+const STATUS_LABELS = {
+  pending: "Pending",
+  picked_up: "Picked Up",
+  processing: "Processing",
+  ready_for_delivery: "Ready for Delivery",
+  out_for_delivery: "Out for Delivery",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
+};
+
+const VALID_STATUSES = [
+  "pending",
+  "picked_up",
+  "processing",
+  "ready_for_delivery",
+  "out_for_delivery",
+  "delivered",
+  "cancelled",
+];
+
+const VALID_PAYMENT_STATUSES = ["paid", "unpaid", "partial"];
+
+// ------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------
+
+// The Customer record belonging to the logged-in user (users table)
+async function getCustomerForUser(userId) {
+  return Customer.findOne({ where: { userId } });
+}
+
+const ORDER_INCLUDES = [
+  { model: OrderItem, as: "items" },
+  {
+    model: Shop,
+    as: "shop",
+    attributes: ["id", "name", "shopCode", "city", "address", "phone"],
+  },
+];
+
+// ============================================================
+// CUSTOMER — place a new order
+// Customers may order from their linked laundry (account shopId) or
+// pick any active laundry at order time (body shopId). Unlinked
+// accounts are automatically linked to the chosen shop after the
+// first order. Order lines carry an optional clothes label.
+// POST /api/orders   { shopId, pickupDate, pickupTime, pickupAddress,
+//                      deliveryAddress, deliveryDate, deliveryNote,
+//                      items: [{ serviceId, quantity, itemLabel }] }
+// ============================================================
+export const createOrder = async (req, res) => {
   const t = await sequelize.transaction();
-  try {
-    const { customer_id, shop_id, employee_id, services, payment_status } = req.body;
 
-    if (!customer_id || !shop_id) {
-      await t.rollback();
-      return res.status(400).json({ success: false, message: "customer_id and shop_id are required" });
+  try {
+    const {
+      shopId: bodyShopId,
+      pickupDate,
+      pickupTime,
+      pickupAddress,
+      deliveryAddress,
+      deliveryDate,
+      deliveryNote,
+      items,
+    } = req.body;
+
+    // The laundry to order from: the customer's linked laundry, or — for
+    // accounts that haven't ordered yet — WashFlow's first active laundry.
+    // Customers never pick a laundry themselves; the order always belongs to
+    // the WashFlow business context. The resolved shop is validated below,
+    // so an order can only go to an active, subscribed shop.
+    let shopId = Number(bodyShopId) || req.user.shopId;
+
+    if (!shopId) {
+      const defaultShop = await Shop.findOne({
+        where: { isActive: true, subscriptionStatus: "Active" },
+        order: [["createdAt", "ASC"]],
+      });
+      shopId = defaultShop ? defaultShop.id : null;
     }
 
-    const customer = await Customer.findByPk(customer_id);
+    if (!shopId) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "No laundry is available right now. Please check back soon.",
+      });
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Please add at least one service to your order.",
+      });
+    }
+
+    const customer = await getCustomerForUser(req.user.id);
     if (!customer) {
       await t.rollback();
-      return res.status(404).json({ success: false, message: "Customer not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Customer profile not found. Please contact support.",
+      });
     }
 
-    const shop = await Shop.findByPk(shop_id);
-    if (!shop) {
+    const shop = await Shop.findByPk(Number(shopId));
+    const shopPlan = await getShopPlan(shop?.id);
+    if (!shop || !shopPlan.allowed) {
       await t.rollback();
-      return res.status(404).json({ success: false, message: "Shop not found" });
+      return res.status(400).json({
+        success: false,
+        message: shopPlan?.message || "Your laundry is not available right now.",
+      });
     }
 
-    if (employee_id) {
-      const employee = await Employee.findByPk(employee_id);
-      if (!employee) {
+    // Subscription plan cap — enforce the monthly order limit server-side.
+    if (shopPlan.limits?.maxMonthlyOrders) {
+      const monthCount = await countShopOrdersThisMonth(shop.id);
+      if (monthCount >= shopPlan.limits.maxMonthlyOrders) {
         await t.rollback();
-        return res.status(404).json({ success: false, message: "Employee not found" });
+        return res.status(403).json({
+          success: false,
+          message: `Your ${shopPlan.planName} plan allows up to ${shopPlan.limits.maxMonthlyOrders} orders per month. Please contact the platform to upgrade.`,
+        });
       }
     }
 
-    // services: [{ name, price, quantity }, ...]
-    let total_amount = 0;
-    if (Array.isArray(services) && services.length > 0) {
-      total_amount = services.reduce((sum, s) => {
-        const price = Number(s.price) || 0;
-        const qty = Number(s.quantity) || 1;
-        return sum + price * qty;
-      }, 0);
+    // Validate each line against the shop's active catalog
+    const serviceIds = [...new Set(items.map((i) => Number(i.serviceId)))];
+    const catalog = await Service.findAll({
+      where: {
+        id: { [Op.in]: serviceIds },
+        shopId: shop.id,
+        isDeleted: false,
+        status: "Active",
+      },
+    });
+    const catalogById = new Map(catalog.map((s) => [Number(s.id), s]));
+
+    const lineItems = [];
+    let totalAmount = 0;
+
+    for (const item of items) {
+      const service = catalogById.get(Number(item.serviceId));
+      if (!service) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "One of the selected services is no longer available.",
+        });
+      }
+
+      const quantity = Math.max(1, Number(item.quantity) || 1);
+      const price = Number(service.price) || 0;
+      const lineTotal = price * quantity;
+
+      totalAmount += lineTotal;
+      lineItems.push({
+        serviceId: service.id,
+        name: service.serviceName,
+        price,
+        quantity,
+        lineTotal,
+        // Optional clothes label the customer typed, e.g. "Shirt"
+        item_label: String(item.itemLabel || "").trim().slice(0, 150) || null,
+      });
     }
+
+    // Delivery defaults to the pickup address unless the customer gave a
+    // separate delivery address.
+    const resolvedDeliveryAddress =
+      String(deliveryAddress || "").trim() || String(pickupAddress || "").trim() || null;
 
     const order = await Order.create(
       {
-        customer_id,
-        shop_id,
-        employee_id: employee_id || null,
+        customer_id: customer.id,
+        shop_id: shop.id,
         status: "pending",
-        total_amount,
-        payment_status: payment_status || "unpaid",
+        total_amount: totalAmount,
+        payment_status: "unpaid",
+        pickup_date: pickupDate || null,
+        pickup_time: pickupTime || null,
+        pickup_address: String(pickupAddress || "").trim() || null,
+        delivery_address: resolvedDeliveryAddress,
+        delivery_date: deliveryDate || null,
+        delivery_note: String(deliveryNote || "").trim() || null,
       },
-      { transaction: t }
+      { transaction: t },
     );
 
-    if (Array.isArray(services) && services.length > 0) {
-      const serviceRows = services.map((s) => ({
-        order_id: order.id,
-        name: s.name,
-        price: s.price,
-        quantity: s.quantity || 1,
-      }));
-      await Service.bulkCreate(serviceRows, { transaction: t });
+    await OrderItem.bulkCreate(
+      lineItems.map((line) => ({ ...line, orderId: order.id })),
+      { transaction: t },
+    );
+
+    // Auto-link the customer to this laundry if their account has no
+    // default yet, so future orders default to the same shop.
+    if (!customer.shopId || !req.user.shopId) {
+      customer.shopId = shop.id;
+      await customer.save({ transaction: t });
+
+      if (!req.user.shopId) {
+        req.user.shopId = shop.id;
+        await req.user.save({ transaction: t });
+      }
     }
 
     await t.commit();
 
-    const createdOrder = await Order.findByPk(order.id, {
-      include: [
-        { model: Customer, attributes: ["id", "name", "phone", "address"] },
-        { model: Shop, attributes: ["id", "name", "location"] },
-        { model: Employee, attributes: ["id", "name", "phone"] },
-        { model: Service },
-      ],
+    const created = await Order.findByPk(order.id, {
+      include: ORDER_INCLUDES,
     });
 
-    return res.status(201).json({ success: true, message: "Order created", data: createdOrder });
+    // Let the shop admins know a new order came in.
+    await notifyShopAdmins(shop.id, {
+      title: "New order received",
+      message: `${customer.name} placed order #${order.id} for ${totalAmount.toLocaleString("en-IN")} — pending pickup.`,
+      type: "order",
+      link: "/admin/orders",
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Order placed successfully. We'll pick it up soon!",
+      data: created,
+    });
   } catch (error) {
     await t.rollback();
+    console.error("Create Order Error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// 2. Saare orders dekhna (filters + pagination ke saath)
-exports.getAllOrders = async (req, res) => {
+// ============================================================
+// CUSTOMER — my orders
+// GET /api/orders/mine
+// ============================================================
+export const getMyOrders = async (req, res) => {
   try {
-    const {
-      status,
-      payment_status,
-      shop_id,
-      employee_id,
-      customer_id,
-      from_date,
-      to_date,
-      page = 1,
-      limit = 20,
-    } = req.query;
-
-    const where = {};
-    if (status) where.status = status;
-    if (payment_status) where.payment_status = payment_status;
-    if (shop_id) where.shop_id = shop_id;
-    if (employee_id) where.employee_id = employee_id;
-    if (customer_id) where.customer_id = customer_id;
-    if (from_date || to_date) {
-      where.createdAt = {};
-      if (from_date) where.createdAt[Op.gte] = new Date(from_date);
-      if (to_date) where.createdAt[Op.lte] = new Date(to_date);
+    const customer = await getCustomerForUser(req.user.id);
+    if (!customer) {
+      return res.status(200).json({ success: true, data: [] });
     }
 
-    const offset = (Number(page) - 1) * Number(limit);
-
-    const { count, rows } = await Order.findAndCountAll({
-      where,
-      include: [
-        { model: Customer, attributes: ["id", "name", "phone", "address"] },
-        { model: Shop, attributes: ["id", "name", "location"] },
-        { model: Employee, attributes: ["id", "name", "phone"] },
-        { model: Service },
-      ],
+    const orders = await Order.findAll({
+      where: { customer_id: customer.id },
+      include: ORDER_INCLUDES,
       order: [["createdAt", "DESC"]],
-      limit: Number(limit),
-      offset,
     });
 
-    return res.status(200).json({
-      success: true,
-      data: rows,
-      pagination: {
-        total: count,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(count / Number(limit)),
-      },
-    });
+    return res.status(200).json({ success: true, data: orders });
   } catch (error) {
+    console.error("Get My Orders Error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// 3. Single order ki poori detail
-exports.getOrderById = async (req, res) => {
+// ============================================================
+// CUSTOMER — one of my orders
+// GET /api/orders/:id
+// ============================================================
+export const getMyOrderById = async (req, res) => {
   try {
-    const order = await Order.findByPk(req.params.id, {
-      include: [
-        { model: Customer, attributes: ["id", "name", "phone", "address"] },
-        { model: Shop, attributes: ["id", "name", "location"] },
-        { model: Employee, attributes: ["id", "name", "phone"] },
-        { model: Service },
-      ],
+    const customer = await getCustomerForUser(req.user.id);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    const order = await Order.findOne({
+      where: { id: req.params.id, customer_id: customer.id },
+      include: ORDER_INCLUDES,
     });
 
     if (!order) {
@@ -157,118 +289,169 @@ exports.getOrderById = async (req, res) => {
 
     return res.status(200).json({ success: true, data: order });
   } catch (error) {
+    console.error("Get Order Error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// 4. Order ki basic details update karna (customer/shop/amount waghera)
-exports.updateOrder = async (req, res) => {
+// ============================================================
+// CUSTOMER — cancel a pending order
+// PATCH /api/orders/:id/cancel
+// ============================================================
+export const cancelMyOrder = async (req, res) => {
   try {
-    const { customer_id, shop_id, total_amount, payment_status } = req.body;
+    const customer = await getCustomerForUser(req.user.id);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
 
-    const order = await Order.findByPk(req.params.id);
+    const order = await Order.findOne({
+      where: { id: req.params.id, customer_id: customer.id },
+    });
+
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
-    if (customer_id !== undefined) order.customer_id = customer_id;
-    if (shop_id !== undefined) order.shop_id = shop_id;
-    if (total_amount !== undefined) order.total_amount = total_amount;
-    if (payment_status !== undefined) order.payment_status = payment_status;
+    if (order.status !== "pending") {
+      return res.status(400).json({
+        success: false,
+        message: "Only pending orders can be cancelled.",
+      });
+    }
 
+    order.status = "cancelled";
     await order.save();
 
-    return res.status(200).json({ success: true, message: "Order updated", data: order });
+    // Let the shop admins know the order was cancelled.
+    await notifyShopAdmins(order.shop_id, {
+      title: "Order cancelled",
+      message: `Order #${order.id} was cancelled by the customer.`,
+      type: "order",
+      link: "/admin/orders",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Order cancelled successfully.",
+      data: order,
+    });
   } catch (error) {
+    console.error("Cancel Order Error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// 5. Order ka status admin/shop-owner ki taraf se force update (koi bhi valid status)
-exports.updateOrderStatusByAdmin = async (req, res) => {
+// ============================================================
+// ADMIN — all orders of my shop
+// GET /api/orders
+// ============================================================
+// Orders are scoped to the admin's shop. Super admins (no shopId) see every
+// shop's orders. A null/undefined shop filter would match `shop_id IS NULL`
+// and return nothing — which is exactly why the filter is only applied when
+// the account actually has a shop.
+export const getShopOrders = async (req, res) => {
+  try {
+    const { status, payment_status } = req.query;
+    const where = {};
+    if (req.user.shopId) where.shop_id = req.user.shopId;
+
+    if (status) where.status = status;
+    if (payment_status) where.payment_status = payment_status;
+
+    const orders = await Order.findAll({
+      where,
+      include: [
+        ...ORDER_INCLUDES,
+        { model: Customer, as: "customer", attributes: ["id", "name", "phone", "address", "city"] },
+        {
+          model: Employee,
+          as: "employee",
+          attributes: ["id", "name"],
+          required: false,
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    return res.status(200).json({ success: true, data: orders });
+  } catch (error) {
+    console.error("Get Shop Orders Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================
+// ADMIN — update order status
+// PATCH /api/orders/:id/status   { status }
+// ============================================================
+export const updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
 
-    const allowedStatuses = [
-      "pending",
-      "picked_up",
-      "processing",
-      "ready_for_delivery",
-      "out_for_delivery",
-      "delivered",
-      "cancelled",
-    ];
-
-    if (!allowedStatuses.includes(status)) {
+    if (!VALID_STATUSES.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid status. Allowed: ${allowedStatuses.join(", ")}`,
+        message: `Invalid status. Allowed: ${VALID_STATUSES.join(", ")}`,
       });
     }
 
-    const order = await Order.findByPk(req.params.id);
+    const where = { id: req.params.id };
+    if (req.user.shopId) where.shop_id = req.user.shopId;
+
+    const order = await Order.findOne({ where });
+
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
     order.status = status;
-    if (status === "picked_up") order.pickup_time = new Date();
+    // Note: pickup_time is the customer's preferred pickup time (string) —
+    // never overwrite it with a Date here.
     if (status === "delivered") order.delivery_time = new Date();
 
     await order.save();
 
-    return res.status(200).json({ success: true, message: "Order status updated", data: order });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// 6. Order ko employee assign / reassign karna
-exports.assignEmployeeToOrder = async (req, res) => {
-  try {
-    const { employee_id } = req.body;
-
-    if (!employee_id) {
-      return res.status(400).json({ success: false, message: "employee_id is required" });
-    }
-
-    const employee = await Employee.findByPk(employee_id);
-    if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
-    }
-
-    const order = await Order.findByPk(req.params.id);
-    if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
-
-    order.employee_id = employee_id;
-    await order.save();
-
-    const updatedOrder = await Order.findByPk(order.id, {
-      include: [{ model: Employee, attributes: ["id", "name", "phone"] }],
+    // Tell the customer their order moved forward.
+    const customer = await Customer.findOne({ where: { id: order.customer_id } });
+    await notifyCustomer(customer, {
+      title: "Order status updated",
+      message: `Your order #${order.id} is now ${STATUS_LABELS[status] || status}.`,
+      type: "order",
+      link: `/customer/orders/${order.id}`,
     });
 
-    return res.status(200).json({ success: true, message: "Employee assigned to order", data: updatedOrder });
+    return res.status(200).json({
+      success: true,
+      message: "Order status updated.",
+      data: order,
+    });
   } catch (error) {
+    console.error("Update Order Status Error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// 7. Payment status update karna (paid / unpaid / partial)
-exports.updatePaymentStatus = async (req, res) => {
+// ============================================================
+// ADMIN — update payment status
+// PATCH /api/orders/:id/payment   { payment_status }
+// ============================================================
+export const updatePaymentStatus = async (req, res) => {
   try {
     const { payment_status } = req.body;
-    const allowed = ["paid", "unpaid", "partial"];
 
-    if (!allowed.includes(payment_status)) {
+    if (!VALID_PAYMENT_STATUSES.includes(payment_status)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid payment_status. Allowed: ${allowed.join(", ")}`,
+        message: `Invalid payment status. Allowed: ${VALID_PAYMENT_STATUSES.join(", ")}`,
       });
     }
 
-    const order = await Order.findByPk(req.params.id);
+    const where = { id: req.params.id };
+    if (req.user.shopId) where.shop_id = req.user.shopId;
+
+    const order = await Order.findOne({ where });
+
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
@@ -276,82 +459,41 @@ exports.updatePaymentStatus = async (req, res) => {
     order.payment_status = payment_status;
     await order.save();
 
-    return res.status(200).json({ success: true, message: "Payment status updated", data: order });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// 8. Order cancel/delete karna
-exports.deleteOrder = async (req, res) => {
-  try {
-    const order = await Order.findByPk(req.params.id);
-    if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
-
-    await Service.destroy({ where: { order_id: order.id } });
-    await order.destroy();
-
-    return res.status(200).json({ success: true, message: "Order deleted" });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// 9. Ek shop ke saare orders dekhna
-exports.getOrdersByShop = async (req, res) => {
-  try {
-    const { shop_id } = req.params;
-    const { status } = req.query;
-
-    const where = { shop_id };
-    if (status) where.status = status;
-
-    const orders = await Order.findAll({
-      where,
-      include: [
-        { model: Customer, attributes: ["id", "name", "phone", "address"] },
-        { model: Employee, attributes: ["id", "name", "phone"] },
-        { model: Service },
-      ],
-      order: [["createdAt", "DESC"]],
+    return res.status(200).json({
+      success: true,
+      message: "Payment status updated.",
+      data: order,
     });
-
-    return res.status(200).json({ success: true, data: orders });
   } catch (error) {
+    console.error("Update Payment Status Error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// 10. Orders ka quick summary/dashboard stats (status-wise count)
-exports.getOrderStats = async (req, res) => {
+// ============================================================
+// ADMIN — quick order stats for my shop
+// GET /api/orders/stats
+// ============================================================
+export const getOrderStats = async (req, res) => {
   try {
-    const { shop_id } = req.query;
     const where = {};
-    if (shop_id) where.shop_id = shop_id;
-
-    const statuses = [
-      "pending",
-      "picked_up",
-      "processing",
-      "ready_for_delivery",
-      "out_for_delivery",
-      "delivered",
-      "cancelled",
-    ];
+    if (req.user.shopId) where.shop_id = req.user.shopId;
 
     const counts = await Promise.all(
-      statuses.map(async (status) => {
-        const count = await Order.count({ where: { ...where, status } });
-        return { status, count };
-      })
+      VALID_STATUSES.map(async (status) => ({
+        status,
+        count: await Order.count({ where: { ...where, status } }),
+      })),
     );
 
     const totalOrders = await Order.count({ where });
 
-    return res.status(200).json({ success: true, data: { totalOrders, byStatus: counts } });
+    return res.status(200).json({
+      success: true,
+      data: { totalOrders, byStatus: counts },
+    });
   } catch (error) {
+    console.error("Get Order Stats Error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

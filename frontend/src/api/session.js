@@ -45,6 +45,18 @@ export function setupSessionInterceptor(instance) {
           handleSessionExpired();
         }
       }
+
+      // A deactivated account gets 403 with an "inactive" message from the
+      // auth middleware — treat that like an expired session so a disabled
+      // employee is logged out of the panel instead of seeing errors.
+      if (
+        error.response?.status === 403 &&
+        typeof error.response?.data?.message === "string" &&
+        error.response.data.message.toLowerCase().includes("inactive")
+      ) {
+        handleSessionExpired();
+      }
+
       return Promise.reject(error);
     }
   );

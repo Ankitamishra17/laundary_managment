@@ -12,13 +12,16 @@ const initialState = {
   gstNumber: "",
   subscriptionPlan: "Monthly",
   subscriptionAmount: "",
+  planName: "Basic",
 };
+
+const PLAN_TIERS = ["Free", "Basic", "Pro", "Premium"];
 
 const textFields = [
   { name: "name", label: "Shop Name", placeholder: "Fresh Laundry" },
   { name: "ownerName", label: "Owner Name", placeholder: "Rahul Sharma" },
   { name: "email", label: "Email", placeholder: "rahul@gmail.com", type: "email" },
-  { name: "phone", label: "Phone", placeholder: "9876543210" },
+  { name: "phone", label: "Phone", placeholder: "99XXXXXXXX" },
   { name: "address", label: "Address", placeholder: "Sector 62", fullWidth: true },
   { name: "city", label: "City", placeholder: "Noida" },
   { name: "state", label: "State", placeholder: "Uttar Pradesh" },
@@ -359,7 +362,26 @@ export default function CreateShopModal({ isOpen, onClose, onShopCreated }) {
                 ))}
 
                 <div className="form-field">
-                  <label htmlFor="subscriptionPlan">Subscription Plan</label>
+                  <label htmlFor="planName">Plan Tier</label>
+                  <select
+                    id="planName"
+                    name="planName"
+                    value={form.planName}
+                    onChange={handleChange}
+                  >
+                    {PLAN_TIERS.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                  <small style={{ color: "#5A7A79", fontSize: 11 }}>
+                    Free: 2 emp · Basic: 5 emp · Pro: 15 emp · Premium: unlimited
+                  </small>
+                </div>
+
+                <div className="form-field">
+                  <label htmlFor="subscriptionPlan">Billing Cycle</label>
                   <select
                     id="subscriptionPlan"
                     name="subscriptionPlan"

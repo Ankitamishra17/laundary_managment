@@ -45,6 +45,12 @@ const User = sequelize.define("User", {
   isActive:{
     type:DataTypes.BOOLEAN,
     defaultValue: true,
+  },
+  // Profile image URL (e.g. "/uploads/avatars/avatar-1-123.jpg") — used by
+  // the navbar/dropdown avatars and the customer profile page.
+  avatar: {
+    type: DataTypes.STRING,
+    allowNull: true,
   }
 },
 {

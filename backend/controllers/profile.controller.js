@@ -1,17 +1,36 @@
+import bcrypt from "bcrypt";
 import { Employee } from "../models/index.js";
+import User from "../models/User.js";
 
-// GET /api/profile — the logged-in employee's own profile
+// The profile endpoints work for every logged-in role: employees live in the
+// employees table, while admins / super admins / customers live in the users
+// table.
+async function loadAccount(req, { withPassword = false } = {}) {
+  if (req.user.role === "employee") {
+    return Employee.findByPk(req.user.id, {
+      attributes: withPassword ? undefined : { exclude: ["password"] },
+    });
+  }
+  return User.findByPk(req.user.id, {
+    attributes: withPassword ? undefined : { exclude: ["password"] },
+  });
+}
+
+function safeAccount(account) {
+  const { password: _pw, ...safe } = account.toJSON();
+  return safe;
+}
+
+// GET /api/profile — the logged-in account's own profile
 export const getMyProfile = async (req, res) => {
   try {
-    const employee = await Employee.findByPk(req.user.id, {
-      attributes: { exclude: ["password"] },
-    });
+    const account = await loadAccount(req);
 
-    if (!employee) {
+    if (!account) {
       return res.status(404).json({ success: false, message: "Profile not found" });
     }
 
-    return res.status(200).json({ success: true, data: employee });
+    return res.status(200).json({ success: true, data: account });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -22,21 +41,26 @@ export const getMyProfile = async (req, res) => {
 // stay admin-controlled via the adminEmployee.controller.js CRUD routes)
 export const updateMyProfile = async (req, res) => {
   try {
-    const employee = await Employee.findByPk(req.user.id);
-    if (!employee) {
+    const account = await loadAccount(req, { withPassword: true });
+    if (!account) {
       return res.status(404).json({ success: false, message: "Profile not found" });
     }
 
     const { name, phone, designation } = req.body;
-    if (name !== undefined) employee.name = name;
-    if (phone !== undefined) employee.phone = phone;
-    if (designation !== undefined) employee.designation = designation;
+    if (name !== undefined) account.name = name;
+    if (phone !== undefined) account.phone = phone;
+    // Designation only exists on employee records
+    if (designation !== undefined && req.user.role === "employee") {
+      account.designation = designation;
+    }
 
-    await employee.save();
+    await account.save();
 
-    const { password: _, ...safeEmployee } = employee.toJSON();
-    return res.status(200).json({ success: true, data: safeEmployee });
+    return res.status(200).json({ success: true, data: safeAccount(account) });
   } catch (error) {
+    if (error.name === "SequelizeUniqueConstraintError") {
+      return res.status(409).json({ success: false, message: "Email is already in use" });
+    }
     return res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -53,18 +77,28 @@ export const changePassword = async (req, res) => {
       return res.status(400).json({ success: false, message: "New password must be at least 6 characters" });
     }
 
-    const employee = await Employee.findByPk(req.user.id);
-    if (!employee) {
+    const account = await loadAccount(req, { withPassword: true });
+    if (!account) {
       return res.status(404).json({ success: false, message: "Profile not found" });
     }
 
-    const isMatch = await employee.comparePassword(currentPassword);
+    let isMatch;
+    if (req.user.role === "employee") {
+      isMatch = await account.comparePassword(currentPassword);
+    } else {
+      isMatch = await bcrypt.compare(currentPassword, account.password);
+    }
     if (!isMatch) {
       return res.status(401).json({ success: false, message: "Current password is incorrect" });
     }
 
-    employee.password = newPassword; // beforeUpdate hook re-hashes it automatically
-    await employee.save();
+    if (req.user.role === "employee") {
+      // beforeUpdate hook re-hashes it automatically
+      account.password = newPassword;
+    } else {
+      account.password = await bcrypt.hash(newPassword, 10);
+    }
+    await account.save();
 
     return res.status(200).json({ success: true, message: "Password updated successfully" });
   } catch (error) {
@@ -73,8 +107,8 @@ export const changePassword = async (req, res) => {
 };
 
 // PATCH /api/profile/avatar — multipart/form-data, field name: "avatar"
-// NOTE: multer is not installed yet, so this only returns a friendly error
-// until the upload middleware is wired up.
+// Works for every role: employees save to the employees table, while
+// customers (and other platform users) save to the users table.
 export const updateAvatar = async (req, res) => {
   try {
     if (!req.file) {
@@ -84,27 +118,49 @@ export const updateAvatar = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findByPk(req.user.id);
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
 
-    if (!employee) {
+    if (req.user.role === "employee") {
+      const employee = await Employee.findByPk(req.user.id);
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: "Profile not found",
+        });
+      }
+
+      employee.avatar = avatarUrl;
+      await employee.save();
+
+      const { password: _, ...safeEmployee } = employee.toJSON();
+
+      return res.status(200).json({
+        success: true,
+        message: "Avatar updated successfully",
+        data: safeEmployee,
+      });
+    }
+
+    // Customers & other platform users (users table)
+    const user = await User.findByPk(req.user.id);
+
+    if (!user) {
       return res.status(404).json({
         success: false,
         message: "Profile not found",
       });
     }
 
-    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    user.avatar = avatarUrl;
+    await user.save();
 
-    employee.avatar = avatarUrl;
-
-    await employee.save();
-
-    const { password: _, ...safeEmployee } = employee.toJSON();
+    const { password: _, ...safeUser } = user.toJSON();
 
     return res.status(200).json({
       success: true,
       message: "Avatar updated successfully",
-      data: safeEmployee,
+      data: safeUser,
     });
   } catch (error) {
     console.error("Avatar upload error:", error);

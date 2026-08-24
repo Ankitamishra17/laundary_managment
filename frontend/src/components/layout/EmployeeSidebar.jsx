@@ -7,14 +7,13 @@ import {
   LayoutDashboard,
   ClipboardList,
   Truck,
+  PackageCheck,
   Boxes,
   CheckCircle2,
   Users,
-  BarChart3,
   Clock,
   User,
   Bell,
-  HelpCircle,
   LogOut,
   Droplet,
   X,
@@ -29,7 +28,8 @@ const NAV_SECTIONS = [
     label: "Work",
     items: [
       { icon: ClipboardList, label: "My Tasks", to: "/employee/mytask" },
-      { icon: Truck, label: "Assigned Pickups", to: "/employee/pickups" },
+      { icon: Truck, label: "My Pickups", to: "/employee/pickups" },
+      { icon: PackageCheck, label: "My Deliveries", to: "/employee/deliveries" },
       { icon: Boxes, label: "Orders in Process", to: "/employee/orders-in-process" },
       { icon: CheckCircle2, label: "Completed Orders", to: "/employee/completed-orders" },
     ],
@@ -38,8 +38,6 @@ const NAV_SECTIONS = [
     label: "Records",
     items: [
       { icon: Users, label: "Customers", to: "/employee/customers" },
-      { icon: Boxes, label: "Inventory", to: "/employee/inventory" },
-      { icon: BarChart3, label: "Reports", to: "/employee/reports" },
       { icon: Clock, label: "My Attendance", to: "/employee/attendance" },
     ],
   },
@@ -48,7 +46,6 @@ const NAV_SECTIONS = [
     items: [
       { icon: User, label: "My Profile", to: "/employee/profile" },
       { icon: Bell, label: "Notifications", to: "/employee/notifications" },
-      { icon: HelpCircle, label: "Help & Support", to: "/employee/help" },
     ],
   },
 ];

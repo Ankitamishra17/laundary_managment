@@ -10,6 +10,18 @@ const Customer = sequelize.define(
       primaryKey: true,
     },
 
+    // Links to users.id
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    // Default shop
+    shopId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
     name: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -18,17 +30,36 @@ const Customer = sequelize.define(
     email: {
       type: DataTypes.STRING,
       allowNull: true,
+      unique: true,
+      validate: {
+        isEmail: true,
+      },
     },
 
     phone: {
       type: DataTypes.STRING,
       allowNull: false,
     },
+
+    address: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+
+    city: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
   },
   {
     tableName: "customers",
     timestamps: true,
-  }
+  },
 );
 
 export default Customer;

@@ -12,7 +12,7 @@ const sequelize = new Sequelize(
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
     dialect: 'mysql',
-    logging: false, // Set true if you want to see SQL queries
+    logging: false, // Set true (to see SQL queries)
   },
 );
 
