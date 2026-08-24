@@ -2,10 +2,12 @@ import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
 
 // ============================================================
-// CUSTOMER — profile record for users with role "customer"
-// The users table holds the login credentials (email/password),
-// while this table stores the customer profile & default shop.
+// CUSTOMER
+// Profile record for users with role "customer"
+// Users table → login credentials
+// Customers table → customer profile & shop information
 // ============================================================
+
 const Customer = sequelize.define(
   "Customer",
   {
@@ -15,15 +17,13 @@ const Customer = sequelize.define(
       primaryKey: true,
     },
 
-    // Links to users.id (login account)
+    // Links to users.id
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
 
-    // Default laundry the customer orders from.
-    // Optional — a customer can sign up first and pick a laundry later
-    // (it is auto-set to the shop of their first order).
+    // Default laundry/shop
     shopId: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -60,13 +60,14 @@ const Customer = sequelize.define(
 
     isActive: {
       type: DataTypes.BOOLEAN,
+      allowNull: false,
       defaultValue: true,
     },
   },
   {
     tableName: "customers",
     timestamps: true,
-  },
+  }
 );
 
 export default Customer;

@@ -18,8 +18,8 @@ const startServer = async () => {
 
     // Create tables if they don't exist (must run first so the tables exist
     // before ensureSchema tries to alter them on a fresh database)
-    // await sequelize.sync({ alter: true });
-    await sequelize.sync();
+    await sequelize.sync({ alter: true });
+    // await sequelize.sync();
 
     // Add any new columns to already-created tables (idempotent)
     await ensureSchema();

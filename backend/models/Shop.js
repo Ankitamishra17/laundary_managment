@@ -125,6 +125,10 @@ const Shop = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    isDeleted: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
   },
   {
     tableName: "shops",

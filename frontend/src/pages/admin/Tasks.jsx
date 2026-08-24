@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+<<<<<<< HEAD
 import { Link } from "react-router-dom";
+=======
+>>>>>>> ankita
 import {
   ClipboardList,
   Clock,
@@ -13,6 +16,7 @@ import {
   X,
   AlertTriangle,
   UserPlus,
+<<<<<<< HEAD
   History,
   CalendarDays,
 } from "lucide-react";
@@ -20,6 +24,11 @@ import toast from "react-hot-toast";
 import { taskApi } from "../../api/taskApi";
 import { useEmployees } from "../../hooks/useEmployees";
 import { getShopCustomers } from "../../api/customerApi";
+=======
+} from "lucide-react";
+import { taskApi } from "../../api/taskApi";
+import { useEmployees } from "../../hooks/useEmployees";
+>>>>>>> ankita
 import StatusPill from "../../components/layout/StatusPill";
 import TaskFilterTabs from "../../components/layout/TaskFilterTabs";
 
@@ -73,13 +82,20 @@ function PriorityPill({ priority }) {
   const urgent = priority === "urgent";
   return (
     <span
+<<<<<<< HEAD
       className="text-[11px] font-bold px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1"
+=======
+      className="text-[11px] font-medium px-2.5 py-1 rounded-md whitespace-nowrap"
+>>>>>>> ankita
       style={{
         color: urgent ? "#B3261E" : "#028090",
         background: urgent ? "#FDECEC" : "#DFF3F5",
       }}
     >
+<<<<<<< HEAD
       {urgent && <AlertTriangle size={11} />}
+=======
+>>>>>>> ankita
       {urgent ? "Urgent" : "Normal"}
     </span>
   );
@@ -131,10 +147,16 @@ const inputCls =
 
 const EMPTY_FORM = {
   employee_id: "",
+<<<<<<< HEAD
   priority: "normal",
   scheduled_time: "",
   order_id: "",
   customer_id: "",
+=======
+  task_type: "pickup",
+  priority: "normal",
+  scheduled_time: "",
+>>>>>>> ankita
   customer_name: "",
   customer_phone: "",
   customer_address: "",
@@ -143,6 +165,7 @@ const EMPTY_FORM = {
 
 function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssigned }) {
   const [form, setForm] = useState(EMPTY_FORM);
+<<<<<<< HEAD
   const [selectedTypes, setSelectedTypes] = useState(["pickup"]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -263,6 +286,16 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
     setSelectedTypes(["pickup"]);
     setError("");
     setOrderTasks([]);
+=======
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!isOpen) return null;
+
+  const resetAndClose = () => {
+    setForm(EMPTY_FORM);
+    setError("");
+>>>>>>> ankita
     onClose();
   };
 
@@ -274,6 +307,7 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+<<<<<<< HEAD
     if (selectedTypes.length === 0) {
       setError("Please select at least one task type.");
       return;
@@ -289,12 +323,20 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
       const payload = {
         employee_id: Number(form.employee_id),
         task_types: selectedTypes,
+=======
+    setLoading(true);
+    try {
+      await taskApi.assignTask({
+        employee_id: Number(form.employee_id),
+        task_type: form.task_type,
+>>>>>>> ankita
         priority: form.priority,
         scheduled_time: form.scheduled_time,
         customer_name: form.customer_name,
         customer_phone: form.customer_phone || null,
         customer_address: form.customer_address || null,
         notes: form.notes || null,
+<<<<<<< HEAD
       };
       if (form.order_id) payload.order_id = Number(form.order_id);
       await taskApi.assignTask(payload);
@@ -305,6 +347,13 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
       const msg = err.response?.data?.message || "Failed to assign task";
       setError(msg);
       toast.error(msg);
+=======
+      });
+      onAssigned?.();
+      resetAndClose();
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to assign task");
+>>>>>>> ankita
     } finally {
       setLoading(false);
     }
@@ -336,6 +385,7 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+<<<<<<< HEAD
           <Field label="Link to Order (optional)">
             <select
               name="order_id"
@@ -355,6 +405,8 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
             </select>
           </Field>
 
+=======
+>>>>>>> ankita
           <Field label="Assign To" required>
             <select
               name="employee_id"
@@ -365,9 +417,15 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
               className={inputCls}
             >
               <option value="" disabled>
+<<<<<<< HEAD
                 {employeesLoading ? "Loading employees…" : availableEmployees.length === 0 ? "No available employees" : "Select an employee"}
               </option>
               {availableEmployees.map((emp) => (
+=======
+                {employeesLoading ? "Loading employees…" : "Select an employee"}
+              </option>
+              {employees.map((emp) => (
+>>>>>>> ankita
                 <option key={emp.id} value={emp.id}>
                   {emp.name}
                   {emp.designation ? ` — ${emp.designation}` : ""}
@@ -375,6 +433,7 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
                 </option>
               ))}
             </select>
+<<<<<<< HEAD
             {form.order_id && orderTasks.length > 0 && (
               <p className="mt-1 text-[11px] text-[#6B8482]">
                 Only showing employees available for the selected task types on this order.
@@ -442,6 +501,21 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
           </div>
 
           <div>
+=======
+          </Field>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Task Type" required>
+              <select name="task_type" value={form.task_type} onChange={handleChange} className={inputCls}>
+                {TASK_TYPE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+>>>>>>> ankita
             <Field label="Priority">
               <select name="priority" value={form.priority} onChange={handleChange} className={inputCls}>
                 <option value="normal">Normal</option>
@@ -456,12 +530,16 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
               type="datetime-local"
               value={form.scheduled_time}
               onChange={handleChange}
+<<<<<<< HEAD
               min={minDateTime}
+=======
+>>>>>>> ankita
               required
               className={inputCls}
             />
           </Field>
 
+<<<<<<< HEAD
           <Field label="Customer" required>
             <select
               value={form.customer_id}
@@ -487,11 +565,17 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
             )}
           </Field>
 
+=======
+>>>>>>> ankita
           <Field label="Customer Name" required>
             <input
               name="customer_name"
               value={form.customer_name}
+<<<<<<< HEAD
               onChange={handleNameChange}
+=======
+              onChange={handleChange}
+>>>>>>> ankita
               required
               placeholder="e.g. Ananya Verma"
               className={inputCls}
@@ -504,7 +588,11 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
                 name="customer_phone"
                 value={form.customer_phone}
                 onChange={handleChange}
+<<<<<<< HEAD
                 placeholder="99XXXXXXXX"
+=======
+                placeholder="9876543210"
+>>>>>>> ankita
                 className={inputCls}
               />
             </Field>
@@ -563,6 +651,7 @@ function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssig
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
+<<<<<<< HEAD
 /* ------------------------------------------------------------------ */
 /* Tab switcher                                                        */
 /* ------------------------------------------------------------------ */
@@ -816,6 +905,8 @@ function TaskHistoryTab({ employees }) {
 /* Main Tasks Page                                                     */
 /* ------------------------------------------------------------------ */
 
+=======
+>>>>>>> ankita
 export default function Tasks() {
   const { employees, loading: employeesLoading } = useEmployees();
   const [tasks, setTasks] = useState([]);
@@ -823,7 +914,10 @@ export default function Tasks() {
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showAssign, setShowAssign] = useState(false);
+<<<<<<< HEAD
   const [activeTab, setActiveTab] = useState("active");
+=======
+>>>>>>> ankita
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
@@ -882,6 +976,7 @@ export default function Tasks() {
             </div>
           </div>
 
+<<<<<<< HEAD
           {activeTab === "active" && (
             <button
               onClick={() => setShowAssign(true)}
@@ -1009,6 +1104,115 @@ export default function Tasks() {
           </>
         ) : (
           <TaskHistoryTab employees={employees} />
+=======
+          <button
+            onClick={() => setShowAssign(true)}
+            disabled={!employeesLoading && employees.length === 0}
+            className="flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-lg hover:brightness-105 hover:-translate-y-0.5 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+            style={{ background: "linear-gradient(135deg, #028090, #00A896)" }}
+            title={!employeesLoading && employees.length === 0 ? "Add an employee first" : undefined}
+          >
+            <Plus size={16} /> Assign Task
+          </button>
+        </div>
+
+        {/* KPI row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard icon={ClipboardList} label="Total Tasks" value={stats.total} color="#028090" bg="#DFF3F5" />
+          <StatCard icon={Clock} label="Pending" value={stats.pending} color="#9A6A12" bg="#FBF0DC" />
+          <StatCard icon={Loader2} label="In Progress" value={stats.inProgress} color="#0B3B3E" bg="#DCEBEA" />
+          <StatCard icon={CheckCircle2} label="Completed" value={stats.completed} color="#02C39A" bg="#DFF7F1" />
+        </div>
+
+        {/* Filter tabs */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <TaskFilterTabs active={statusFilter} onChange={setStatusFilter} />
+          {!loading && (
+            <span className="text-xs text-[#6B8482]">
+              {filtered.length} task{filtered.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
+        {/* Error banner */}
+        {error && (
+          <div className="text-sm text-[#9A2E12] bg-[#FBE4DC] border border-[#F3C7B8] rounded-xl px-4 py-3">
+            {error}
+          </div>
+        )}
+
+        {/* Content card */}
+        <div className="bg-white border border-[#D8ECEA] rounded-2xl shadow-[0_1px_2px_rgba(15,44,46,0.04)] overflow-hidden">
+          {loading ? (
+            <TableSkeleton />
+          ) : filtered.length === 0 ? (
+            <EmptyState hasEmployees={employees.length > 0} />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#EEF7F6] bg-[#FAFDFC]">
+                    <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Task</th>
+                    <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Assigned To</th>
+                    <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Customer</th>
+                    <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Scheduled</th>
+                    <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Priority</th>
+                    <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((t) => (
+                    <tr key={t.id} className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC] transition-colors duration-150">
+                      <td className="py-3.5 px-5">
+                        <div className="font-semibold" style={{ color: "#028090" }}>
+                          #{t.id}
+                        </div>
+                        <div className="text-xs text-[#6B8482] mt-0.5">{TASK_TYPE_LABEL[t.task_type] || t.task_type}</div>
+                      </td>
+                      <td className="py-3.5 px-5">
+                        <div className="text-[#0F2C2E] font-medium">{t.employee?.name || "—"}</div>
+                        {t.employee?.designation && (
+                          <div className="text-[11px] text-[#6B8482] mt-0.5">{t.employee.designation}</div>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-5">
+                        <div className="text-[#0F2C2E] font-medium">{t.customer_name}</div>
+                        {t.customer_phone && (
+                          <div className="flex items-center gap-1 text-[11px] text-[#6B8482] mt-0.5">
+                            <Phone size={11} /> {t.customer_phone}
+                          </div>
+                        )}
+                        {t.customer_address && (
+                          <div className="flex items-center gap-1 text-[11px] text-[#6B8482] mt-0.5">
+                            <MapPin size={11} /> {t.customer_address}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-5 text-[#6B8482] whitespace-nowrap">{formatScheduled(t.scheduled_time)}</td>
+                      <td className="py-3.5 px-5">
+                        <PriorityPill priority={t.priority} />
+                      </td>
+                      <td className="py-3.5 px-5">
+                        <StatusPill status={t.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Hint when there are no employees */}
+        {!employeesLoading && employees.length === 0 && tasks.length === 0 && (
+          <div className="flex items-start gap-2.5 rounded-xl border border-[#F3C7B8] bg-[#FBE4DC] px-4 py-3">
+            <AlertTriangle size={16} className="text-[#9A2E12] mt-0.5 shrink-0" />
+            <p className="text-[13px] text-[#9A2E12]">
+              You need to create an employee first — go to the Employees page and click{" "}
+              <span className="font-semibold">Add Employee</span>.
+            </p>
+          </div>
+>>>>>>> ankita
         )}
       </div>
 

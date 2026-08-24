@@ -237,7 +237,11 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
                       value={form.phone}
                       onChange={handleChange}
                       required
+<<<<<<< HEAD
                       placeholder="99XXXXXXXX"
+=======
+                      placeholder="9876543210"
+>>>>>>> ankita
                       className={`${inputClass} pl-9`}
                     />
                   </div>
@@ -435,7 +439,11 @@ function EditEmployeeModal({ employee, onClose, onUpdate }) {
           <Field label="Phone">
             <div className="relative">
               <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B8482]" />
+<<<<<<< HEAD
               <input name="phone" value={form.phone} onChange={handleChange} placeholder="99XXXXXXXX" className={`${inputClass} pl-9`} />
+=======
+              <input name="phone" value={form.phone} onChange={handleChange} placeholder="9876543210" className={`${inputClass} pl-9`} />
+>>>>>>> ankita
             </div>
           </Field>
 
@@ -499,6 +507,7 @@ function EditEmployeeModal({ employee, onClose, onUpdate }) {
 }
 
 /* ------------------------------------------------------------------ */
+<<<<<<< HEAD
 /* Employee Details Modal (view-only, opened by clicking a row)        */
 /* ------------------------------------------------------------------ */
 
@@ -598,6 +607,13 @@ function DeleteEmployeeModal({ employee, onClose, onConfirm, onDeletePermanent }
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+=======
+/* Delete (Deactivate) / Reactivate Modal                              */
+/* ------------------------------------------------------------------ */
+
+function DeleteEmployeeModal({ employee, onClose, onConfirm }) {
+  const [loading, setLoading] = useState(false);
+>>>>>>> ankita
   const [error, setError] = useState("");
 
   if (!employee) return null;
@@ -612,6 +628,7 @@ function DeleteEmployeeModal({ employee, onClose, onConfirm, onDeletePermanent }
     if (ok) onClose();
   };
 
+<<<<<<< HEAD
   const handleDeletePermanent = async () => {
     if (!confirmDelete) {
       setConfirmDelete(true);
@@ -625,6 +642,8 @@ function DeleteEmployeeModal({ employee, onClose, onConfirm, onDeletePermanent }
     if (ok) onClose();
   };
 
+=======
+>>>>>>> ankita
   return (
     <div className="fixed inset-0 z-50 bg-[#05282A]/55 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
@@ -714,6 +733,7 @@ function DeleteEmployeeModal({ employee, onClose, onConfirm, onDeletePermanent }
               )}
             </button>
           </div>
+<<<<<<< HEAD
 
           {/* Permanent delete — only offered for already-deactivated accounts */}
           {!isActive && (
@@ -747,6 +767,8 @@ function DeleteEmployeeModal({ employee, onClose, onConfirm, onDeletePermanent }
               </p>
             </>
           )}
+=======
+>>>>>>> ankita
         </div>
       </div>
     </div>
@@ -768,11 +790,17 @@ export default function Employees() {
     updateEmployee,
     deactivateEmployee,
     reactivateEmployee,
+<<<<<<< HEAD
     deleteEmployeePermanently,
   } = useEmployees();
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [viewingEmployee, setViewingEmployee] = useState(null);
+=======
+  } = useEmployees();
+  const [search, setSearch] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+>>>>>>> ankita
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [deletingEmployee, setDeletingEmployee] = useState(null);
 
@@ -820,12 +848,15 @@ export default function Employees() {
     return ok;
   };
 
+<<<<<<< HEAD
   const handleDeletePermanent = async (id) => {
     const ok = await deleteEmployeePermanently(id);
     if (!ok) setError("Failed to delete employee");
     return ok;
   };
 
+=======
+>>>>>>> ankita
   return (
     <div className="min-h-screen" style={{ background: "#EEF7F6" }}>
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8">
@@ -914,11 +945,15 @@ export default function Employees() {
                 </thead>
                 <tbody>
                   {filtered.map((e) => (
+<<<<<<< HEAD
                     <tr
                       key={e.id}
                       onClick={() => setViewingEmployee(e)}
                       className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC] transition-colors duration-150 cursor-pointer"
                     >
+=======
+                    <tr key={e.id} className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC] transition-colors duration-150">
+>>>>>>> ankita
                       <td className="py-3.5 px-5">
                         <div className="flex items-center gap-3">
                           <div
@@ -944,11 +979,15 @@ export default function Employees() {
                       <td className="py-3.5 px-5">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
+<<<<<<< HEAD
                             onClick={(ev) => {
                               ev.stopPropagation();
                               setViewingEmployee(null);
                               setEditingEmployee(e);
                             }}
+=======
+                            onClick={() => setEditingEmployee(e)}
+>>>>>>> ankita
                             title="Edit employee"
                             aria-label={`Edit ${e.name}`}
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-[#028090] bg-[#DFF3F5] hover:bg-[#028090] hover:text-white active:scale-95 transition-all"
@@ -956,11 +995,15 @@ export default function Employees() {
                             <Pencil size={14} />
                           </button>
                           <button
+<<<<<<< HEAD
                             onClick={(ev) => {
                               ev.stopPropagation();
                               setViewingEmployee(null);
                               setDeletingEmployee(e);
                             }}
+=======
+                            onClick={() => setDeletingEmployee(e)}
+>>>>>>> ankita
                             title={e.status === "active" ? "Deactivate employee" : "Reactivate employee"}
                             aria-label={`${e.status === "active" ? "Deactivate" : "Reactivate"} ${e.name}`}
                             className={`w-8 h-8 rounded-lg flex items-center justify-center active:scale-95 transition-all ${
@@ -983,6 +1026,7 @@ export default function Employees() {
       </div>
 
       <CreateEmployeeModal isOpen={showCreate} onClose={() => setShowCreate(false)} onCreate={handleCreate} />
+<<<<<<< HEAD
       {viewingEmployee && (
         <EmployeeDetailsModal
           employee={viewingEmployee}
@@ -999,16 +1043,22 @@ export default function Employees() {
           }}
         />
       )}
+=======
+>>>>>>> ankita
       {editingEmployee && (
         <EditEmployeeModal employee={editingEmployee} onClose={() => setEditingEmployee(null)} onUpdate={handleUpdate} />
       )}
       {deletingEmployee && (
+<<<<<<< HEAD
         <DeleteEmployeeModal
           employee={deletingEmployee}
           onClose={() => setDeletingEmployee(null)}
           onConfirm={handleDelete}
           onDeletePermanent={handleDeletePermanent}
         />
+=======
+        <DeleteEmployeeModal employee={deletingEmployee} onClose={() => setDeletingEmployee(null)} onConfirm={handleDelete} />
+>>>>>>> ankita
       )}
     </div>
   );

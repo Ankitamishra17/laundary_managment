@@ -9,7 +9,7 @@ import {
   deleteSupplier,
 } from "../../../api/supplierApi";
 
-import SupplierModal from "../../../components/inventory/SupplierModal";
+import SupplierModal from "../../../components/supplier/SupplierModal";
 
 const Suppliers = () => {
   // ==========================================

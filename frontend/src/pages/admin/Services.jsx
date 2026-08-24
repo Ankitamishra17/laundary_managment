@@ -77,7 +77,7 @@ const Services = () => {
       // Defensive parsing — adjust to match your backend's exact response shape.
       const list = res.services || res.data || (Array.isArray(res) ? res : []);
       const total = res.total ?? list.length;
-
+      console.log("LIST:", list);
       setServices(list);
       setTotalPages(
         res.totalPages || Math.max(1, Math.ceil(total / PAGE_SIZE)),

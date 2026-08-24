@@ -8,6 +8,7 @@ const colors = {
   textMuted: "#5C7A78",
 };
 
+<<<<<<< HEAD
 // Common categories — suggestions only, the shop admin can type any
 // custom category (the backend stores it as free text).
 const categoryOptions = [
@@ -29,6 +30,16 @@ const categoryOptions = [
 
 // Customer-facing pricing units.
 const pricingTypeOptions = ["Per Kg", "Per Piece", "Per Pair", "Per Item", "Fixed"];
+=======
+const categoryOptions = [
+  "Washing",
+  "Ironing",
+  "Dry Cleaning",
+  "Premium",
+  "Household",
+];
+const pricingTypeOptions = ["Per Kg", "Per Item", "Per Set"];
+>>>>>>> ankita
 const timeOptions = ["Same Day", "1 Day", "2 Days", "3 Days", "5 Days"];
 
 const inputClass = "sf-input w-full rounded-xl border px-4 py-2.5 text-sm";

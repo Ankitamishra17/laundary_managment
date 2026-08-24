@@ -1,25 +1,21 @@
 import { useEffect, useState } from "react";
-import { X, Package, Tag, Ruler, Boxes, Loader2 } from "lucide-react";
+import { X, Package, Layers, Gauge, Loader2 } from "lucide-react";
+
+// =====================================================
+// INITIAL FORM
+// =====================================================
 
 const initialForm = {
   name: "",
   category: "",
-  unit: "",
-  currentStock: 0,
-  minStock: 0,
+  unit: "Piece",
+  minStock: "",
   status: "Active",
 };
 
-const categories = [
-  "Chemicals",
-  "Packaging",
-  "Accessories",
-  "Cleaning Supplies",
-  "Consumables",
-  "Other",
-];
-
-const units = ["Piece", "Kg", "Litre", "Bottle", "Box", "Packet"];
+// =====================================================
+// COMPONENT
+// =====================================================
 
 export default function InventoryItemModal({
   isOpen,
@@ -29,22 +25,22 @@ export default function InventoryItemModal({
   loading = false,
 }) {
   const [form, setForm] = useState(initialForm);
+
   const [error, setError] = useState("");
 
-  const isEdit = Boolean(item);
-
-  // ==========================================
-  // SET FORM FOR ADD / EDIT
-  // ==========================================
+  // ===================================================
+  // INITIALIZE
+  // ===================================================
 
   useEffect(() => {
+    if (!isOpen) return;
+
     if (item) {
       setForm({
         name: item.name || "",
         category: item.category || "",
-        unit: item.unit || "",
-        currentStock: item.currentStock ?? 0,
-        minStock: item.minStock ?? 0,
+        unit: item.unit || "Piece",
+        minStock: item.minStock ?? "",
         status: item.status || "Active",
       });
     } else {
@@ -52,13 +48,11 @@ export default function InventoryItemModal({
     }
 
     setError("");
-  }, [item, isOpen]);
+  }, [isOpen, item]);
 
-  if (!isOpen) return null;
-
-  // ==========================================
-  // HANDLE INPUT
-  // ==========================================
+  // ===================================================
+  // CHANGE
+  // ===================================================
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -67,309 +61,306 @@ export default function InventoryItemModal({
       ...prev,
       [name]: value,
     }));
+
+    setError("");
   };
 
-  // ==========================================
+  // ===================================================
   // SUBMIT
-  // ==========================================
+  // ===================================================
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     setError("");
+
+    // -----------------------------------------------
+    // VALIDATION
+    // -----------------------------------------------
 
     if (!form.name.trim()) {
       setError("Item name is required.");
       return;
     }
 
-    if (!form.category) {
-      setError("Please select a category.");
+    if (!form.category.trim()) {
+      setError("Category is required.");
       return;
     }
 
-    if (!form.unit) {
-      setError("Please select a unit.");
+    if (form.minStock === "") {
+      setError("Minimum stock is required.");
       return;
     }
 
-    if (Number(form.minStock) < 0) {
-      setError("Minimum stock cannot be negative.");
+    const minStock = Number(form.minStock);
+
+    if (Number.isNaN(minStock) || minStock < 0) {
+      setError("Minimum stock must be 0 or greater.");
       return;
     }
 
-    if (Number(form.currentStock) < 0) {
-      setError("Current stock cannot be negative.");
-      return;
-    }
+    // -----------------------------------------------
+    // PAYLOAD
+    // -----------------------------------------------
+
+    const payload = {
+      name: form.name.trim(),
+
+      category: form.category.trim(),
+
+      unit: form.unit,
+
+      minStock,
+
+      status: form.status,
+    };
 
     try {
-      await onSubmit({
-        ...form,
-        name: form.name.trim(),
-        currentStock: Number(form.currentStock) || 0,
-        minStock: Number(form.minStock) || 0,
-      });
-
-      setForm(initialForm);
+      await onSubmit(payload);
     } catch (err) {
-      console.error("Inventory item save error:", err);
-
       setError(
-        err?.response?.data?.message ||
-          err?.message ||
+        err?.message ||
+          err?.response?.data?.message ||
           "Failed to save inventory item.",
       );
     }
   };
 
-  // ==========================================
+  // ===================================================
+  // CLOSE
+  // ===================================================
+
+  const handleClose = () => {
+    if (loading) return;
+
+    setForm(initialForm);
+
+    setError("");
+
+    onClose();
+  };
+
+  // ===================================================
+  // DON'T RENDER
+  // ===================================================
+
+  if (!isOpen) {
+    return null;
+  }
+
+  // ===================================================
   // UI
-  // ==========================================
+  // ===================================================
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !loading) {
-          onClose();
-        }
-      }}
-    >
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        {/* ======================================
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+        {/* =================================================
             HEADER
-        ====================================== */}
+        ================================================= */}
 
-        <div
-          className="flex items-center justify-between px-6 py-5"
-          style={{ backgroundColor: "#05282A" }}
-        >
-          <div>
-            <h2
-              className="text-xl font-semibold text-white"
-              style={{
-                fontFamily: "'Libre Baskerville', serif",
-              }}
-            >
-              {isEdit ? "Edit Inventory Item" : "Add Inventory Item"}
-            </h2>
+        <div className="flex items-center justify-between border-b border-[#D8ECEA] bg-[#F7FAF9] px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#E6F7F5]">
+              <Package size={21} className="text-[#028090]" />
+            </div>
 
-            <p className="mt-1 text-xs text-white/60">
-              {isEdit
-                ? "Update inventory item information."
-                : "Add a new item to your laundry inventory."}
-            </p>
+            <div>
+              <h2 className="text-lg font-bold text-[#0F2C2E]">
+                {item ? "Edit Inventory Item" : "Add Inventory Item"}
+              </h2>
+
+              <p className="text-xs text-[#718382]">
+                {item
+                  ? "Update inventory item details."
+                  : "Add a new item to your inventory."}
+              </p>
+            </div>
           </div>
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={loading}
-            className="rounded-lg p-2 text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+            className="rounded-xl p-2 text-[#6B7F7E] transition hover:bg-[#EAF4F3] hover:text-[#0F2C2E] disabled:opacity-50"
           >
             <X size={20} />
           </button>
         </div>
 
-        {/* ======================================
+        {/* =================================================
             FORM
-        ====================================== */}
+        ================================================= */}
 
-        <form onSubmit={handleSubmit} className="space-y-5 p-6">
-          {/* Error */}
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6">
+          {/* ERROR */}
 
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
               {error}
             </div>
           )}
 
-          {/* ======================================
-              ITEM NAME
-          ====================================== */}
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Item Name <span className="text-red-500">*</span>
-            </label>
-
-            <div className="relative">
-              <Package
-                size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-
-              <input
-                type="text"
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                placeholder="e.g. Laundry Detergent"
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-[#028090] focus:bg-white"
-              />
-            </div>
-          </div>
-
-          {/* ======================================
-              CATEGORY + UNIT
-          ====================================== */}
-
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {/* Category */}
+            {/* ITEM NAME */}
+
+            <div className="sm:col-span-2">
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                Item Name <span className="text-red-500">*</span>
+              </label>
+
+              <div className="relative">
+                <Package
+                  size={17}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#028090]"
+                />
+
+                <input
+                  type="text"
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  placeholder="e.g. Detergent"
+                  disabled={loading}
+                  className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-10 py-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white disabled:opacity-60"
+                />
+              </div>
+            </div>
+
+            {/* CATEGORY */}
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
                 Category <span className="text-red-500">*</span>
               </label>
 
               <div className="relative">
-                <Tag
+                <Layers
                   size={17}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-
-                <select
-                  name="category"
-                  value={form.category}
-                  onChange={handleChange}
-                  className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-[#028090] focus:bg-white"
-                >
-                  <option value="">Select category</option>
-
-                  {categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Unit */}
-
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                Unit <span className="text-red-500">*</span>
-              </label>
-
-              <div className="relative">
-                <Ruler
-                  size={17}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-
-                <select
-                  name="unit"
-                  value={form.unit}
-                  onChange={handleChange}
-                  className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-[#028090] focus:bg-white"
-                >
-                  <option value="">Select unit</option>
-
-                  {units.map((unit) => (
-                    <option key={unit} value={unit}>
-                      {unit}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* ======================================
-              STOCK
-          ====================================== */}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {/* Current Stock */}
-
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                Opening Stock
-              </label>
-
-              <div className="relative">
-                <Boxes
-                  size={17}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#028090]"
                 />
 
                 <input
-                  type="number"
-                  name="currentStock"
-                  min="0"
-                  value={form.currentStock}
+                  type="text"
+                  name="category"
+                  value={form.category}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
+                  placeholder="e.g. Chemicals"
+                  disabled={loading}
+                  className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-10 py-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white disabled:opacity-60"
                 />
               </div>
-
-              <p className="mt-1 text-xs text-gray-400">
-                Usually keep this 0 and use Stock In for purchases.
-              </p>
             </div>
 
-            {/* Minimum Stock */}
+            {/* UNIT */}
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                Minimum Stock
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                Unit <span className="text-red-500">*</span>
+              </label>
+
+              <select
+                name="unit"
+                value={form.unit}
+                onChange={handleChange}
+                disabled={loading}
+                className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white disabled:opacity-60"
+              >
+                <option value="Kg">Kg</option>
+
+                <option value="Litre">Litre</option>
+
+                <option value="Piece">Piece</option>
+
+                <option value="Box">Box</option>
+
+                <option value="Pack">Pack</option>
+              </select>
+            </div>
+
+            {/* MIN STOCK */}
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                Minimum Stock <span className="text-red-500">*</span>
               </label>
 
               <div className="relative">
-                <Boxes
+                <Gauge
                   size={17}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#028090]"
                 />
 
                 <input
                   type="number"
                   name="minStock"
-                  min="0"
                   value={form.minStock}
                   onChange={handleChange}
+                  min="0"
+                  step="0.01"
                   placeholder="e.g. 10"
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
+                  disabled={loading}
+                  className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-10 py-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white disabled:opacity-60"
                 />
               </div>
 
-              <p className="mt-1 text-xs text-gray-400">
-                Alert appears when stock reaches this level.
+              <p className="mt-1.5 text-xs text-[#718382]">
+                Alert will be generated when current stock reaches this level.
               </p>
+            </div>
+
+            {/* STATUS */}
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                Status
+              </label>
+
+              <select
+                name="status"
+                value={form.status}
+                onChange={handleChange}
+                disabled={loading}
+                className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-3 text-sm text-[#0F2C2E] outline-none transition focus:border-[#028090] focus:bg-white disabled:opacity-60"
+              >
+                <option value="Active">Active</option>
+
+                <option value="Inactive">Inactive</option>
+              </select>
             </div>
           </div>
 
-          {/* ======================================
-              STATUS
-          ====================================== */}
+          {/* STOCK INFORMATION */}
 
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Status
-            </label>
+          <div className="mt-5 rounded-xl border border-[#D8ECEA] bg-[#F7FAF9] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E6F7F5]">
+                <Package size={17} className="text-[#028090]" />
+              </div>
 
-            <select
-              name="status"
-              value={form.status}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none focus:border-[#028090] focus:bg-white"
-            >
-              <option value="Active">Active</option>
+              <div>
+                <p className="text-sm font-semibold text-[#0F2C2E]">
+                  Stock is managed separately
+                </p>
 
-              <option value="Inactive">Inactive</option>
-            </select>
+                <p className="mt-1 text-xs leading-5 text-[#718382]">
+                  Current stock should not be manually changed here. Purchases
+                  create Stock IN transactions, while usage, wastage or other
+                  removals create Stock OUT transactions.
+                </p>
+              </div>
+            </div>
           </div>
 
-          {/* ======================================
-              BUTTONS
-          ====================================== */}
+          {/* FOOTER */}
 
-          <div className="flex justify-end gap-3 border-t border-gray-100 pt-5">
+          <div className="mt-6 flex flex-col-reverse gap-3 border-t border-[#D8ECEA] pt-5 sm:flex-row sm:justify-end">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={loading}
-              className="rounded-lg border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-xl border border-[#D8ECEA] bg-white px-5 py-3 text-sm font-semibold text-[#526968] transition hover:bg-[#EEF7F6] disabled:cursor-not-allowed disabled:opacity-50"
             >
               Cancel
             </button>
@@ -377,12 +368,20 @@ export default function InventoryItemModal({
             <button
               type="submit"
               disabled={loading}
-              className="flex min-w-[140px] items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ backgroundColor: "#028090" }}
+              className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#028090] to-[#00A896] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading && <Loader2 size={16} className="animate-spin" />}
+              {loading ? (
+                <>
+                  <Loader2 size={17} className="animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Package size={17} />
 
-              {loading ? "Saving..." : isEdit ? "Update Item" : "Add Item"}
+                  {item ? "Update Item" : "Add Item"}
+                </>
+              )}
             </button>
           </div>
         </form>

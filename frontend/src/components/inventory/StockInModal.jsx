@@ -1,65 +1,90 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   X,
-  Package,
+  PackagePlus,
+  Loader2,
   Truck,
-  Hash,
   IndianRupee,
   FileText,
-  Loader2,
-  Calculator,
+  Package,
+  ArrowRight,
 } from "lucide-react";
+
+// =====================================================
+// STOCK IN REASONS
+// Purchase is not included because Purchase module
+// should automatically add stock.
+// =====================================================
+
+const STOCK_IN_REASONS = [
+  "Opening Stock",
+  "Stock Received Without Purchase",
+  "Return Received",
+  "Other",
+];
 
 const initialForm = {
   inventoryItemId: "",
-  quantity: "",
   supplierId: "",
+  quantity: "",
   rate: "",
-  reason: "",
+  reason: "Opening Stock",
   notes: "",
 };
 
 export default function StockInModal({
   isOpen,
   onClose,
+  onSubmit,
   items = [],
   suppliers = [],
-  onSubmit,
   loading = false,
-  selectedItem = null,
 }) {
+  // =====================================================
+  // STATE
+  // =====================================================
+
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState("");
 
+  // =====================================================
+  // RESET WHEN MODAL OPENS
+  // =====================================================
+
   useEffect(() => {
-    if (!isOpen) return;
-
-    if (selectedItem) {
-      setForm({
-        inventoryItemId: String(selectedItem.id),
-        quantity: "",
-        supplierId: "",
-        rate: "",
-        reason: "",
-        notes: "",
-      });
-    } else {
+    if (isOpen) {
       setForm(initialForm);
+      setError("");
     }
+  }, [isOpen]);
 
-    setError("");
-  }, [isOpen, selectedItem]);
+  // =====================================================
+  // SELECTED ITEM
+  // =====================================================
 
-  if (!isOpen) return null;
+  const selectedItem = useMemo(() => {
+    return items.find(
+      (item) => String(item.id) === String(form.inventoryItemId),
+    );
+  }, [items, form.inventoryItemId]);
 
-  const selectedInventoryItem = items.find(
-    (item) => String(item.id) === String(form.inventoryItemId),
-  );
+  // =====================================================
+  // CALCULATIONS
+  // =====================================================
+
+  const currentStock = Number(selectedItem?.currentStock ?? 0);
 
   const quantity = Number(form.quantity || 0);
-  const rate = Number(form.rate || 0);
 
-  const totalAmount = quantity * rate;
+  const rate = form.rate === "" ? 0 : Number(form.rate || 0);
+
+  const newStock = currentStock + quantity;
+
+  const totalAmount = quantity > 0 && rate > 0 ? quantity * rate : 0;
+
+  // =====================================================
+  // HANDLE CHANGE
+  // =====================================================
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -72,348 +97,408 @@ export default function StockInModal({
     setError("");
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // =====================================================
+  // HANDLE CLOSE
+  // =====================================================
+
+  const handleClose = () => {
+    if (loading) return;
+
+    setForm(initialForm);
     setError("");
 
-    // -----------------------------
-    // Validation
-    // -----------------------------
+    onClose();
+  };
+
+  // =====================================================
+  // SUBMIT
+  // =====================================================
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    setError("");
+
+    // -----------------------------------------------
+    // VALIDATION
+    // -----------------------------------------------
 
     if (!form.inventoryItemId) {
       setError("Please select an inventory item.");
       return;
     }
 
-    if (!form.quantity || quantity <= 0) {
-      setError("Please enter a valid quantity.");
+    if (!form.quantity || Number(form.quantity) <= 0) {
+      setError("Quantity must be greater than 0.");
       return;
     }
 
-    if (form.rate === "" || rate < 0) {
-      setError("Please enter a valid purchase rate.");
+    if (form.rate !== "" && Number(form.rate) < 0) {
+      setError("Rate cannot be negative.");
       return;
     }
+
+    if (!form.reason) {
+      setError("Please select a stock in reason.");
+      return;
+    }
+
+    // -----------------------------------------------
+    // PAYLOAD
+    // Match your backend stockIn controller
+    // -----------------------------------------------
+
+    const payload = {
+      inventoryItemId: Number(form.inventoryItemId),
+
+      quantity: Number(form.quantity),
+
+      supplierId: form.supplierId ? Number(form.supplierId) : null,
+
+      rate: form.rate === "" ? null : Number(form.rate),
+
+      reason: form.reason,
+
+      notes: form.notes.trim() || null,
+    };
 
     try {
-      await onSubmit({
-        inventoryItemId: Number(form.inventoryItemId),
+      await onSubmit(payload);
 
-        supplierId: form.supplierId ? Number(form.supplierId) : null,
-
-        quantity: Number(form.quantity),
-
-        rate: Number(form.rate),
-
-        reason: form.reason.trim() || "Purchase",
-
-        notes: form.notes.trim() || null,
-      });
+      // Parent component should:
+      // 1. Call API
+      // 2. Refresh inventory/transactions
+      // 3. Close modal
 
       setForm(initialForm);
+      setError("");
     } catch (err) {
       setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Failed to record stock in.",
+        err?.response?.data?.message || err?.message || "Failed to add stock.",
       );
     }
   };
 
+  // =====================================================
+  // DON'T RENDER WHEN CLOSED
+  // =====================================================
+
+  if (!isOpen) return null;
+
+  // =====================================================
+  // UI
+  // =====================================================
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !loading) {
-          onClose();
-        }
-      }}
-    >
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* =========================
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[95vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        {/* =============================================
             HEADER
-        ========================== */}
+        ============================================== */}
 
-        <div
-          className="flex items-center justify-between px-6 py-5"
-          style={{ backgroundColor: "#05282A" }}
-        >
-          <div>
-            <h2
-              className="text-xl font-semibold text-white"
-              style={{
-                fontFamily: "'Libre Baskerville', serif",
-              }}
-            >
-              Stock In
-            </h2>
+        <div className="flex items-center justify-between border-b border-[#D8ECEA] bg-[#F7FAF9] px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-50">
+              <PackagePlus size={21} className="text-green-600" />
+            </div>
 
-            <p className="mt-1 text-xs text-white/60">
-              Add purchased stock to your inventory.
-            </p>
+            <div>
+              <h2 className="text-lg font-bold text-[#0F2C2E]">Stock In</h2>
+
+              <p className="text-xs text-[#718382]">
+                Add manual stock to your inventory.
+              </p>
+            </div>
           </div>
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={loading}
-            className="rounded-lg p-2 text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+            className="rounded-xl p-2 text-[#6B7F7E] transition hover:bg-[#EAF4F3] disabled:opacity-50"
           >
             <X size={20} />
           </button>
         </div>
 
-        {/* =========================
+        {/* =============================================
             FORM
-        ========================== */}
+        ============================================== */}
 
-        <form onSubmit={handleSubmit} className="space-y-5 p-6">
-          {/* Error */}
+        <form onSubmit={handleSubmit} className="overflow-y-auto p-5 sm:p-6">
+          {/* ERROR */}
 
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
               {error}
             </div>
           )}
 
-          {/* =========================
-              INVENTORY ITEM
-          ========================== */}
+          <div className="space-y-5">
+            {/* =========================================
+                INVENTORY ITEM
+            ========================================== */}
 
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Inventory Item <span className="text-red-500">*</span>
-            </label>
-
-            <div className="relative">
-              <Package
-                size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                Inventory Item *
+              </label>
 
               <select
                 name="inventoryItemId"
                 value={form.inventoryItemId}
                 onChange={handleChange}
-                disabled={Boolean(selectedItem) || loading}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={loading}
+                required
+                className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-3 text-sm outline-none transition focus:border-[#028090] focus:bg-white focus:ring-2 focus:ring-[#028090]/10"
               >
                 <option value="">Select inventory item</option>
 
                 {items.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.name} — {item.currentStock} {item.unit}
+                    {item.name}
+                    {" — "}
+                    Current: {item.currentStock ?? 0} {item.unit || ""}
                   </option>
                 ))}
               </select>
             </div>
-          </div>
 
-          {/* =========================
-              CURRENT STOCK
-          ========================== */}
+            {/* =========================================
+                STOCK PREVIEW
+            ========================================== */}
 
-          {selectedInventoryItem && (
-            <div className="rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-4 py-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-500">Current Stock</p>
+            {selectedItem && (
+              <div className="rounded-xl border border-[#D8ECEA] bg-[#F7FAF9] p-4">
+                <div className="flex items-center justify-between gap-4">
+                  {/* CURRENT */}
 
-                  <p className="mt-1 text-lg font-semibold text-[#028090]">
-                    {selectedInventoryItem.currentStock}{" "}
-                    {selectedInventoryItem.unit}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white">
+                      <Package size={19} className="text-[#028090]" />
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-[#718382]">Current Stock</p>
+
+                      <p className="mt-1 text-lg font-bold text-[#0F2C2E]">
+                        {currentStock} {selectedItem.unit || ""}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* NEW */}
+
+                  {quantity > 0 && (
+                    <>
+                      <ArrowRight size={18} className="text-[#718382]" />
+
+                      <div className="text-right">
+                        <p className="text-xs text-[#718382]">New Stock</p>
+
+                        <p className="mt-1 text-lg font-bold text-green-600">
+                          {newStock} {selectedItem.unit || ""}
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </div>
-
-                <Package size={22} className="text-[#028090]" />
               </div>
-            </div>
-          )}
+            )}
 
-          {/* =========================
-              SUPPLIER
-          ========================== */}
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Supplier
-            </label>
-
-            <div className="relative">
-              <Truck
-                size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-
-              <select
-                name="supplierId"
-                value={form.supplierId}
-                onChange={handleChange}
-                disabled={loading}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
-              >
-                <option value="">Select supplier</option>
-
-                {suppliers.length > 0 ? (
-                  suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </option>
-                  ))
-                ) : (
-                  <option value="" disabled>
-                    No suppliers available
-                  </option>
-                )}
-              </select>
-            </div>
-
-            <p className="mt-1 text-xs text-gray-400">
-              Select the supplier from whom you purchased this stock.
-            </p>
-          </div>
-
-          {/* =========================
-              QUANTITY + RATE
-          ========================== */}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {/* Quantity */}
+            {/* =========================================
+                SUPPLIER
+            ========================================== */}
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                Quantity <span className="text-red-500">*</span>
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                Supplier
+                <span className="ml-1 text-xs font-normal text-[#718382]">
+                  (Optional)
+                </span>
               </label>
 
               <div className="relative">
-                <Hash
+                <Truck
                   size={17}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#028090]"
                 />
+
+                <select
+                  name="supplierId"
+                  value={form.supplierId}
+                  onChange={handleChange}
+                  disabled={loading}
+                  className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-10 py-3 text-sm outline-none transition focus:border-[#028090] focus:bg-white focus:ring-2 focus:ring-[#028090]/10"
+                >
+                  <option value="">No supplier / Manual stock</option>
+
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name ||
+                        supplier.companyName ||
+                        `Supplier #${supplier.id}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* =========================================
+                QUANTITY + RATE
+            ========================================== */}
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* QUANTITY */}
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                  Quantity *
+                </label>
 
                 <input
                   type="number"
                   name="quantity"
-                  min="0.01"
-                  step="0.01"
                   value={form.quantity}
                   onChange={handleChange}
-                  placeholder="e.g. 20"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="Enter quantity"
                   disabled={loading}
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
+                  required
+                  className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-3 text-sm outline-none transition focus:border-[#028090] focus:bg-white focus:ring-2 focus:ring-[#028090]/10"
                 />
+
+                {selectedItem?.unit && (
+                  <p className="mt-1.5 text-xs text-[#718382]">
+                    Unit: {selectedItem.unit}
+                  </p>
+                )}
               </div>
 
-              {selectedInventoryItem && (
-                <p className="mt-1 text-xs text-gray-400">
-                  Unit: {selectedInventoryItem.unit}
-                </p>
-              )}
+              {/* RATE */}
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                  Rate / Unit
+                  <span className="ml-1 text-xs font-normal text-[#718382]">
+                    (Optional)
+                  </span>
+                </label>
+
+                <div className="relative">
+                  <IndianRupee
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[#028090]"
+                  />
+
+                  <input
+                    type="number"
+                    name="rate"
+                    value={form.rate}
+                    onChange={handleChange}
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    disabled={loading}
+                    className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-9 py-3 text-sm outline-none transition focus:border-[#028090] focus:bg-white focus:ring-2 focus:ring-[#028090]/10"
+                  />
+                </div>
+              </div>
             </div>
 
-            {/* Rate */}
+            {/* =========================================
+                TOTAL AMOUNT
+            ========================================== */}
+
+            {quantity > 0 && form.rate !== "" && rate >= 0 && (
+              <div className="rounded-xl bg-[#E6F7F5] p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-[#526968]">
+                    Estimated Total Value
+                  </span>
+
+                  <span className="text-lg font-bold text-[#028090]">
+                    ₹
+                    {totalAmount.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* =========================================
+                REASON
+            ========================================== */}
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                Rate per Unit <span className="text-red-500">*</span>
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                Stock In Reason *
               </label>
 
-              <div className="relative">
-                <IndianRupee
-                  size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-
-                <input
-                  type="number"
-                  name="rate"
-                  min="0"
-                  step="0.01"
-                  value={form.rate}
-                  onChange={handleChange}
-                  placeholder="e.g. 120"
-                  disabled={loading}
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* =========================
-              TOTAL AMOUNT
-          ========================== */}
-
-          {quantity > 0 && rate >= 0 && (
-            <div className="flex items-center justify-between rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-4 py-3">
-              <div className="flex items-center gap-2">
-                <Calculator size={17} className="text-[#028090]" />
-
-                <span className="text-sm text-gray-600">Total Amount</span>
-              </div>
-
-              <span className="text-lg font-semibold text-[#028090]">
-                ₹{totalAmount.toFixed(2)}
-              </span>
-            </div>
-          )}
-
-          {/* =========================
-              REASON
-          ========================== */}
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Reason
-            </label>
-
-            <div className="relative">
-              <FileText
-                size={17}
-                className="absolute left-3 top-3 text-gray-400"
-              />
-
-              <textarea
+              <select
                 name="reason"
                 value={form.reason}
                 onChange={handleChange}
-                rows={2}
-                placeholder="e.g. Purchased stock"
                 disabled={loading}
-                className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
-              />
+                required
+                className="w-full rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-3 text-sm outline-none transition focus:border-[#028090] focus:bg-white focus:ring-2 focus:ring-[#028090]/10"
+              >
+                {STOCK_IN_REASONS.map((reason) => (
+                  <option key={reason} value={reason}>
+                    {reason}
+                  </option>
+                ))}
+              </select>
+
+              <p className="mt-1.5 text-xs text-[#718382]">
+                Purchases should be added through the Purchase module.
+              </p>
+            </div>
+
+            {/* =========================================
+                NOTES
+            ========================================== */}
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-[#0F2C2E]">
+                Notes
+                <span className="ml-1 text-xs font-normal text-[#718382]">
+                  (Optional)
+                </span>
+              </label>
+
+              <div className="relative">
+                <FileText
+                  size={17}
+                  className="absolute left-3 top-3 text-[#028090]"
+                />
+
+                <textarea
+                  name="notes"
+                  value={form.notes}
+                  onChange={handleChange}
+                  rows={3}
+                  placeholder="Enter additional notes..."
+                  disabled={loading}
+                  className="w-full resize-none rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-10 py-3 text-sm outline-none transition focus:border-[#028090] focus:bg-white focus:ring-2 focus:ring-[#028090]/10"
+                />
+              </div>
             </div>
           </div>
 
-          {/* =========================
-              NOTES
-          ========================== */}
+          {/* =============================================
+              FOOTER
+          ============================================== */}
 
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Notes
-            </label>
-
-            <textarea
-              name="notes"
-              value={form.notes}
-              onChange={handleChange}
-              rows={3}
-              placeholder="Additional notes..."
-              disabled={loading}
-              className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-[#028090] focus:bg-white"
-            />
-          </div>
-
-          {/* =========================
-              BUTTONS
-          ========================== */}
-
-          <div className="flex justify-end gap-3 border-t border-gray-100 pt-5">
+          <div className="mt-6 flex flex-col-reverse gap-3 border-t border-[#D8ECEA] pt-5 sm:flex-row sm:justify-end">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={loading}
-              className="rounded-lg border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-xl border border-[#D8ECEA] px-5 py-3 text-sm font-semibold text-[#526968] transition hover:bg-[#EEF7F6] disabled:opacity-50"
             >
               Cancel
             </button>
@@ -421,11 +506,19 @@ export default function StockInModal({
             <button
               type="submit"
               disabled={loading}
-              className="flex min-w-[150px] items-center justify-center gap-2 rounded-lg bg-[#028090] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#026D7A] disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#028090] to-[#00A896] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading && <Loader2 size={16} className="animate-spin" />}
-
-              {loading ? "Saving..." : "Confirm Stock In"}
+              {loading ? (
+                <>
+                  <Loader2 size={17} className="animate-spin" />
+                  Adding Stock...
+                </>
+              ) : (
+                <>
+                  <PackagePlus size={17} />
+                  Add Stock
+                </>
+              )}
             </button>
           </div>
         </form>

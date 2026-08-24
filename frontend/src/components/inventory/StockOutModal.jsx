@@ -1,411 +1,547 @@
 import { useEffect, useState } from "react";
 import {
+  Search,
+  PackagePlus,
+  PackageMinus,
+  RefreshCw,
+  ArrowDownCircle,
+  ArrowUpCircle,
   X,
-  Package,
-  Hash,
-  FileText,
-  Loader2,
-  AlertTriangle,
 } from "lucide-react";
 
-const initialForm = {
-  inventoryItemId: "",
-  quantity: "",
-  reason: "",
-};
+import StockInModal from "../../../components/inventory/StockInModal";
+import StockOutModal from "../../../components/inventory/StockOutModal";
 
-const STOCK_OUT_REASONS = [
-  "Used for Laundry",
-  "Damaged",
-  "Expired",
-  "Lost",
-  "Other",
-];
+// =====================================================
+// API IMPORTS
+// Change paths/function names according to your project
+// =====================================================
 
-export default function StockOutModal({
-  isOpen,
-  onClose,
-  items = [],
-  onSubmit,
-  loading = false,
-  selectedItem = null,
-}) {
-  const [form, setForm] = useState(initialForm);
+import { getInventoryItems } from "../../../api/inventoryApi";
+
+import { getStockTransactions, stockIn, stockOut } from "../../../api/stockApi";
+
+// =====================================================
+// COMPONENT
+// =====================================================
+
+export default function StockInOut() {
+  // =====================================================
+  // STATE
+  // =====================================================
+
+  const [items, setItems] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [transactionLoading, setTransactionLoading] = useState(false);
+
+  const [stockInOpen, setStockInOpen] = useState(false);
+  const [stockOutOpen, setStockOutOpen] = useState(false);
+
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("ALL");
+
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!isOpen) return;
+  // =====================================================
+  // LOAD INVENTORY ITEMS
+  // =====================================================
 
-    if (selectedItem) {
-      setForm({
-        inventoryItemId: String(selectedItem.id),
-        quantity: "",
-        reason: "",
-      });
-    } else {
-      setForm(initialForm);
-    }
-
-    setError("");
-  }, [isOpen, selectedItem]);
-
-  if (!isOpen) return null;
-
-  const selectedInventoryItem = items.find(
-    (item) =>
-      String(item.id) === String(form.inventoryItemId)
-  );
-
-  const currentStock = Number(
-    selectedInventoryItem?.currentStock || 0
-  );
-
-  const quantity = Number(form.quantity || 0);
-
-  const remainingStock = currentStock - quantity;
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-
-    setError("");
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-
-    if (!form.inventoryItemId) {
-      setError("Please select an inventory item.");
-      return;
-    }
-
-    if (!form.quantity || quantity <= 0) {
-      setError("Please enter a valid quantity.");
-      return;
-    }
-
-    if (quantity > currentStock) {
-      setError(
-        `Only ${currentStock} ${
-          selectedInventoryItem?.unit || ""
-        } is available.`
-      );
-      return;
-    }
-
-    if (!form.reason) {
-      setError("Please select a reason.");
-      return;
-    }
-
+  const fetchItems = async () => {
     try {
-      await onSubmit({
-        inventoryItemId: Number(form.inventoryItemId),
-        quantity: Number(form.quantity),
-        reason: form.reason,
-      });
+      const response = await getInventoryItems();
 
-      setForm(initialForm);
-    } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Failed to record stock out."
-      );
+      console.log("Inventory Items:", response);
+
+      // Support different API response structures
+      const inventoryData = response?.items || response?.data || response || [];
+
+      setItems(Array.isArray(inventoryData) ? inventoryData : []);
+    } catch (error) {
+      console.error("Inventory Fetch Error:", error);
+
+      setError(error?.message || "Failed to load inventory items.");
     }
   };
+
+  // =====================================================
+  // LOAD STOCK TRANSACTIONS
+  // =====================================================
+
+  const fetchTransactions = async () => {
+    try {
+      setTransactionLoading(true);
+
+      const response = await getStockTransactions();
+
+      console.log("Stock Transactions:", response);
+
+      const transactionData =
+        response?.transactions || response?.data || response || [];
+
+      setTransactions(Array.isArray(transactionData) ? transactionData : []);
+    } catch (error) {
+      console.error("Stock Transaction Error:", error);
+
+      setTransactions([]);
+    } finally {
+      setTransactionLoading(false);
+    }
+  };
+
+  // =====================================================
+  // INITIAL LOAD
+  // =====================================================
+
+  const loadData = async () => {
+    setLoading(true);
+    setError("");
+
+    await Promise.all([fetchItems(), fetchTransactions()]);
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // =====================================================
+  // STOCK IN SUBMIT
+  // =====================================================
+
+  const handleStockIn = async (data) => {
+    try {
+      setTransactionLoading(true);
+
+      console.log("Stock In Payload:", data);
+
+      await stockIn(data);
+
+      // Refresh inventory and transactions
+      await Promise.all([fetchItems(), fetchTransactions()]);
+
+      setStockInOpen(false);
+    } catch (error) {
+      console.error("Stock In Error:", error);
+
+      throw error;
+    } finally {
+      setTransactionLoading(false);
+    }
+  };
+
+  // =====================================================
+  // STOCK OUT SUBMIT
+  // =====================================================
+
+  const handleStockOut = async (data) => {
+    try {
+      setTransactionLoading(true);
+
+      console.log("Stock Out Payload:", data);
+
+      await stockOut(data);
+
+      // Refresh inventory and transactions
+      await Promise.all([fetchItems(), fetchTransactions()]);
+
+      setStockOutOpen(false);
+    } catch (error) {
+      console.error("Stock Out Error:", error);
+
+      throw error;
+    } finally {
+      setTransactionLoading(false);
+    }
+  };
+
+  // =====================================================
+  // REFRESH
+  // =====================================================
+
+  const handleRefresh = async () => {
+    await loadData();
+  };
+
+  // =====================================================
+  // FILTER TRANSACTIONS
+  // =====================================================
+
+  const filteredTransactions = transactions.filter((transaction) => {
+    const searchValue = search.toLowerCase().trim();
+
+    const itemName =
+      transaction.inventoryItem?.name ||
+      transaction.item?.name ||
+      transaction.itemName ||
+      "";
+
+    const reason = transaction.reason || "";
+
+    const transactionType =
+      transaction.type || transaction.transactionType || "";
+
+    const matchesSearch =
+      !searchValue ||
+      itemName.toLowerCase().includes(searchValue) ||
+      reason.toLowerCase().includes(searchValue);
+
+    const matchesType =
+      typeFilter === "ALL" || transactionType.toUpperCase() === typeFilter;
+
+    return matchesSearch && matchesType;
+  });
+
+  // =====================================================
+  // FORMAT DATE
+  // =====================================================
+
+  const formatDate = (date) => {
+    if (!date) return "-";
+
+    return new Date(date).toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  // =====================================================
+  // GET ITEM NAME
+  // =====================================================
+
+  const getItemName = (transaction) => {
+    return (
+      transaction.inventoryItem?.name ||
+      transaction.item?.name ||
+      transaction.itemName ||
+      "Unknown Item"
+    );
+  };
+
+  // =====================================================
+  // GET TRANSACTION TYPE
+  // =====================================================
+
+  const getTransactionType = (transaction) => {
+    return (
+      transaction.type ||
+      transaction.transactionType ||
+      "-"
+    ).toUpperCase();
+  };
+
+  // =====================================================
+  // GET QUANTITY
+  // =====================================================
+
+  const getQuantity = (transaction) => {
+    return Number(transaction.quantity || 0);
+  };
+
+  // =====================================================
+  // LOADING
+  // =====================================================
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <div className="text-center">
+          <RefreshCw
+            size={32}
+            className="mx-auto animate-spin text-[#028090]"
+          />
+
+          <p className="mt-3 text-sm text-[#718382]">Loading stock data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // =====================================================
+  // PAGE UI
+  // =====================================================
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-      onMouseDown={(e) => {
-        if (
-          e.target === e.currentTarget &&
-          !loading
-        ) {
-          onClose();
-        }
-      }}
-    >
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+    <div className="space-y-6">
+      {/* ===============================================
+          HEADER
+      =============================================== */}
 
-        {/* Header */}
-        <div
-          className="flex items-center justify-between px-6 py-5"
-          style={{ backgroundColor: "#05282A" }}
-        >
-          <div>
-            <h2
-              className="text-xl font-semibold text-white"
-              style={{
-                fontFamily: "'Libre Baskerville', serif",
-              }}
-            >
-              Stock Out
-            </h2>
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-[#0F2C2E]">Stock In / Out</h1>
 
-            <p className="mt-1 text-xs text-white/60">
-              Remove stock from your inventory.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="rounded-lg p-2 text-white/70 transition hover:bg-white/10 hover:text-white"
-          >
-            <X size={20} />
-          </button>
+          <p className="mt-1 text-sm text-[#718382]">
+            Manage manual stock additions and removals.
+          </p>
         </div>
 
-        {/* Form */}
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-5 p-6"
-        >
+        <div className="flex flex-wrap gap-3">
+          {/* REFRESH */}
 
-          {/* Error */}
-          {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-              <AlertTriangle
-                size={17}
-                className="mt-0.5 shrink-0"
-              />
+          <button
+            onClick={handleRefresh}
+            disabled={loading || transactionLoading}
+            className="flex items-center gap-2 rounded-xl border border-[#D8ECEA] bg-white px-4 py-2.5 text-sm font-medium text-[#526968] transition hover:bg-[#EEF7F6] disabled:opacity-50"
+          >
+            <RefreshCw
+              size={17}
+              className={transactionLoading ? "animate-spin" : ""}
+            />
+            Refresh
+          </button>
 
-              <span>{error}</span>
-            </div>
-          )}
+          {/* STOCK OUT */}
 
-          {/* Inventory Item */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Inventory Item{" "}
-              <span className="text-red-500">*</span>
-            </label>
+          <button
+            onClick={() => setStockOutOpen(true)}
+            disabled={transactionLoading}
+            className="flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50"
+          >
+            <PackageMinus size={18} />
+            Stock Out
+          </button>
 
-            <div className="relative">
+          {/* STOCK IN */}
 
-              <Package
-                size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-
-              <select
-                name="inventoryItemId"
-                value={form.inventoryItemId}
-                onChange={handleChange}
-                disabled={
-                  Boolean(selectedItem) || loading
-                }
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                <option value="">
-                  Select inventory item
-                </option>
-
-                {items.map((item) => (
-                  <option
-                    key={item.id}
-                    value={item.id}
-                  >
-                    {item.name} — {item.currentStock}{" "}
-                    {item.unit}
-                  </option>
-                ))}
-              </select>
-
-            </div>
-          </div>
-
-          {/* Current Stock */}
-          {selectedInventoryItem && (
-            <div className="grid grid-cols-2 gap-3">
-
-              <div className="rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] p-4">
-
-                <p className="text-xs text-gray-500">
-                  Current Stock
-                </p>
-
-                <p className="mt-1 text-lg font-semibold text-[#028090]">
-                  {currentStock}{" "}
-                  {selectedInventoryItem.unit}
-                </p>
-
-              </div>
-
-              <div
-                className={`rounded-xl border p-4 ${
-                  remainingStock <=
-                  Number(selectedInventoryItem.minStock)
-                    ? "border-orange-100 bg-orange-50"
-                    : "border-gray-100 bg-gray-50"
-                }`}
-              >
-
-                <p className="text-xs text-gray-500">
-                  Remaining Stock
-                </p>
-
-                <p
-                  className={`mt-1 text-lg font-semibold ${
-                    remainingStock < 0
-                      ? "text-red-600"
-                      : remainingStock <=
-                        Number(
-                          selectedInventoryItem.minStock
-                        )
-                      ? "text-orange-600"
-                      : "text-[#028090]"
-                  }`}
-                >
-                  {Math.max(remainingStock, 0)}{" "}
-                  {selectedInventoryItem.unit}
-                </p>
-
-              </div>
-
-            </div>
-          )}
-
-          {/* Quantity */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Quantity{" "}
-              <span className="text-red-500">*</span>
-            </label>
-
-            <div className="relative">
-
-              <Hash
-                size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-
-              <input
-                type="number"
-                name="quantity"
-                min="0.01"
-                step="0.01"
-                max={currentStock || undefined}
-                value={form.quantity}
-                onChange={handleChange}
-                placeholder="Enter quantity"
-                disabled={loading}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
-              />
-
-            </div>
-
-            {selectedInventoryItem && (
-              <p className="mt-1.5 text-xs text-gray-400">
-                Available: {currentStock}{" "}
-                {selectedInventoryItem.unit}
-              </p>
-            )}
-          </div>
-
-          {/* Reason */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Reason{" "}
-              <span className="text-red-500">*</span>
-            </label>
-
-            <div className="relative">
-
-              <FileText
-                size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-
-              <select
-                name="reason"
-                value={form.reason}
-                onChange={handleChange}
-                disabled={loading}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#028090] focus:bg-white"
-              >
-                <option value="">
-                  Select reason
-                </option>
-
-                {STOCK_OUT_REASONS.map((reason) => (
-                  <option
-                    key={reason}
-                    value={reason}
-                  >
-                    {reason}
-                  </option>
-                ))}
-              </select>
-
-            </div>
-          </div>
-
-          {/* Low stock warning */}
-          {selectedInventoryItem &&
-            quantity > 0 &&
-            remainingStock >= 0 &&
-            remainingStock <=
-              Number(
-                selectedInventoryItem.minStock
-              ) && (
-              <div className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-xs text-orange-700">
-
-                <AlertTriangle
-                  size={16}
-                  className="mt-0.5 shrink-0"
-                />
-
-                <span>
-                  This stock-out will bring the
-                  item to or below its minimum
-                  stock level.
-                </span>
-
-              </div>
-            )}
-
-          {/* Buttons */}
-          <div className="flex justify-end gap-3 border-t border-gray-100 pt-5">
-
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="rounded-lg border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex min-w-[140px] items-center justify-center gap-2 rounded-lg bg-[#028090] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#026D7A] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading && (
-                <Loader2
-                  size={16}
-                  className="animate-spin"
-                />
-              )}
-
-              {loading
-                ? "Saving..."
-                : "Confirm Stock Out"}
-            </button>
-
-          </div>
-
-        </form>
+          <button
+            onClick={() => setStockInOpen(true)}
+            disabled={transactionLoading}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#028090] to-[#00A896] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          >
+            <PackagePlus size={18} />
+            Stock In
+          </button>
+        </div>
       </div>
+
+      {/* ===============================================
+          ERROR
+      =============================================== */}
+
+      {error && (
+        <div className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+          <p className="text-sm text-red-600">{error}</p>
+
+          <button onClick={() => setError("")} className="text-red-500">
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
+      {/* ===============================================
+          FILTERS
+      =============================================== */}
+
+      <div className="rounded-2xl border border-[#D8ECEA] bg-white p-4">
+        <div className="flex flex-col gap-4 md:flex-row">
+          {/* SEARCH */}
+
+          <div className="relative flex-1">
+            <Search
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[#718382]"
+            />
+
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by item or reason..."
+              className="w-full rounded-xl border border-[#D8ECEA] bg-[#F7FAF9] py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-[#028090]"
+            />
+          </div>
+
+          {/* TYPE FILTER */}
+
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="rounded-xl border border-[#D8ECEA] bg-[#F7FAF9] px-4 py-2.5 text-sm outline-none focus:border-[#028090]"
+          >
+            <option value="ALL">All Transactions</option>
+
+            <option value="IN">Stock In</option>
+
+            <option value="OUT">Stock Out</option>
+          </select>
+        </div>
+      </div>
+
+      {/* ===============================================
+          TRANSACTION TABLE
+      =============================================== */}
+
+      <div className="overflow-hidden rounded-2xl border border-[#D8ECEA] bg-white">
+        <div className="border-b border-[#D8ECEA] px-5 py-4">
+          <h2 className="font-bold text-[#0F2C2E]">Stock Transactions</h2>
+
+          <p className="mt-1 text-sm text-[#718382]">
+            {filteredTransactions.length} transaction
+            {filteredTransactions.length !== 1 ? "s" : ""} found
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[850px]">
+            <thead className="bg-[#F7FAF9]">
+              <tr>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-[#718382]">
+                  Item
+                </th>
+
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-[#718382]">
+                  Type
+                </th>
+
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-[#718382]">
+                  Quantity
+                </th>
+
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-[#718382]">
+                  Reason
+                </th>
+
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-[#718382]">
+                  Notes
+                </th>
+
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-[#718382]">
+                  Date
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {transactionLoading ? (
+                <tr>
+                  <td colSpan="6" className="px-5 py-10 text-center">
+                    <RefreshCw
+                      size={24}
+                      className="mx-auto animate-spin text-[#028090]"
+                    />
+
+                    <p className="mt-2 text-sm text-[#718382]">
+                      Updating stock...
+                    </p>
+                  </td>
+                </tr>
+              ) : filteredTransactions.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan="6"
+                    className="px-5 py-12 text-center text-sm text-[#718382]"
+                  >
+                    No stock transactions found.
+                  </td>
+                </tr>
+              ) : (
+                filteredTransactions.map((transaction) => {
+                  const type = getTransactionType(transaction);
+
+                  const quantity = getQuantity(transaction);
+
+                  return (
+                    <tr
+                      key={transaction.id}
+                      className="border-t border-[#EEF3F2] transition hover:bg-[#FAFCFC]"
+                    >
+                      {/* ITEM */}
+
+                      <td className="px-5 py-4">
+                        <p className="font-medium text-[#0F2C2E]">
+                          {getItemName(transaction)}
+                        </p>
+                      </td>
+
+                      {/* TYPE */}
+
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
+                            type === "IN"
+                              ? "bg-green-50 text-green-600"
+                              : "bg-red-50 text-red-600"
+                          }`}
+                        >
+                          {type === "IN" ? (
+                            <ArrowDownCircle size={14} />
+                          ) : (
+                            <ArrowUpCircle size={14} />
+                          )}
+                          Stock {type}
+                        </span>
+                      </td>
+
+                      {/* QUANTITY */}
+
+                      <td className="px-5 py-4">
+                        <span
+                          className={`font-semibold ${
+                            type === "IN" ? "text-green-600" : "text-red-600"
+                          }`}
+                        >
+                          {type === "IN" ? "+" : "-"}
+                          {quantity}
+                        </span>
+                      </td>
+
+                      {/* REASON */}
+
+                      <td className="px-5 py-4 text-sm text-[#526968]">
+                        {transaction.reason || "-"}
+                      </td>
+
+                      {/* NOTES */}
+
+                      <td className="max-w-[250px] truncate px-5 py-4 text-sm text-[#718382]">
+                        {transaction.notes || "-"}
+                      </td>
+
+                      {/* DATE */}
+
+                      <td className="whitespace-nowrap px-5 py-4 text-sm text-[#718382]">
+                        {formatDate(
+                          transaction.createdAt || transaction.transactionDate,
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ===============================================
+          STOCK IN MODAL
+      =============================================== */}
+
+      <StockInModal
+        isOpen={stockInOpen}
+        onClose={() => setStockInOpen(false)}
+        onSubmit={handleStockIn}
+        items={items}
+        loading={transactionLoading}
+      />
+
+      {/* ===============================================
+          STOCK OUT MODAL
+      =============================================== */}
+
+      <StockOutModal
+        isOpen={stockOutOpen}
+        onClose={() => setStockOutOpen(false)}
+        onSubmit={handleStockOut}
+        items={items}
+        loading={transactionLoading}
+      />
     </div>
   );
 }

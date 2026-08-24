@@ -2,9 +2,13 @@ import { Toaster } from "react-hot-toast";
 import AppRoutes from "./routes/AppRoutes";
 import "./App.css";
 
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
 function App() {
   return (
     <>
+<<<<<<< HEAD
       <Toaster
         position="top-right"
         toastOptions={{
@@ -29,6 +33,21 @@ function App() {
         }}
       />
       <AppRoutes />
+=======
+      <AppRoutes />
+
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
+>>>>>>> ankita
     </>
   );
 }

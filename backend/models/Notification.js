@@ -1,15 +1,6 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
 
-// ============================================================
-// NOTIFICATION — in-app notification row.
-// Exactly one of the three target columns is usually set:
-//   userId     → users table account (customer / shop admin / super admin)
-//   employeeId → employees table account
-//   shopId     → broadcast to the whole shop (legacy fallback)
-// The frontend scopes by role: customers read userId, employees read
-// employeeId, admins read shopId.
-// ============================================================
 const Notification = sequelize.define(
   "Notification",
   {
@@ -19,20 +10,44 @@ const Notification = sequelize.define(
       primaryKey: true,
     },
 
-    // users.id — the recipient when the account lives in the users table
+    // shops.id
+    shopId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    // users.id
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
 
-    // employees.id — the recipient when the account is an employee
+    // employees.id
     employeeId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
 
-    // shops.id — shop-scoped notifications (seen by that shop's admins)
-    shopId: {
+    // inventory_items.id
+    inventoryItemId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    // subscriptions.id
+    subscriptionId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    // tasks.id
+    taskId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    // orders.id
+    orderId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
@@ -47,25 +62,15 @@ const Notification = sequelize.define(
       allowNull: true,
     },
 
-    // order | task | system | payment
+    // order | task | system | payment | LOW_STOCK
     type: {
       type: DataTypes.STRING(50),
+      allowNull: false,
       defaultValue: "system",
     },
 
-    // tasks.id — the task this notification is about (optional)
-    taskId: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-
-    // orders.id — the order this notification is about (optional)
-    orderId: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-
-    // Frontend route the notification should open, e.g. "/admin/orders"
+    // Frontend route
+    // Example: /admin/orders
     link: {
       type: DataTypes.STRING(255),
       allowNull: true,
@@ -76,11 +81,22 @@ const Notification = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
+
+    isResolved: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+
+    resolvedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   },
   {
     tableName: "notifications",
     timestamps: true,
-  },
+  }
 );
 
 export default Notification;

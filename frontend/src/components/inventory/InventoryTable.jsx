@@ -1,251 +1,340 @@
 import {
+  Eye,
   Edit,
   Trash2,
   Package,
   AlertTriangle,
-  CheckCircle,
+  XCircle,
+  CheckCircle2,
 } from "lucide-react";
+
+// =====================================================
+// STOCK STATUS
+// =====================================================
+
+const getStockStatus = (item) => {
+  const current = Number(item.currentStock) || 0;
+
+  const minimum = Number(item.minStock) || 0;
+
+  if (current <= 0) {
+    return {
+      label: "Out of Stock",
+      className: "bg-red-50 text-red-700",
+      dot: "bg-red-500",
+      icon: XCircle,
+    };
+  }
+
+  if (current <= minimum) {
+    return {
+      label: "Low Stock",
+      className: "bg-amber-50 text-amber-700",
+      dot: "bg-amber-500",
+      icon: AlertTriangle,
+    };
+  }
+
+  return {
+    label: "Available",
+    className: "bg-green-50 text-green-700",
+    dot: "bg-green-500",
+    icon: CheckCircle2,
+  };
+};
+
+// =====================================================
+// COMPONENT
+// =====================================================
 
 export default function InventoryTable({
   items = [],
+  loading = false,
+  onView,
   onEdit,
   onDelete,
 }) {
+  // ===================================================
+  // LOADING
+  // ===================================================
+
+  if (loading) {
+    return (
+      <div className="overflow-hidden rounded-2xl border border-[#D8ECEA] bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[950px]">
+            <thead>
+              <tr className="border-b border-[#D8ECEA] bg-[#EEF7F6]">
+                {[
+                  "Item",
+                  "Category",
+                  "Unit",
+                  "Current Stock",
+                  "Min Stock",
+                  "Stock Status",
+                  "Status",
+                  "Actions",
+                ].map((heading) => (
+                  <th
+                    key={heading}
+                    className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-[#526968]"
+                  >
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody>
+              {[1, 2, 3, 4, 5].map((item) => (
+                <tr
+                  key={item}
+                  className="animate-pulse border-b border-[#EDF3F2]"
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((cell) => (
+                    <td key={cell} className="px-5 py-5">
+                      <div className="h-4 w-20 rounded bg-gray-200" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // ===================================================
+  // EMPTY
+  // ===================================================
+
   if (!items.length) {
     return (
-      <div className="rounded-2xl border border-gray-100 bg-white p-12 text-center shadow-sm">
-        <Package
-          size={42}
-          className="mx-auto mb-3 text-gray-300"
-        />
+      <div className="rounded-2xl border border-[#D8ECEA] bg-white px-6 py-16 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EEF7F6]">
+          <Package size={26} className="text-[#028090]" />
+        </div>
 
-        <h3 className="text-base font-semibold text-gray-600">
-          No Inventory Items
+        <h3 className="mt-4 text-base font-semibold text-[#0F2C2E]">
+          No inventory items found
         </h3>
 
-        <p className="mt-1 text-sm text-gray-400">
-          Add your first inventory item to start managing stock.
+        <p className="mt-1 text-sm text-[#718382]">
+          Add an inventory item to start managing stock.
         </p>
       </div>
     );
   }
 
-  return (
-    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-      {/* Header */}
-      <div className="border-b border-gray-100 px-5 py-4">
-        <h2 className="font-semibold text-[#05282A]">
-          Inventory Items
-        </h2>
+  // ===================================================
+  // TABLE
+  // ===================================================
 
-        <p className="mt-1 text-xs text-gray-400">
-          Manage your laundry supplies and current stock.
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#D8ECEA] bg-white shadow-sm">
+      <div className="border-b border-[#D8ECEA] px-5 py-4">
+        <h2 className="font-semibold text-[#0F2C2E]">Inventory Items</h2>
+
+        <p className="mt-1 text-xs text-[#718382]">
+          Current inventory stock and minimum stock levels.
         </p>
       </div>
 
-      {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[850px]">
+        <table className="w-full min-w-[1050px]">
+          {/* HEADER */}
 
           <thead>
-            <tr className="border-b border-gray-100 bg-gray-50">
-
-              <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr className="border-b border-[#D8ECEA] bg-[#EEF7F6]">
+              <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-[#526968]">
                 Item
               </th>
 
-              <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-[#526968]">
                 Category
               </th>
 
-              <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-[#526968]">
+                Unit
+              </th>
+
+              <th className="px-5 py-4 text-right text-xs font-semibold uppercase tracking-wide text-[#526968]">
                 Current Stock
               </th>
 
-              <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Minimum Stock
+              <th className="px-5 py-4 text-right text-xs font-semibold uppercase tracking-wide text-[#526968]">
+                Min Stock
               </th>
 
-              <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-[#526968]">
+                Stock Status
+              </th>
+
+              <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-[#526968]">
                 Status
               </th>
 
-              <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <th className="px-5 py-4 text-right text-xs font-semibold uppercase tracking-wide text-[#526968]">
                 Actions
               </th>
-
             </tr>
           </thead>
 
+          {/* BODY */}
+
           <tbody>
             {items.map((item) => {
-              const currentStock = Number(
-                item.currentStock || 0
-              );
+              const stockStatus = getStockStatus(item);
 
-              const minStock = Number(
-                item.minStock || 0
-              );
+              const StockIcon = stockStatus.icon;
 
-              const isOutOfStock = currentStock <= 0;
+              const currentStock = Number(item.currentStock) || 0;
 
-              const isLowStock =
-                currentStock > 0 &&
-                currentStock <= minStock;
+              const minStock = Number(item.minStock) || 0;
+
+              const isActive = item.status === "Active";
 
               return (
                 <tr
                   key={item.id}
-                  className="border-b border-gray-50 transition hover:bg-gray-50/70"
+                  className="border-b border-[#EDF3F2] transition hover:bg-[#FAFCFC]"
                 >
+                  {/* ITEM */}
 
-                  {/* Item */}
                   <td className="px-5 py-4">
-
                     <div className="flex items-center gap-3">
-
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#EAF8F6]">
-                        <Package
-                          size={18}
-                          className="text-[#028090]"
-                        />
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#E6F7F5]">
+                        <Package size={18} className="text-[#028090]" />
                       </div>
 
-                      <div>
-                        <p className="text-sm font-medium text-gray-700">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[#0F2C2E]">
                           {item.name}
                         </p>
 
-                        <p className="text-xs text-gray-400">
-                          ID: #{item.id}
-                        </p>
+                        <p className="text-xs text-[#718382]">ID: #{item.id}</p>
                       </div>
-
                     </div>
-
                   </td>
 
-                  {/* Category */}
-                  <td className="px-5 py-4">
+                  {/* CATEGORY */}
 
-                    <span className="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
-                      {item.category}
+                  <td className="px-5 py-4">
+                    <span className="rounded-lg bg-gray-50 px-2.5 py-1 text-xs font-medium text-[#526968]">
+                      {item.category || "-"}
+                    </span>
+                  </td>
+
+                  {/* UNIT */}
+
+                  <td className="px-5 py-4">
+                    <span className="text-sm font-medium text-[#526968]">
+                      {item.unit || "-"}
+                    </span>
+                  </td>
+
+                  {/* CURRENT STOCK */}
+
+                  <td className="px-5 py-4 text-right">
+                    <span
+                      className={`text-sm font-bold ${
+                        currentStock <= 0
+                          ? "text-red-600"
+                          : currentStock <= minStock
+                            ? "text-amber-600"
+                            : "text-[#0F2C2E]"
+                      }`}
+                    >
+                      {currentStock}
                     </span>
 
+                    <span className="ml-1 text-xs text-[#718382]">
+                      {item.unit}
+                    </span>
                   </td>
 
-                  {/* Current Stock */}
-                  <td className="px-5 py-4">
+                  {/* MIN STOCK */}
 
-                    <div>
-                      <p
-                        className={`text-sm font-semibold ${
-                          isOutOfStock
-                            ? "text-red-600"
-                            : isLowStock
-                            ? "text-orange-500"
-                            : "text-[#028090]"
+                  <td className="px-5 py-4 text-right">
+                    <span className="text-sm font-medium text-[#526968]">
+                      {minStock}
+                    </span>
+
+                    <span className="ml-1 text-xs text-[#718382]">
+                      {item.unit}
+                    </span>
+                  </td>
+
+                  {/* STOCK STATUS */}
+
+                  <td className="px-5 py-4">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${stockStatus.className}`}
+                    >
+                      <StockIcon size={13} />
+
+                      {stockStatus.label}
+                    </span>
+                  </td>
+
+                  {/* ACTIVE STATUS */}
+
+                  <td className="px-5 py-4">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${
+                        isActive
+                          ? "bg-green-50 text-green-700"
+                          : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          isActive ? "bg-green-500" : "bg-gray-400"
                         }`}
-                      >
-                        {currentStock} {item.unit}
-                      </p>
+                      />
 
-                      {isOutOfStock && (
-                        <p className="mt-0.5 text-[11px] text-red-400">
-                          Out of stock
-                        </p>
-                      )}
-
-                      {isLowStock && (
-                        <p className="mt-0.5 text-[11px] text-orange-400">
-                          Low stock
-                        </p>
-                      )}
-                    </div>
-
-                  </td>
-
-                  {/* Minimum Stock */}
-                  <td className="px-5 py-4">
-
-                    <span className="text-sm text-gray-600">
-                      {minStock} {item.unit}
+                      {item.status || "Inactive"}
                     </span>
-
                   </td>
 
-                  {/* Status */}
+                  {/* ACTIONS */}
+
                   <td className="px-5 py-4">
-
-                    {isOutOfStock ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600">
-                        <AlertTriangle size={13} />
-                        Out of Stock
-                      </span>
-                    ) : isLowStock ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-600">
-                        <AlertTriangle size={13} />
-                        Low Stock
-                      </span>
-                    ) : item.status === "Active" ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-600">
-                        <CheckCircle size={13} />
-                        Active
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500">
-                        {item.status || "Inactive"}
-                      </span>
-                    )}
-
-                  </td>
-
-                  {/* Actions */}
-                  <td className="px-5 py-4">
-
-                    <div className="flex justify-end gap-2">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onView?.(item)}
+                        title="View"
+                        className="rounded-lg p-2 text-[#028090] transition hover:bg-[#E6F7F5]"
+                      >
+                        <Eye size={17} />
+                      </button>
 
                       <button
                         type="button"
                         onClick={() => onEdit?.(item)}
-                        title="Edit item"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition hover:bg-[#EAF8F6] hover:text-[#028090]"
+                        title="Edit"
+                        className="rounded-lg p-2 text-amber-600 transition hover:bg-amber-50"
                       >
-                        <Edit size={16} />
+                        <Edit size={17} />
                       </button>
 
                       <button
                         type="button"
                         onClick={() => onDelete?.(item)}
-                        title="Delete item"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition hover:bg-red-50 hover:text-red-600"
+                        title="Deactivate"
+                        className="rounded-lg p-2 text-red-500 transition hover:bg-red-50"
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={17} />
                       </button>
-
                     </div>
-
                   </td>
-
                 </tr>
               );
             })}
           </tbody>
-
         </table>
-      </div>
-
-      {/* Footer */}
-      <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3">
-
-        <p className="text-xs text-gray-400">
-          Showing{" "}
-          <span className="font-medium text-gray-600">
-            {items.length}
-          </span>{" "}
-          inventory items
-        </p>
-
       </div>
     </div>
   );

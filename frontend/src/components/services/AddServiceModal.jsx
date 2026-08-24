@@ -37,6 +37,7 @@ const AddServiceModal = ({ onClose, onSuccess, showToast }) => {
     e.preventDefault();
     setSubmitting(true);
     try {
+<<<<<<< HEAD
       await createService({ ...formData, price: Number(formData.price) });
       showToast("Service added successfully.", "success");
       onSuccess();
@@ -49,6 +50,38 @@ const AddServiceModal = ({ onClose, onSuccess, showToast }) => {
       setSubmitting(false);
     }
   };
+=======
+      console.log("Before API");
+
+      const response = await createService({
+        ...formData,
+        price: Number(formData.price),
+      });
+
+
+      
+      console.log("After API");
+      console.log(response);
+
+      // First close modal and refresh list
+      onSuccess();
+
+      // Then show success message
+      showToast("Service added successfully.", "success");
+
+    } catch (err) {
+      showToast(
+          err?.response?.data?.message || "Couldn't add service.",
+          "error",
+        );
+      // console.log("ERROR:", err);
+      // console.log("Response:", err.response);
+      // console.log("Data:", err.response?.data);
+    }
+  };
+
+
+>>>>>>> ankita
   return (
     <ModalShell title="Add New Service" onClose={onClose}>
       <form onSubmit={handleSubmit}>
