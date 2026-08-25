@@ -1,3 +1,77 @@
+// import jwt from "jsonwebtoken";
+// import User from "../models/User.js";
+// import Employee from "../models/Employee.js";
+
+// const protect = async (req, res, next) => {
+//   try {
+//     let token;
+
+//     // Check Authorization Header
+//     if (
+//       req.headers.authorization &&
+//       req.headers.authorization.startsWith("Bearer")
+//     ) {
+//       token = req.headers.authorization.split(" ")[1];
+//     }
+
+//     // Token not found
+//     if (!token) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Access denied. Token not found.",
+//       });
+//     }
+
+//     // Verify Token
+//     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+//     // Load the right record — users table for platform accounts,
+//     // employees table for employee accounts
+//     let account;
+//     if (decoded.type === "employee") {
+//       account = await Employee.findByPk(decoded.id, {
+//         attributes: { exclude: ["password"] },
+//       });
+//       if (account && account.status !== "active") {
+//         return res.status(403).json({
+//           success: false,
+//           message: "Employee account is inactive.",
+//         });
+//       }
+//     } else {
+//       account = await User.findByPk(decoded.id, {
+//         attributes: { exclude: ["password"] },
+//       });
+//       if (account && !account.isActive) {
+//         return res.status(403).json({
+//           success: false,
+//           message: "User account is inactive.",
+//         });
+//       }
+//     }
+
+//     if (!account) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "User not found.",
+//       });
+//     }
+
+//     // Attach account to request (req.user for employees, req.user for users)
+//     req.user = account;
+
+//     next();
+//   } catch (error) {
+//     return res.status(401).json({
+//       success: false,
+//       message: "Invalid or expired token.",
+//     });
+//   }
+// };
+
+// export default protect;
+
+
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import Employee from "../models/Employee.js";
@@ -6,15 +80,21 @@ const protect = async (req, res, next) => {
   try {
     let token;
 
-    // Check Authorization Header
+    // ============================================================
+    // GET TOKEN FROM AUTHORIZATION HEADER
+    // ============================================================
+
     if (
       req.headers.authorization &&
-      req.headers.authorization.startsWith("Bearer")
+      req.headers.authorization.startsWith("Bearer ")
     ) {
       token = req.headers.authorization.split(" ")[1];
     }
 
-    // Token not found
+    // ============================================================
+    // TOKEN NOT FOUND
+    // ============================================================
+
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -22,49 +102,105 @@ const protect = async (req, res, next) => {
       });
     }
 
-    // Verify Token
+    // ============================================================
+    // VERIFY TOKEN
+    // ============================================================
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Load the right record — users table for platform accounts,
-    // employees table for employee accounts
     let account;
+
+    // ============================================================
+    // EMPLOYEE
+    // employees table has shop_id
+    // Convert it to shopId in req.user
+    // ============================================================
+
     if (decoded.type === "employee") {
       account = await Employee.findByPk(decoded.id, {
-        attributes: { exclude: ["password"] },
+        attributes: {
+          exclude: ["password"],
+        },
       });
-      if (account && account.status !== "active") {
+
+      if (!account) {
+        return res.status(401).json({
+          success: false,
+          message: "Employee not found.",
+        });
+      }
+
+      if (account.status !== "active") {
         return res.status(403).json({
           success: false,
           message: "Employee account is inactive.",
         });
       }
-    } else {
+
+      // IMPORTANT:
+      // Database/model field remains: shop_id
+      // req.user will use: shopId
+      req.user = {
+        ...account.toJSON(),
+        role: "employee",
+        shopId: account.shop_id ?? null,
+      };
+    }
+
+    // ============================================================
+    // USER
+    // super_admin / admin / customer
+    // users table already has shopId
+    // ============================================================
+
+    else {
       account = await User.findByPk(decoded.id, {
-        attributes: { exclude: ["password"] },
+        attributes: {
+          exclude: ["password"],
+        },
       });
-      if (account && !account.isActive) {
+
+      if (!account) {
+        return res.status(401).json({
+          success: false,
+          message: "User not found.",
+        });
+      }
+
+      if (!account.isActive) {
         return res.status(403).json({
           success: false,
           message: "User account is inactive.",
         });
       }
+
+      req.user = {
+        ...account.toJSON(),
+        shopId: account.shopId ?? null,
+      };
     }
 
-    if (!account) {
+    return next();
+  } catch (error) {
+    console.error("Auth Middleware Error:", error.message);
+
+    if (error.name === "TokenExpiredError") {
       return res.status(401).json({
         success: false,
-        message: "User not found.",
+        message: "Token has expired. Please login again.",
       });
     }
 
-    // Attach account to request (req.user for employees, req.user for users)
-    req.user = account;
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token.",
+      });
+    }
 
-    next();
-  } catch (error) {
     return res.status(401).json({
       success: false,
-      message: "Invalid or expired token.",
+      message: "Authentication failed.",
     });
   }
 };

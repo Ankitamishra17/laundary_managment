@@ -10,13 +10,11 @@ const Customer = sequelize.define(
       primaryKey: true,
     },
 
-    // Links to users.id
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
 
-    // Default shop
     shopId: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -53,6 +51,7 @@ const Customer = sequelize.define(
 
     isActive: {
       type: DataTypes.BOOLEAN,
+      allowNull: false,
       defaultValue: true,
     },
   },
