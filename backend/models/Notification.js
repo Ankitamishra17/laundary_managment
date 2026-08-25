@@ -1,6 +1,17 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
 
+// ============================================================
+// NOTIFICATION
+// Supports:
+// - Inventory / low-stock notifications
+// - User notifications
+// - Employee notifications
+// - Task notifications
+// - Order notifications
+// - Shop-wide notifications
+// ============================================================
+
 const Notification = sequelize.define(
   "Notification",
   {
@@ -10,46 +21,46 @@ const Notification = sequelize.define(
       primaryKey: true,
     },
 
-    // shops.id
+    // Shop to which this notification belongs
     shopId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
 
-    // users.id
+    // Recipient from users table
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
 
-    // employees.id
+    // Recipient from employees table
     employeeId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
 
-    // inventory_items.id
+    // Related inventory item for LOW_STOCK notifications
     inventoryItemId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
 
-    // subscriptions.id
-    subscriptionId: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-
-    // tasks.id
+    // Related task
     taskId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
 
-    // orders.id
+    // Related order
     orderId: {
       type: DataTypes.INTEGER,
       allowNull: true,
+    },
+
+    type: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: "system",
     },
 
     title: {
@@ -62,15 +73,7 @@ const Notification = sequelize.define(
       allowNull: true,
     },
 
-    // order | task | system | payment | LOW_STOCK
-    type: {
-      type: DataTypes.STRING(50),
-      allowNull: false,
-      defaultValue: "system",
-    },
-
-    // Frontend route
-    // Example: /admin/orders
+    // Frontend route to open when notification is clicked
     link: {
       type: DataTypes.STRING(255),
       allowNull: true,
@@ -82,6 +85,7 @@ const Notification = sequelize.define(
       defaultValue: false,
     },
 
+    // Useful for LOW_STOCK notifications
     isResolved: {
       type: DataTypes.BOOLEAN,
       allowNull: false,

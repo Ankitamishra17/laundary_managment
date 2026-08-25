@@ -1,14 +1,14 @@
 import { Toaster } from "react-hot-toast";
-import AppRoutes from "./routes/AppRoutes";
-import "./App.css";
-
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+
+import AppRoutes from "./routes/AppRoutes";
+import "./App.css";
 
 function App() {
   return (
     <>
-<<<<<<< HEAD
+      {/* React Hot Toast */}
       <Toaster
         position="top-right"
         toastOptions={{
@@ -23,19 +23,27 @@ function App() {
             maxWidth: "420px",
           },
           success: {
-            iconTheme: { primary: "#02C39A", secondary: "#05282A" },
-            style: { border: "1px solid #02C39A55" },
+            iconTheme: {
+              primary: "#02C39A",
+              secondary: "#05282A",
+            },
+            style: {
+              border: "1px solid #02C39A55",
+            },
           },
           error: {
-            iconTheme: { primary: "#E0645C", secondary: "#05282A" },
-            style: { border: "1px solid #E0645C55" },
+            iconTheme: {
+              primary: "#E0645C",
+              secondary: "#05282A",
+            },
+            style: {
+              border: "1px solid #E0645C55",
+            },
           },
         }}
       />
-      <AppRoutes />
-=======
-      <AppRoutes />
 
+      {/* React Toastify */}
       <ToastContainer
         position="top-right"
         autoClose={3000}
@@ -47,7 +55,8 @@ function App() {
         pauseOnHover
         theme="light"
       />
->>>>>>> ankita
+
+      <AppRoutes />
     </>
   );
 }

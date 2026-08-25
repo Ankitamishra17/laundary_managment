@@ -2,9 +2,7 @@ import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
 
 // ============================================================
-// ORDER — a customer's laundry order for a shop.
-// Keeps the legacy `orders` table shape (customer_id, shop_id,
-// employee_id) so any existing rows stay compatible.
+// ORDER — a customer's laundry order for a shop
 // ============================================================
 const Order = sequelize.define(
   "Order",
@@ -15,24 +13,25 @@ const Order = sequelize.define(
       autoIncrement: true,
     },
 
-    // customers.id — the customer who placed the order
+    // Customer who placed the order
     customer_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
 
-    // shops.id — the laundry fulfilling the order
+    // Shop to which this order belongs
     shop_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
 
-    // employees.id — assigned staff (optional, set by the shop)
+    // Employee assigned to this order
     employee_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
 
+    // Order Status
     status: {
       type: DataTypes.ENUM(
         "pending",
@@ -43,56 +42,66 @@ const Order = sequelize.define(
         "delivered",
         "cancelled",
       ),
+      allowNull: false,
       defaultValue: "pending",
     },
 
+    // Pickup Date
     pickup_date: {
       type: DataTypes.DATEONLY,
       allowNull: true,
     },
 
+    // Pickup Time
     pickup_time: {
       type: DataTypes.STRING,
       allowNull: true,
     },
 
-    // Where the clothes will be picked up from (customer supplied).
+    // Pickup Address
     pickup_address: {
       type: DataTypes.TEXT,
       allowNull: true,
     },
 
-    // Where the finished clothes should be delivered (defaults to the
-    // pickup address when the customer doesn't supply a separate one).
+    // Delivery Address
     delivery_address: {
       type: DataTypes.TEXT,
       allowNull: true,
     },
 
-    // Free-form note about the delivery (landmark, instructions, ...).
+    // Delivery Instructions / Notes
     delivery_note: {
       type: DataTypes.TEXT,
       allowNull: true,
     },
 
+    // Delivery Date
     delivery_date: {
-      type: DataTypes.DATE,
+      type: DataTypes.DATEONLY,
       allowNull: true,
     },
 
+    // Delivery Time
     delivery_time: {
-      type: DataTypes.DATE,
+      type: DataTypes.STRING,
       allowNull: true,
     },
 
+    // Final Order Amount
     total_amount: {
-      type: DataTypes.FLOAT,
-      allowNull: true,
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: false,
       defaultValue: 0,
+      validate: {
+        min: 0,
+      },
     },
 
+    // Payment Status
     payment_status: {
       type: DataTypes.ENUM("paid", "unpaid", "partial"),
+      allowNull: false,
       defaultValue: "unpaid",
     },
   },

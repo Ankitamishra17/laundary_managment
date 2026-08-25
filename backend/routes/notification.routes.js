@@ -1,70 +1,64 @@
 import express from "express";
 
-
 import protect from "../middleware/authMiddleware.js";
 
 import {
-  getMyNotifications,
-  getUnreadCount,
-  markAllRead,
-  markRead,
-
-
-import {
+  // Ankita's notification functions
   getNotifications,
   getUnreadNotificationCount,
   markNotificationAsRead,
   markAllNotificationsAsRead,
   getNotificationHistory,
+
+  // Amisha's notification functions
+  getMyNotifications,
+  getUnreadCount,
+  markAllRead,
+  markRead,
 } from "../controllers/notification.controller.js";
 
 const router = express.Router();
 
-// Any logged-in account (customer, employee, admin, super admin) can read
-// their own notifications — the controller scopes by role.
+// =====================================================
+// All notification routes require login
+// =====================================================
 router.use(protect);
 
+// =====================================================
+// COMMON / NEW NOTIFICATION ROUTES
+// =====================================================
+
+// Get notifications for the logged-in user
 router.get("/", getMyNotifications);
+
+// Get unread notification count
 router.get("/unread-count", getUnreadCount);
+
+// Mark all notifications as read
 router.patch("/read-all", markAllRead);
+
+// Mark one notification as read
 router.patch("/:id/read", markRead);
 
-export default router;
+// =====================================================
+// ANKITA'S EXISTING NOTIFICATION ROUTES
+// =====================================================
 
-// Active notifications
-router.get(
-  "/",
-  protect,
-  getNotifications
-);
-
-// Unread count
-router.get(
-  "/count",
-  protect,
-  getUnreadNotificationCount
-);
-
-// Mark one as read
-router.patch(
-  "/:id/read",
-  protect,
-  markNotificationAsRead
-);
-
-// Mark all as read
-router.patch(
-  "/read-all",
-  protect,
-  markAllNotificationsAsRead
-);
+// Get unread notification count
+router.get("/count", getUnreadNotificationCount);
 
 // Notification history
-router.get(
-  "/history",
-  protect,
-  getNotificationHistory
-);
+router.get("/history", getNotificationHistory);
+
+// ⚠️ If these functions have different logic, keep them
+// on separate routes to avoid duplicate route conflicts.
+
+router.patch("/:id/mark-read", markNotificationAsRead);
+
+router.patch("/mark-all-read", markAllNotificationsAsRead);
+
+// =====================================================
+// EXPORT
+// =====================================================
 
 export default router;
-

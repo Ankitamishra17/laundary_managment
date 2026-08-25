@@ -1,18 +1,17 @@
 import { Op } from "sequelize";
-<<<<<<< HEAD
 import Notification from "../models/Notification.js";
+import InventoryItem from "../models/InventoryItem.js";
 import User from "../models/User.js";
 
 // ============================================================
-// Helpers (used by other controllers to fire notifications)
+// CREATE GENERAL NOTIFICATION
 // ============================================================
 
-// Create a single notification row. Never throws — a failed notification
-// must not take down the business logic that triggered it.
 export const createNotification = async ({
   userId,
   employeeId,
   shopId,
+  inventoryItemId,
   title,
   message,
   type = "system",
@@ -25,8 +24,9 @@ export const createNotification = async ({
       userId: userId || null,
       employeeId: employeeId || null,
       shopId: shopId || null,
+      inventoryItemId: inventoryItemId || null,
       title,
-      message: message || null,
+      message,
       type,
       link: link || null,
       taskId: taskId || null,
@@ -38,23 +38,29 @@ export const createNotification = async ({
   }
 };
 
-// Notify every active shop admin (role admin/super_admin) of a shop.
+// ============================================================
+// NOTIFY SHOP ADMINS
+// ============================================================
+
 export const notifyShopAdmins = async (shopId, payload) => {
   try {
     if (!shopId) return;
+
     const admins = await User.findAll({
       where: {
-        [Op.or]: [
-          { shopId, role: "admin" },
-          { role: "super_admin" },
-        ],
+        [Op.or]: [{ shopId, role: "admin" }, { role: "super_admin" }],
         isActive: true,
       },
       attributes: ["id"],
     });
+
     await Promise.all(
       admins.map((admin) =>
-        createNotification({ ...payload, shopId, userId: admin.id }),
+        createNotification({
+          ...payload,
+          shopId,
+          userId: admin.id,
+        }),
       ),
     );
   } catch (error) {
@@ -62,38 +68,46 @@ export const notifyShopAdmins = async (shopId, payload) => {
   }
 };
 
-// Notify a customer (users table account) — pass the customer record which
-// carries userId.
+// ============================================================
+// NOTIFY CUSTOMER
+// ============================================================
+
 export const notifyCustomer = async (customer, payload) => {
   if (!customer?.userId) return;
-  await createNotification({ ...payload, userId: customer.userId });
+
+  await createNotification({
+    ...payload,
+    userId: customer.userId,
+  });
 };
 
 // ============================================================
-// Reading notifications (role-scoped)
+// ROLE-BASED NOTIFICATION SCOPE
 // ============================================================
 
 function scopeWhere(req) {
-  const role = req.user.role;
+  const { role, id, shopId } = req.user;
   const where = {};
 
   if (role === "employee") {
-    where.employeeId = req.user.id;
+    where.employeeId = id;
   } else if (role === "customer") {
-    where.userId = req.user.id;
-  } else {
-    // admin / super_admin
-    where.shopId = req.user.shopId || null;
-    if (role === "super_admin" && !req.user.shopId) {
-      // Platform-wide super admin sees everything
-      delete where.shopId;
+    where.userId = id;
+  } else if (role === "admin") {
+    where.shopId = shopId;
+  } else if (role === "super_admin") {
+    if (shopId) {
+      where.shopId = shopId;
     }
   }
 
   return where;
 }
 
-// GET /api/notifications
+// ============================================================
+// GET ALL GENERAL NOTIFICATIONS
+// ============================================================
+
 export const getMyNotifications = async (req, res) => {
   try {
     const notifications = await Notification.findAll({
@@ -102,77 +116,118 @@ export const getMyNotifications = async (req, res) => {
       limit: 60,
     });
 
-    return res.status(200).json({ success: true, data: notifications });
+    return res.status(200).json({
+      success: true,
+      data: notifications,
+    });
   } catch (error) {
     console.error("Get Notifications Error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// GET /api/notifications/unread-count
+// ============================================================
+// GET UNREAD GENERAL NOTIFICATION COUNT
+// ============================================================
+
 export const getUnreadCount = async (req, res) => {
   try {
     const count = await Notification.count({
-      where: { ...scopeWhere(req), isRead: false },
+      where: {
+        ...scopeWhere(req),
+        isRead: false,
+      },
     });
-    return res.status(200).json({ success: true, data: { count } });
+
+    return res.status(200).json({
+      success: true,
+      data: { count },
+    });
   } catch (error) {
     console.error("Unread Count Error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// PATCH /api/notifications/read-all
+// ============================================================
+// MARK ALL GENERAL NOTIFICATIONS AS READ
+// ============================================================
+
 export const markAllRead = async (req, res) => {
   try {
     await Notification.update(
       { isRead: true },
-      { where: scopeWhere(req) },
+      {
+        where: scopeWhere(req),
+      },
     );
-    return res.status(200).json({ success: true, message: "All notifications marked as read." });
+
+    return res.status(200).json({
+      success: true,
+      message: "All notifications marked as read.",
+    });
   } catch (error) {
     console.error("Mark All Read Error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// PATCH /api/notifications/:id/read
+// ============================================================
+// MARK ONE GENERAL NOTIFICATION AS READ
+// ============================================================
+
 export const markRead = async (req, res) => {
   try {
     const notification = await Notification.findOne({
-      where: { id: req.params.id, ...scopeWhere(req) },
+      where: {
+        id: req.params.id,
+        ...scopeWhere(req),
+      },
     });
 
     if (!notification) {
-      return res.status(404).json({ success: false, message: "Notification not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found",
+      });
     }
 
     notification.isRead = true;
     await notification.save();
 
-    return res.status(200).json({ success: true, data: notification });
+    return res.status(200).json({
+      success: true,
+      data: notification,
+    });
   } catch (error) {
     console.error("Mark Read Error:", error);
-    return res.status(500).json({ success: false, message: error.message });
-=======
 
-import Notification from "../models/Notification.js";
-import InventoryItem from "../models/InventoryItem.js";
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 
-// =====================================================
+// ============================================================
 // GET ACTIVE LOW-STOCK NOTIFICATIONS
-// =====================================================
-// Only ADMIN can see low-stock notifications.
-// Only unresolved notifications are returned.
-// =====================================================
+// ============================================================
 
 export const getNotifications = async (req, res) => {
   try {
     const { id: userId, shopId, role } = req.user;
-
-    // ---------------------------------------------
-    // ADMIN ONLY
-    // ---------------------------------------------
 
     if (role !== "admin") {
       return res.status(200).json({
@@ -182,20 +237,12 @@ export const getNotifications = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------
-    // SHOP CHECK
-    // ---------------------------------------------
-
     if (!shopId) {
       return res.status(400).json({
         success: false,
         message: "Shop is not assigned to this user.",
       });
     }
-
-    // ---------------------------------------------
-    // GET ACTIVE LOW-STOCK NOTIFICATIONS
-    // ---------------------------------------------
 
     const notifications = await Notification.findAll({
       where: {
@@ -204,7 +251,6 @@ export const getNotifications = async (req, res) => {
         type: "LOW_STOCK",
         isResolved: false,
       },
-
       include: [
         {
           model: InventoryItem,
@@ -221,7 +267,6 @@ export const getNotifications = async (req, res) => {
           required: true,
         },
       ],
-
       order: [["createdAt", "DESC"]],
     });
 
@@ -241,19 +286,13 @@ export const getNotifications = async (req, res) => {
   }
 };
 
-// =====================================================
-// GET UNREAD LOW-STOCK NOTIFICATION COUNT
-// =====================================================
-// Used for the notification badge in Topbar.
-// =====================================================
+// ============================================================
+// GET UNREAD LOW-STOCK COUNT
+// ============================================================
 
 export const getUnreadNotificationCount = async (req, res) => {
   try {
     const { id: userId, shopId, role } = req.user;
-
-    // ---------------------------------------------
-    // ADMIN ONLY
-    // ---------------------------------------------
 
     if (role !== "admin") {
       return res.status(200).json({
@@ -262,20 +301,12 @@ export const getUnreadNotificationCount = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------
-    // SHOP CHECK
-    // ---------------------------------------------
-
     if (!shopId) {
       return res.status(400).json({
         success: false,
         message: "Shop is not assigned to this user.",
       });
     }
-
-    // ---------------------------------------------
-    // COUNT UNREAD LOW-STOCK NOTIFICATIONS
-    // ---------------------------------------------
 
     const count = await Notification.count({
       where: {
@@ -292,8 +323,6 @@ export const getUnreadNotificationCount = async (req, res) => {
       count,
     });
   } catch (error) {
-    console.error("Get Unread Notification Count Error:", error);
-
     return res.status(500).json({
       success: false,
       message: "Failed to fetch notification count.",
@@ -302,18 +331,14 @@ export const getUnreadNotificationCount = async (req, res) => {
   }
 };
 
-// =====================================================
-// MARK ONE NOTIFICATION AS READ
-// =====================================================
+// ============================================================
+// MARK ONE LOW-STOCK NOTIFICATION AS READ
+// ============================================================
 
 export const markNotificationAsRead = async (req, res) => {
   try {
     const { id } = req.params;
     const { id: userId, shopId, role } = req.user;
-
-    // ---------------------------------------------
-    // ADMIN ONLY
-    // ---------------------------------------------
 
     if (role !== "admin") {
       return res.status(403).json({
@@ -321,21 +346,6 @@ export const markNotificationAsRead = async (req, res) => {
         message: "Only admin can access notifications.",
       });
     }
-
-    // ---------------------------------------------
-    // SHOP CHECK
-    // ---------------------------------------------
-
-    if (!shopId) {
-      return res.status(400).json({
-        success: false,
-        message: "Shop is not assigned to this user.",
-      });
-    }
-
-    // ---------------------------------------------
-    // FIND NOTIFICATION
-    // ---------------------------------------------
 
     const notification = await Notification.findOne({
       where: {
@@ -353,13 +363,7 @@ export const markNotificationAsRead = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------
-    // MARK AS READ
-    // ---------------------------------------------
-
-    await notification.update({
-      isRead: true,
-    });
+    await notification.update({ isRead: true });
 
     return res.status(200).json({
       success: true,
@@ -367,8 +371,6 @@ export const markNotificationAsRead = async (req, res) => {
       data: notification,
     });
   } catch (error) {
-    console.error("Mark Notification Read Error:", error);
-
     return res.status(500).json({
       success: false,
       message: "Failed to mark notification as read.",
@@ -377,17 +379,13 @@ export const markNotificationAsRead = async (req, res) => {
   }
 };
 
-// =====================================================
-// MARK ALL NOTIFICATIONS AS READ
-// =====================================================
+// ============================================================
+// MARK ALL LOW-STOCK NOTIFICATIONS AS READ
+// ============================================================
 
 export const markAllNotificationsAsRead = async (req, res) => {
   try {
     const { id: userId, shopId, role } = req.user;
-
-    // ---------------------------------------------
-    // ADMIN ONLY
-    // ---------------------------------------------
 
     if (role !== "admin") {
       return res.status(403).json({
@@ -396,25 +394,8 @@ export const markAllNotificationsAsRead = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------
-    // SHOP CHECK
-    // ---------------------------------------------
-
-    if (!shopId) {
-      return res.status(400).json({
-        success: false,
-        message: "Shop is not assigned to this user.",
-      });
-    }
-
-    // ---------------------------------------------
-    // UPDATE
-    // ---------------------------------------------
-
     await Notification.update(
-      {
-        isRead: true,
-      },
+      { isRead: true },
       {
         where: {
           shopId,
@@ -431,8 +412,6 @@ export const markAllNotificationsAsRead = async (req, res) => {
       message: "All notifications marked as read.",
     });
   } catch (error) {
-    console.error("Mark All Notifications Read Error:", error);
-
     return res.status(500).json({
       success: false,
       message: "Failed to mark notifications as read.",
@@ -441,22 +420,14 @@ export const markAllNotificationsAsRead = async (req, res) => {
   }
 };
 
-// =====================================================
-// RESOLVE ONE LOW-STOCK NOTIFICATION
-// =====================================================
-// This should be called when the inventory item
-// is restocked above its minimum stock.
-// =====================================================
+// ============================================================
+// RESOLVE LOW-STOCK NOTIFICATION
+// ============================================================
 
 export const resolveNotification = async (req, res) => {
   try {
     const { id } = req.params;
-
     const { id: userId, shopId, role } = req.user;
-
-    // ---------------------------------------------
-    // ADMIN ONLY
-    // ---------------------------------------------
 
     if (role !== "admin") {
       return res.status(403).json({
@@ -464,21 +435,6 @@ export const resolveNotification = async (req, res) => {
         message: "Only admin can resolve notifications.",
       });
     }
-
-    // ---------------------------------------------
-    // SHOP CHECK
-    // ---------------------------------------------
-
-    if (!shopId) {
-      return res.status(400).json({
-        success: false,
-        message: "Shop is not assigned to this user.",
-      });
-    }
-
-    // ---------------------------------------------
-    // FIND NOTIFICATION
-    // ---------------------------------------------
 
     const notification = await Notification.findOne({
       where: {
@@ -497,10 +453,6 @@ export const resolveNotification = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------
-    // GET INVENTORY ITEM
-    // ---------------------------------------------
-
     const inventoryItem = await InventoryItem.findOne({
       where: {
         id: notification.inventoryItemId,
@@ -515,12 +467,7 @@ export const resolveNotification = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------
-    // CHECK WHETHER STOCK IS NORMAL
-    // ---------------------------------------------
-
     const currentStock = Number(inventoryItem.currentStock || 0);
-
     const minimumStock = Number(inventoryItem.minStock || 0);
 
     if (currentStock <= minimumStock) {
@@ -534,10 +481,6 @@ export const resolveNotification = async (req, res) => {
         },
       });
     }
-
-    // ---------------------------------------------
-    // RESOLVE
-    // ---------------------------------------------
 
     await notification.update({
       isResolved: true,
@@ -560,19 +503,13 @@ export const resolveNotification = async (req, res) => {
   }
 };
 
-// =====================================================
-// GET NOTIFICATION HISTORY
-// =====================================================
-// Returns active + resolved low-stock notifications.
-// =====================================================
+// ============================================================
+// LOW-STOCK NOTIFICATION HISTORY
+// ============================================================
 
 export const getNotificationHistory = async (req, res) => {
   try {
     const { id: userId, shopId, role } = req.user;
-
-    // ---------------------------------------------
-    // ADMIN ONLY
-    // ---------------------------------------------
 
     if (role !== "admin") {
       return res.status(200).json({
@@ -582,28 +519,12 @@ export const getNotificationHistory = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------
-    // SHOP CHECK
-    // ---------------------------------------------
-
-    if (!shopId) {
-      return res.status(400).json({
-        success: false,
-        message: "Shop is not assigned to this user.",
-      });
-    }
-
-    // ---------------------------------------------
-    // GET HISTORY
-    // ---------------------------------------------
-
     const notifications = await Notification.findAll({
       where: {
         shopId,
         userId,
         type: "LOW_STOCK",
       },
-
       include: [
         {
           model: InventoryItem,
@@ -620,7 +541,6 @@ export const getNotificationHistory = async (req, res) => {
           required: false,
         },
       ],
-
       order: [["createdAt", "DESC"]],
     });
 
@@ -637,6 +557,5 @@ export const getNotificationHistory = async (req, res) => {
       message: "Failed to fetch notification history.",
       error: error.message,
     });
->>>>>>> ankita
   }
 };

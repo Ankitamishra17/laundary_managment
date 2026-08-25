@@ -20,10 +20,10 @@ const Customer = sequelize.define(
     // Links to users.id
     userId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
     },
 
-    // Default laundry/shop
+    // Default shop
     shopId: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -36,7 +36,7 @@ const Customer = sequelize.define(
 
     email: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       unique: true,
       validate: {
         isEmail: true,
@@ -67,7 +67,7 @@ const Customer = sequelize.define(
   {
     tableName: "customers",
     timestamps: true,
-  }
+  },
 );
 
 export default Customer;
