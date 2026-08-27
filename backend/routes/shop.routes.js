@@ -19,24 +19,28 @@ const router = express.Router();
 
 // =====================================================
 // PUBLIC ROUTES
-// IMPORTANT: Specific routes must come before /:id
+// Specific routes MUST come before /:id
 // =====================================================
 
-// List active shops
+// Get all active shops
+// GET /api/shops/public
 router.get("/public", getPublicShops);
 
-// Find shop by slug
-// Example: GET /api/shops/slug/tester
+// Get shop by slug
+// GET /api/shops/slug/:slug
+// Example: /api/shops/slug/amisha-laundry
 router.get("/slug/:slug", getShopBySlug);
 
-// Active services of a shop
+// Get active services of a public shop
+// GET /api/shops/public/:id/services
 router.get("/public/:id/services", getPublicShopServices);
 
 // =====================================================
 // CUSTOMER ROUTES
 // =====================================================
 
-// Logged-in customer's shop context
+// Get logged-in customer's linked shop and services
+// GET /api/shops/context
 router.get("/context", protect, allowRoles("customer"), getMyShopContext);
 
 // =====================================================
@@ -44,18 +48,24 @@ router.get("/context", protect, allowRoles("customer"), getMyShopContext);
 // =====================================================
 
 // Create shop
+// POST /api/shops
 router.post("/", protect, allowRoles("super_admin"), createShop);
 
 // Get all shops
+// GET /api/shops
 router.get("/", protect, allowRoles("super_admin"), getShops);
 
 // Get shop by ID
+// GET /api/shops/:id
+// IMPORTANT: Keep this after all named GET routes
 router.get("/:id", protect, allowRoles("super_admin"), getShopById);
 
 // Update shop
+// PUT /api/shops/:id
 router.put("/:id", protect, allowRoles("super_admin"), updateShop);
 
-// Delete shop
+// Delete/deactivate shop
+// DELETE /api/shops/:id
 router.delete("/:id", protect, allowRoles("super_admin"), deleteShop);
 
 export default router;

@@ -2,8 +2,8 @@ import api from "./axios";
 
 /**
  * ===============================
- * PUBLIC — list active shops (no auth)
- * Used by the landing page & signup form
+ * PUBLIC — LIST ACTIVE SHOPS
+ * GET /api/shops/public
  * ===============================
  */
 export const getPublicShops = async () => {
@@ -22,12 +22,38 @@ export const getPublicShops = async () => {
 
 /**
  * ===============================
- * PUBLIC — active services of one shop (no auth)
+ * PUBLIC — GET SHOP BY SLUG
+ * GET /api/shops/slug/:slug
+ *
+ * Example:
+ * getShopBySlug("amisha-laundry")
+ * ===============================
+ */
+export const getShopBySlug = async (slug) => {
+  try {
+    const { data } = await api.get(`/shops/slug/${encodeURIComponent(slug)}`);
+
+    return data;
+  } catch (error) {
+    throw (
+      error.response?.data || {
+        success: false,
+        message: "Unable to find this laundry.",
+      }
+    );
+  }
+};
+
+/**
+ * ===============================
+ * PUBLIC — ACTIVE SERVICES OF ONE SHOP
+ * GET /api/shops/public/:id/services
  * ===============================
  */
 export const getPublicShopServices = async (shopId) => {
   try {
     const { data } = await api.get(`/shops/public/${shopId}/services`);
+
     return data;
   } catch (error) {
     throw (
@@ -41,8 +67,9 @@ export const getPublicShopServices = async (shopId) => {
 
 /**
  * ===============================
- * CUSTOMER — the WashFlow laundry serving this customer
- * Returns { shop, services } so the customer never picks a laundry.
+ * CUSTOMER — MY SHOP CONTEXT
+ * GET /api/shops/context
+ * Returns { shop, services }
  * ===============================
  */
 export const getMyShopContext = async () => {
@@ -62,6 +89,7 @@ export const getMyShopContext = async () => {
 /**
  * ===============================
  * CREATE SHOP
+ * POST /api/shops
  * ===============================
  */
 export const createShop = async (shopData) => {
@@ -81,6 +109,7 @@ export const createShop = async (shopData) => {
 /**
  * ===============================
  * GET ALL SHOPS
+ * GET /api/shops
  * ===============================
  */
 export const getShops = async (params = {}) => {
@@ -103,6 +132,9 @@ export const getShops = async (params = {}) => {
 /**
  * ===============================
  * GET SHOP BY ID
+ * GET /api/shops/:id
+ *
+ * Admin / Super Admin use
  * ===============================
  */
 export const getShopById = async (id) => {
@@ -122,6 +154,7 @@ export const getShopById = async (id) => {
 /**
  * ===============================
  * UPDATE SHOP
+ * PUT /api/shops/:id
  * ===============================
  */
 export const updateShop = async (id, shopData) => {
@@ -141,6 +174,7 @@ export const updateShop = async (id, shopData) => {
 /**
  * ===============================
  * DELETE SHOP
+ * DELETE /api/shops/:id
  * ===============================
  */
 export const deleteShop = async (id) => {
@@ -160,6 +194,10 @@ export const deleteShop = async (id) => {
 /**
  * ===============================
  * RENEW SUBSCRIPTION
+ *
+ * NOTE:
+ * This requires the backend route:
+ * PUT /api/shops/:id/renew
  * ===============================
  */
 export const renewSubscription = async (id, payload) => {
@@ -179,6 +217,10 @@ export const renewSubscription = async (id, payload) => {
 /**
  * ===============================
  * ACTIVATE / DEACTIVATE SHOP
+ *
+ * NOTE:
+ * This requires the backend route:
+ * PATCH /api/shops/:id/status
  * ===============================
  */
 export const toggleShopStatus = async (id) => {
