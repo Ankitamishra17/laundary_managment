@@ -22,6 +22,7 @@ function employeeScope(req) {
 }
 
 // POST /api/admin/employees  — Admin creates a new employee
+// POST /api/admin/employees — Admin creates a new employee
 export const createEmployee = async (req, res) => {
   try {
     const {
@@ -34,6 +35,9 @@ export const createEmployee = async (req, res) => {
       auto_generate_password,
     } = req.body;
 
+    // ==============================
+    // Validation
+    // ==============================
     if (!name || !email || !phone) {
       return res.status(400).json({
         success: false,
@@ -41,80 +45,150 @@ export const createEmployee = async (req, res) => {
       });
     }
 
-    // The employee belongs to the admin's shop — never trust shop_id from the
-    // frontend. Only a super admin (platform-wide) can pick a different shop.
+    // Normalize email
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // ==============================
+    // Resolve Shop ID
+    // ==============================
+    // Shop admin can only create employees in their own shop
+    // Super admin can provide shop_id
     let resolvedShopId = req.user.shopId || null;
-    if (!req.user.shopId && shop_id) resolvedShopId = Number(shop_id);
 
-    if (resolvedShopId) {
-      const shop = await Shop.findByPk(resolvedShopId);
-      if (!shop) {
-        return res.status(400).json({ success: false, message: "Invalid shop" });
-      }
-
-      // Subscription plan limits — reject going over the plan's employee cap.
-      const plan = await getShopPlan(resolvedShopId);
-      if (plan && !plan.allowed) {
-        return res.status(403).json({
-          success: false,
-          message: plan.message,
-        });
-      }
-      if (plan?.limits?.maxEmployees) {
-        const count = await Employee.count({ where: { shop_id: resolvedShopId } });
-        if (count >= plan.limits.maxEmployees) {
-          return res.status(403).json({
-            success: false,
-            message: `Your ${plan.planName} plan allows up to ${plan.limits.maxEmployees} employees. Please upgrade to add more.`,
-          });
-        }
-      }
+    if (!req.user.shopId && shop_id) {
+      resolvedShopId = Number(shop_id);
     }
 
-    const existing = await Employee.findOne({
-      where: { email, ...(req.user.shopId ? {} : {}) },
-    });
-    if (existing) {
-      return res.status(409).json({
+    // Employee must belong to a shop
+    if (!resolvedShopId) {
+      return res.status(400).json({
         success: false,
-        message: "An employee with this email already exists",
+        message: "shop_id is required",
       });
     }
 
-    const finalPassword = auto_generate_password ? generateTempPassword() : password;
+    // ==============================
+    // Check Shop Exists
+    // ==============================
+    const shop = await Shop.findByPk(resolvedShopId);
+
+    if (!shop) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid shop",
+      });
+    }
+
+    // ==============================
+    // Check Subscription Plan
+    // ==============================
+    const plan = await getShopPlan(resolvedShopId);
+
+    if (plan && !plan.allowed) {
+      return res.status(403).json({
+        success: false,
+        message: plan.message,
+      });
+    }
+
+    // Check employee limit
+    if (plan?.limits?.maxEmployees) {
+      const employeeCount = await Employee.count({
+        where: {
+          shop_id: resolvedShopId,
+        },
+      });
+
+      if (employeeCount >= plan.limits.maxEmployees) {
+        return res.status(403).json({
+          success: false,
+          message: `Your ${plan.planName} plan allows up to ${plan.limits.maxEmployees} employees. Please upgrade to add more.`,
+        });
+      }
+    }
+
+    // ==============================
+    // IMPORTANT:
+    // Check email ONLY inside this shop
+    // Same email in another shop is allowed
+    // ==============================
+    const existingEmployee = await Employee.findOne({
+      where: {
+        email: normalizedEmail,
+        shop_id: resolvedShopId,
+      },
+    });
+
+    if (existingEmployee) {
+      return res.status(409).json({
+        success: false,
+        message: "An employee with this email already exists in this shop",
+      });
+    }
+
+    // ==============================
+    // Password
+    // ==============================
+    const finalPassword = auto_generate_password
+      ? generateTempPassword()
+      : password;
+
     if (!finalPassword || finalPassword.length < 6) {
       return res.status(400).json({
         success: false,
-        message: "password must be at least 6 characters",
+        message: "Password must be at least 6 characters",
       });
     }
 
+    // ==============================
+    // Create Employee
+    // ==============================
     const employee = await Employee.create({
-      name,
-      email,
-      phone,
-      designation: designation || null,
+      name: name.trim(),
+      email: normalizedEmail,
+      phone: phone.trim(),
+      designation: designation?.trim() || null,
       shop_id: resolvedShopId,
-      password: finalPassword, // hashed automatically by Employee model's hook
+      password: finalPassword,
       status: "active",
+      role: "employee",
     });
 
-    const { password: _pw, ...safeEmployee } = employee.toJSON();
+    // Don't return hashed password
+    const { password: _password, ...safeEmployee } = employee.toJSON();
 
     return res.status(201).json({
       success: true,
       message: "Employee created successfully",
       data: safeEmployee,
-      temp_password: auto_generate_password ? finalPassword : undefined,
+      ...(auto_generate_password && {
+        temp_password: finalPassword,
+      }),
     });
   } catch (error) {
+    console.error("Create employee error:", error);
+
+    // Composite unique constraint error
     if (error.name === "SequelizeUniqueConstraintError") {
-      return res.status(409).json({ success: false, message: "Email is already in use" });
+      return res.status(409).json({
+        success: false,
+        message: "An employee with this email already exists in this shop",
+      });
     }
+
+    // Sequelize validation error
     if (error.name === "SequelizeValidationError") {
-      return res.status(400).json({ success: false, message: error.errors?.[0]?.message || error.message });
+      return res.status(400).json({
+        success: false,
+        message:
+          error.errors?.[0]?.message || error.message || "Validation failed",
+      });
     }
-    return res.status(500).json({ success: false, message: error.message });
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to create employee",
+    });
   }
 };
 
@@ -140,7 +214,13 @@ export const getEmployees = async (req, res) => {
     const employees = await Employee.findAll({
       where,
       attributes: { exclude: ["password"] },
-      include: [{ model: Shop, as: "shop", attributes: ["id", "name", "shopCode", "city"] }],
+      include: [
+        {
+          model: Shop,
+          as: "shop",
+          attributes: ["id", "name", "shopCode", "city"],
+        },
+      ],
       order: [["createdAt", "DESC"]],
     });
 
@@ -156,11 +236,19 @@ export const getEmployeeById = async (req, res) => {
     const employee = await Employee.findOne({
       where: { id: req.params.id, ...employeeScope(req) },
       attributes: { exclude: ["password"] },
-      include: [{ model: Shop, as: "shop", attributes: ["id", "name", "shopCode", "city"] }],
+      include: [
+        {
+          model: Shop,
+          as: "shop",
+          attributes: ["id", "name", "shopCode", "city"],
+        },
+      ],
     });
 
     if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Employee not found" });
     }
 
     return res.status(200).json({ success: true, data: employee });
@@ -178,7 +266,9 @@ export const updateEmployeeByAdmin = async (req, res) => {
       where: { id: req.params.id, ...employeeScope(req) },
     });
     if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Employee not found" });
     }
 
     // Shop admins can't move an employee to another shop.
@@ -191,7 +281,9 @@ export const updateEmployeeByAdmin = async (req, res) => {
     if (shop_id) {
       const shop = await Shop.findByPk(shop_id);
       if (!shop) {
-        return res.status(400).json({ success: false, message: "Invalid shop_id" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid shop_id" });
       }
     }
 
@@ -204,7 +296,9 @@ export const updateEmployeeByAdmin = async (req, res) => {
     await employee.save();
 
     const { password, ...safeEmployee } = employee.toJSON();
-    return res.status(200).json({ success: true, message: "Employee updated", data: safeEmployee });
+    return res
+      .status(200)
+      .json({ success: true, message: "Employee updated", data: safeEmployee });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -220,12 +314,16 @@ export const deleteEmployeePermanently = async (req, res) => {
       where: { id: req.params.id, ...employeeScope(req) },
     });
     if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Employee not found" });
     }
 
     await employee.destroy();
 
-    return res.status(200).json({ success: true, message: "Employee permanently deleted" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Employee permanently deleted" });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -238,13 +336,17 @@ export const deactivateEmployee = async (req, res) => {
       where: { id: req.params.id, ...employeeScope(req) },
     });
     if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Employee not found" });
     }
 
     employee.status = "inactive";
     await employee.save();
 
-    return res.status(200).json({ success: true, message: "Employee deactivated" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Employee deactivated" });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -257,13 +359,17 @@ export const reactivateEmployee = async (req, res) => {
       where: { id: req.params.id, ...employeeScope(req) },
     });
     if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Employee not found" });
     }
 
     employee.status = "active";
     await employee.save();
 
-    return res.status(200).json({ success: true, message: "Employee reactivated" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Employee reactivated" });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -276,7 +382,9 @@ export const adminResetEmployeePassword = async (req, res) => {
       where: { id: req.params.id, ...employeeScope(req) },
     });
     if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Employee not found" });
     }
 
     const newPassword = generateTempPassword();

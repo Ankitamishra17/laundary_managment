@@ -17,7 +17,6 @@ const Employee = sequelize.define(
     email: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
       validate: { isEmail: true },
     },
     phone: {
@@ -77,12 +76,22 @@ const Employee = sequelize.define(
   {
     tableName: "employees",
     timestamps: true,
+
+    indexes: [
+      {
+        unique: true,
+        fields: ["shop_id", "email"],
+        name: "unique_employee_email_per_shop",
+      },
+    ],
+
     hooks: {
       beforeCreate: async (employee) => {
         if (employee.password) {
           employee.password = await bcrypt.hash(employee.password, 10);
         }
       },
+
       beforeUpdate: async (employee) => {
         if (employee.changed("password")) {
           employee.password = await bcrypt.hash(employee.password, 10);

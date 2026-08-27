@@ -135,7 +135,6 @@
 //   );
 // }
 
-
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import LandingPage from "../pages/landing/LandingPage";
@@ -161,27 +160,46 @@ export default function AppRoutes() {
         <Route path="/" element={<LandingPage />} />
 
         {/* ============================================
-            PLATFORM / STAFF AUTHENTICATION
+            SUPER ADMIN / PLATFORM AUTH
            ============================================ */}
 
+        {/* Optional: use this only for super admin */}
         <Route path="/login" element={<LoginPage />} />
 
         <Route path="/signup" element={<SignupPage />} />
 
-        <Route
-          path="/create-password"
-          element={<CreatePassword />}
-        />
+        <Route path="/create-password" element={<CreatePassword />} />
 
-        <Route
-          path="/forgot-password"
-          element={<ForgotPassword />}
-        />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
 
-        <Route
-          path="/reset-password"
-          element={<ResetPassword />}
-        />
+        <Route path="/reset-password" element={<ResetPassword />} />
+
+        {/* ============================================
+            SHOP-SPECIFIC PUBLIC WEBSITE
+
+            Examples:
+            /fresh-laundry
+            /fresh-laundry/login
+            /fresh-laundry/signup
+
+            SAME LOGIN:
+            customer + admin + employee
+           ============================================ */}
+
+        {/* Shop landing page */}
+        <Route path="/:slug" element={<LandingPage />} />
+
+        {/* Shop login - Customer / Admin / Employee */}
+        <Route path="/:slug/login" element={<LoginPage />} />
+
+        {/* Shop customer signup */}
+        <Route path="/:slug/signup" element={<SignupPage />} />
+
+        {/* Shop forgot password */}
+        <Route path="/:slug/forgot-password" element={<ForgotPassword />} />
+
+        {/* Shop reset password */}
+        <Route path="/:slug/reset-password" element={<ResetPassword />} />
 
         {/* ============================================
             ROLE DASHBOARDS
@@ -193,52 +211,10 @@ export default function AppRoutes() {
         {CustomerRoute}
 
         {/* ============================================
-            SHOP-SPECIFIC PUBLIC WEBSITE
-
-            Examples:
-            /fresh-laundry
-            /fresh-laundry/signup
-            /fresh-laundry/login
-           ============================================ */}
-
-        {/* Customer signup */}
-        <Route
-          path="/:slug/signup"
-          element={<SignupPage />}
-        />
-
-        {/* Customer login */}
-        <Route
-          path="/:slug/login"
-          element={<LoginPage />}
-        />
-
-        {/* Forgot password */}
-        <Route
-          path="/:slug/forgot-password"
-          element={<ForgotPassword />}
-        />
-
-        {/* Reset password */}
-        <Route
-          path="/:slug/reset-password"
-          element={<ResetPassword />}
-        />
-
-        {/* Shop landing page */}
-        <Route
-          path="/:slug"
-          element={<LandingPage />}
-        />
-
-        {/* ============================================
             404
            ============================================ */}
 
-        <Route
-          path="*"
-          element={<h1>404 - Page Not Found</h1>}
-        />
+        <Route path="*" element={<h1>404 - Page Not Found</h1>} />
       </Routes>
     </BrowserRouter>
   );
