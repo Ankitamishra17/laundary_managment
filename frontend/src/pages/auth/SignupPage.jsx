@@ -553,7 +553,7 @@ export default function SignupPage() {
         );
 
         setTimeout(() => {
-          navigate(`/shop/${slug}`);
+          navigate("/customer/dashboard");
         }, 900);
 
         return;

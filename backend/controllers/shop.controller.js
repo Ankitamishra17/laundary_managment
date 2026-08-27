@@ -1,24 +1,118 @@
 import bcrypt from "bcrypt";
+import slugify from "slugify";
+
 import Shop from "../models/Shop.js";
 import User from "../models/User.js";
 import Service from "../models/Service.js";
 import generatePassword from "../utils/generatePassword.js";
 
-// Default services for every new shop so customers can immediately order.
+// ============================================================
+// DEFAULT SERVICES
+// Every new shop gets these services automatically
+// ============================================================
+
 const DEFAULT_SERVICES = [
-  { serviceName: "Wash & Fold", category: "Washing", pricingType: "Per Kg", price: 80, estimatedTime: "24 hours", description: "Machine wash, tumble dry and neatly folded. Perfect for everyday clothes." },
-  { serviceName: "Wash & Iron", category: "Washing", pricingType: "Per Kg", price: 99, estimatedTime: "24 hours", description: "Washed and pressed to perfection — crisp lines on every shirt and trouser." },
-  { serviceName: "Dry Cleaning", category: "Dry Cleaning", pricingType: "Per Item", price: 149, estimatedTime: "48 hours", description: "Gentle chemical cleaning for suits, silk, wool and delicate fabrics." },
-  { serviceName: "Iron Only", category: "Ironing", pricingType: "Per Item", price: 25, estimatedTime: "12 hours", description: "Professional steam pressing that removes every wrinkle and crease." },
-  { serviceName: "Bedding & Household", category: "Household", pricingType: "Per Item", price: 120, estimatedTime: "48 hours", description: "Comforters, curtains and towels washed large-scale with extra care." },
-  { serviceName: "Premium Care", category: "Premium", pricingType: "Per Item", price: 199, estimatedTime: "48 hours", description: "Stain treatment, fabric softener and hand-finishing for special pieces." },
+  {
+    serviceName: "Wash & Fold",
+    category: "Washing",
+    pricingType: "Per Kg",
+    price: 80,
+    estimatedTime: "24 hours",
+    description:
+      "Machine wash, tumble dry and neatly folded. Perfect for everyday clothes.",
+  },
+  {
+    serviceName: "Wash & Iron",
+    category: "Washing",
+    pricingType: "Per Kg",
+    price: 99,
+    estimatedTime: "24 hours",
+    description:
+      "Washed and pressed to perfection — crisp lines on every shirt and trouser.",
+  },
+  {
+    serviceName: "Dry Cleaning",
+    category: "Dry Cleaning",
+    pricingType: "Per Item",
+    price: 149,
+    estimatedTime: "48 hours",
+    description:
+      "Gentle chemical cleaning for suits, silk, wool and delicate fabrics.",
+  },
+  {
+    serviceName: "Iron Only",
+    category: "Ironing",
+    pricingType: "Per Item",
+    price: 25,
+    estimatedTime: "12 hours",
+    description:
+      "Professional steam pressing that removes every wrinkle and crease.",
+  },
+  {
+    serviceName: "Bedding & Household",
+    category: "Household",
+    pricingType: "Per Item",
+    price: 120,
+    estimatedTime: "48 hours",
+    description:
+      "Comforters, curtains and towels washed large-scale with extra care.",
+  },
+  {
+    serviceName: "Premium Care",
+    category: "Premium",
+    pricingType: "Per Item",
+    price: 199,
+    estimatedTime: "48 hours",
+    description:
+      "Stain treatment, fabric softener and hand-finishing for special pieces.",
+  },
 ];
+
+// ============================================================
+// GENERATE UNIQUE SHOP SLUG
+// Example:
+// Neha Laundry          -> neha-laundry
+// Neha Laundry again    -> neha-laundry-1
+// Neha Laundry again    -> neha-laundry-2
+// ============================================================
+
+async function generateUniqueSlug(name, excludeShopId = null) {
+  const baseSlug =
+    slugify(name || "laundry", {
+      lower: true,
+      strict: true,
+      trim: true,
+    }) || "laundry";
+
+  let slug = baseSlug;
+  let counter = 1;
+
+  while (true) {
+    const where = { slug };
+
+    const existingShop = await Shop.findOne({ where });
+
+    if (
+      !existingShop ||
+      (excludeShopId && String(existingShop.id) === String(excludeShopId))
+    ) {
+      return slug;
+    }
+
+    slug = `${baseSlug}-${counter}`;
+    counter += 1;
+  }
+}
+
+// ============================================================
+// SEED DEFAULT SERVICES
+// ============================================================
 
 async function seedServicesForShop(shopId, createdBy) {
   try {
     await Service.bulkCreate(
-      DEFAULT_SERVICES.map((s) => ({
-        ...s,
+      DEFAULT_SERVICES.map((service) => ({
+        ...service,
         shopId,
         status: "Active",
         isDeleted: false,
@@ -30,23 +124,31 @@ async function seedServicesForShop(shopId, createdBy) {
   }
 }
 
-// ==========================================
-// PUBLIC — list active shops (no auth)
-// Used by the landing page & customer signup
-// ==========================================
+// ============================================================
+// PUBLIC — LIST ACTIVE SHOPS
+// Used by landing page and customer signup
+// ============================================================
+
 export const getPublicShops = async (req, res) => {
   try {
     const shops = await Shop.findAll({
-      where: { isActive: true, subscriptionStatus: "Active" },
+      where: {
+        isActive: true,
+        subscriptionStatus: "Active",
+      },
       attributes: [
         "id",
         "shopCode",
+        "slug",
         "name",
         "address",
         "city",
         "state",
         "phone",
         "ownerName",
+        "logo",
+        "primaryColor",
+        "secondaryColor",
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -58,6 +160,7 @@ export const getPublicShops = async (req, res) => {
     });
   } catch (error) {
     console.error("Get Public Shops Error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
@@ -66,16 +169,20 @@ export const getPublicShops = async (req, res) => {
   }
 };
 
-// ==========================================
-// PUBLIC — active services of one shop (no auth)
-// Used by the customer order page
-// ==========================================
+// ============================================================
+// PUBLIC — GET ACTIVE SERVICES OF ONE SHOP
+// ============================================================
+
 export const getPublicShopServices = async (req, res) => {
   try {
     const { id } = req.params;
 
     const shop = await Shop.findOne({
-      where: { id, isActive: true, subscriptionStatus: "Active" },
+      where: {
+        id,
+        isActive: true,
+        subscriptionStatus: "Active",
+      },
     });
 
     if (!shop) {
@@ -94,9 +201,10 @@ export const getPublicShopServices = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    // Auto-seed if the shop has no services yet.
+    // Auto-seed default services if none exist
     if (services.length === 0) {
       await seedServicesForShop(shop.id, 0);
+
       services = await Service.findAll({
         where: {
           shopId: shop.id,
@@ -113,6 +221,7 @@ export const getPublicShopServices = async (req, res) => {
     });
   } catch (error) {
     console.error("Get Public Shop Services Error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
@@ -121,27 +230,32 @@ export const getPublicShopServices = async (req, res) => {
   }
 };
 
-// ==========================================
-// CUSTOMER — the WashFlow laundry serving this customer
-// Returns the customer's linked shop (or the platform default for new
-// accounts) plus its active services, so the customer never has to pick
-// a laundry themselves before browsing or ordering.
-// ==========================================
+// ============================================================
+// CUSTOMER — GET MY SHOP CONTEXT
+// ============================================================
+
 export const getMyShopContext = async (req, res) => {
   try {
     let shop = null;
 
-    // Prefer the customer's linked laundry when it's still active.
+    // First preference: customer's own linked shop
     if (req.user.shopId) {
       shop = await Shop.findOne({
-        where: { id: req.user.shopId, isActive: true, subscriptionStatus: "Active" },
+        where: {
+          id: req.user.shopId,
+          isActive: true,
+          subscriptionStatus: "Active",
+        },
       });
     }
 
-    // Otherwise fall back to WashFlow's first active laundry.
+    // Fallback: first active shop
     if (!shop) {
       shop = await Shop.findOne({
-        where: { isActive: true, subscriptionStatus: "Active" },
+        where: {
+          isActive: true,
+          subscriptionStatus: "Active",
+        },
         order: [["createdAt", "ASC"]],
       });
     }
@@ -162,11 +276,10 @@ export const getMyShopContext = async (req, res) => {
       order: [["createdAt", "ASC"]],
     });
 
-    // Safety net: if the shop has zero services (e.g. created after the
-    // last server boot, or all services were deleted), auto-seed the
-    // default catalog so customers can always place an order.
+    // Safety net
     if (services.length === 0) {
       await seedServicesForShop(shop.id, 0);
+
       services = await Service.findAll({
         where: {
           shopId: shop.id,
@@ -179,10 +292,14 @@ export const getMyShopContext = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: { shop, services },
+      data: {
+        shop,
+        services,
+      },
     });
   } catch (error) {
     console.error("Get Shop Context Error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
@@ -191,7 +308,10 @@ export const getMyShopContext = async (req, res) => {
   }
 };
 
-// create shop
+// ============================================================
+// CREATE SHOP
+// ============================================================
+
 export const createShop = async (req, res) => {
   try {
     const {
@@ -209,7 +329,10 @@ export const createShop = async (req, res) => {
       planName,
     } = req.body;
 
-    // Validation
+    // ========================================================
+    // VALIDATION
+    // ========================================================
+
     if (
       !name ||
       !ownerName ||
@@ -227,7 +350,10 @@ export const createShop = async (req, res) => {
       });
     }
 
-    // Check email already exists in users table
+    // ========================================================
+    // CHECK EXISTING USER EMAIL
+    // ========================================================
+
     const existingUser = await User.findOne({
       where: { email },
     });
@@ -239,7 +365,10 @@ export const createShop = async (req, res) => {
       });
     }
 
-    // Check email already exists in shops table
+    // ========================================================
+    // CHECK EXISTING SHOP EMAIL
+    // ========================================================
+
     const existingShop = await Shop.findOne({
       where: { email },
     });
@@ -251,23 +380,24 @@ export const createShop = async (req, res) => {
       });
     }
 
-    // Check phone already exists in shops table
-    if (phone) {
-      const existingPhone = await Shop.findOne({
-        where: { phone },
-      });
+    // ========================================================
+    // CHECK EXISTING PHONE
+    // ========================================================
 
-      if (existingPhone) {
-        return res.status(400).json({
-          success: false,
-          message: "A shop with this phone number already exists.",
-        });
-      }
+    const existingPhone = await Shop.findOne({
+      where: { phone },
+    });
+
+    if (existingPhone) {
+      return res.status(400).json({
+        success: false,
+        message: "A shop with this phone number already exists.",
+      });
     }
 
-    // ==========================
-    // Generate Shop Code
-    // ==========================
+    // ========================================================
+    // GENERATE SHOP CODE
+    // ========================================================
 
     const lastShop = await Shop.findOne({
       order: [["id", "DESC"]],
@@ -275,26 +405,33 @@ export const createShop = async (req, res) => {
 
     let shopCode = "SHOP001";
 
-    if (lastShop) {
-      const lastNumber = parseInt(lastShop.shopCode.replace("SHOP", ""));
+    if (lastShop?.shopCode) {
+      const lastNumber = parseInt(lastShop.shopCode.replace("SHOP", ""), 10);
 
-      shopCode = `SHOP${String(lastNumber + 1).padStart(3, "0")}`;
+      if (!Number.isNaN(lastNumber)) {
+        shopCode = `SHOP${String(lastNumber + 1).padStart(3, "0")}`;
+      }
     }
 
-    // ==========================
-    // Generate Temporary Password
-    // ==========================
+    // ========================================================
+    // GENERATE UNIQUE SLUG
+    // ========================================================
+
+    const slug = await generateUniqueSlug(name);
+
+    // ========================================================
+    // GENERATE TEMPORARY PASSWORD
+    // ========================================================
 
     const temporaryPassword = generatePassword();
 
     const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
-    // ==========================
-    // Subscription Dates
-    // ==========================
+    // ========================================================
+    // SUBSCRIPTION DATES
+    // ========================================================
 
     const subscriptionStart = new Date();
-
     const subscriptionEnd = new Date(subscriptionStart);
 
     if (subscriptionPlan === "Monthly") {
@@ -303,12 +440,13 @@ export const createShop = async (req, res) => {
       subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1);
     }
 
-    // ==========================
-    // Create Shop
-    // ==========================
+    // ========================================================
+    // CREATE SHOP
+    // ========================================================
 
     const shop = await Shop.create({
       shopCode,
+      slug,
       name,
       ownerName,
       email,
@@ -324,11 +462,12 @@ export const createShop = async (req, res) => {
       subscriptionStart,
       subscriptionEnd,
       subscriptionStatus: "Active",
+      isActive: true,
     });
 
-    // ==========================
-    // Create Shop Admin
-    // ==========================
+    // ========================================================
+    // CREATE SHOP ADMIN
+    // ========================================================
 
     const admin = await User.create({
       shopId: shop.id,
@@ -341,8 +480,10 @@ export const createShop = async (req, res) => {
       isActive: true,
     });
 
-    // Immediately seed default services so customers can place orders
-    // without waiting for the next server restart.
+    // ========================================================
+    // SEED DEFAULT SERVICES
+    // ========================================================
+
     await seedServicesForShop(shop.id, admin.id);
 
     return res.status(201).json({
@@ -352,6 +493,7 @@ export const createShop = async (req, res) => {
       shop: {
         id: shop.id,
         shopCode: shop.shopCode,
+        slug: shop.slug,
         name: shop.name,
       },
 
@@ -372,18 +514,21 @@ export const createShop = async (req, res) => {
   }
 };
 
-//get all shop
+// ============================================================
+// GET ALL SHOPS
+// ============================================================
 
 export const getShops = async (req, res) => {
   try {
     const shops = await Shop.findAll({
-      where: { isActive: true, },
+      where: {
+        isActive: true,
+      },
       include: [
         {
           model: User,
           as: "users",
           attributes: ["id", "name", "email", "phone", "role"],
-       
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -405,7 +550,9 @@ export const getShops = async (req, res) => {
   }
 };
 
-//get shop by id
+// ============================================================
+// GET SHOP BY ID
+// ============================================================
 
 export const getShopById = async (req, res) => {
   try {
@@ -443,7 +590,12 @@ export const getShopById = async (req, res) => {
   }
 };
 
-//update shop
+// ============================================================
+// UPDATE SHOP
+// IMPORTANT:
+// Slug is NOT automatically changed when the name changes.
+// This prevents existing public links from breaking.
+// ============================================================
 
 export const updateShop = async (req, res) => {
   try {
@@ -476,30 +628,44 @@ export const updateShop = async (req, res) => {
       });
     }
 
-    // Update subscription end date if plan changes
+    // ========================================================
+    // CHECK PHONE DUPLICATE IF CHANGED
+    // ========================================================
+
+    if (phone && phone !== shop.phone) {
+      const existingPhone = await Shop.findOne({
+        where: { phone },
+      });
+
+      if (existingPhone && String(existingPhone.id) !== String(shop.id)) {
+        return res.status(400).json({
+          success: false,
+          message: "A shop with this phone number already exists.",
+        });
+      }
+    }
+
+    // ========================================================
+    // UPDATE SUBSCRIPTION DATE IF PLAN CHANGES
+    // ========================================================
+
     let subscriptionEnd = shop.subscriptionEnd;
+    let subscriptionStart = shop.subscriptionStart;
 
-    if (
-      subscriptionPlan &&
-      subscriptionPlan !== shop.subscriptionPlan
-    ) {
-      const startDate = new Date();
-
-      subscriptionEnd = new Date(startDate);
+    if (subscriptionPlan && subscriptionPlan !== shop.subscriptionPlan) {
+      subscriptionStart = new Date();
+      subscriptionEnd = new Date(subscriptionStart);
 
       if (subscriptionPlan === "Monthly") {
-        subscriptionEnd.setMonth(
-          subscriptionEnd.getMonth() + 1
-        );
-      } else {
-        subscriptionEnd.setFullYear(
-          subscriptionEnd.getFullYear() + 1
-        );
+        subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
+      } else if (subscriptionPlan === "Yearly") {
+        subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1);
       }
-
-      shop.subscriptionStart = startDate;
-      shop.subscriptionEnd = subscriptionEnd;
     }
+
+    // ========================================================
+    // UPDATE SHOP
+    // ========================================================
 
     await shop.update({
       name: name ?? shop.name,
@@ -510,17 +676,15 @@ export const updateShop = async (req, res) => {
       state: state ?? shop.state,
       country: country ?? shop.country,
       gstNumber: gstNumber ?? shop.gstNumber,
-      subscriptionPlan:
-        subscriptionPlan ?? shop.subscriptionPlan,
-      subscriptionAmount:
-        subscriptionAmount ?? shop.subscriptionAmount,
+      subscriptionPlan: subscriptionPlan ?? shop.subscriptionPlan,
+      subscriptionAmount: subscriptionAmount ?? shop.subscriptionAmount,
       planName: planName ?? shop.planName,
       logo: logo ?? shop.logo,
       favicon: favicon ?? shop.favicon,
       primaryColor: primaryColor ?? shop.primaryColor,
       secondaryColor: secondaryColor ?? shop.secondaryColor,
-      subscriptionStart: shop.subscriptionStart,
-      subscriptionEnd: subscriptionEnd,
+      subscriptionStart,
+      subscriptionEnd,
     });
 
     return res.status(200).json({
@@ -539,8 +703,9 @@ export const updateShop = async (req, res) => {
   }
 };
 
-
-//delete shop
+// ============================================================
+// DELETE / DEACTIVATE SHOP
+// ============================================================
 
 export const deleteShop = async (req, res) => {
   try {
@@ -555,13 +720,13 @@ export const deleteShop = async (req, res) => {
       });
     }
 
-    // Deactivate Shop
+    // Deactivate shop
     await shop.update({
       isActive: false,
       subscriptionStatus: "Cancelled",
     });
 
-    // Deactivate Shop Admin
+    // Deactivate all users belonging to this shop
     await User.update(
       {
         isActive: false,
@@ -570,7 +735,7 @@ export const deleteShop = async (req, res) => {
         where: {
           shopId: id,
         },
-      }
+      },
     );
 
     return res.status(200).json({
@@ -588,17 +753,22 @@ export const deleteShop = async (req, res) => {
   }
 };
 
+// ============================================================
+// GET SHOP BY SLUG
+// Used for:
+// /shop/:slug
+// /shop/:slug/login
+// /shop/:slug/signup
+// ============================================================
 
-// Get shop by slug
 export const getShopBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
 
     const shop = await Shop.findOne({
       where: {
-        slug,
+        slug: String(slug).trim().toLowerCase(),
         isActive: true,
-        isDeleted: false,
       },
     });
 
@@ -619,6 +789,7 @@ export const getShopBySlug = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
+      error: error.message,
     });
   }
 };
