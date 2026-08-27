@@ -1,7 +1,23 @@
 import api from "./axios";
 
 // =====================================================
-// Ankita functions
+// RESPONSE HELPERS
+// =====================================================
+
+const extractCount = (responseData) => {
+  if (typeof responseData === "number") {
+    return responseData;
+  }
+
+  return Number(
+    responseData?.count ??
+      responseData?.data?.count ??
+      0
+  );
+};
+
+// =====================================================
+// GENERAL NOTIFICATIONS
 // =====================================================
 
 export const getNotifications = async () => {
@@ -10,8 +26,8 @@ export const getNotifications = async () => {
 };
 
 export const getUnreadNotificationCount = async () => {
-  const response = await api.get("/notifications/count");
-  return response.data;
+  const response = await api.get("/notifications/unread-count");
+  return extractCount(response.data);
 };
 
 export const markNotificationAsRead = async (id) => {
@@ -24,22 +40,42 @@ export const markAllNotificationsAsRead = async () => {
   return response.data;
 };
 
+// =====================================================
+// LOW-STOCK NOTIFICATIONS
+// =====================================================
+
+export const getLowStockNotifications = async () => {
+  const response = await api.get("/notifications/low-stock");
+  return response.data;
+};
+
+export const getLowStockNotificationCount = async () => {
+  const response = await api.get("/notifications/count");
+  return response.data;
+};
+
 export const getNotificationHistory = async () => {
   const response = await api.get("/notifications/history");
   return response.data;
 };
 
+export const markAllLowStockNotificationsAsRead = async () => {
+  const response = await api.patch("/notifications/mark-all-read");
+  return response.data;
+};
+
 // =====================================================
-// Amisha API object
+// NOTIFICATION API OBJECT
 // =====================================================
 
 export const notificationApi = {
-  getNotifications: () => api.get("/notifications").then((r) => r.data.data),
+  getNotifications,
+  getUnreadCount: getUnreadNotificationCount,
+  markAllRead: markAllNotificationsAsRead,
+  markRead: markNotificationAsRead,
 
-  getUnreadCount: () =>
-    api.get("/notifications/unread-count").then((r) => r.data.data?.count ?? 0),
-
-  markAllRead: () => api.patch("/notifications/read-all").then((r) => r.data),
-
-  markRead: (id) => api.patch(`/notifications/${id}/read`).then((r) => r.data),
+  getLowStockNotifications,
+  getLowStockNotificationCount,
+  getNotificationHistory,
+  markAllLowStockNotificationsAsRead,
 };

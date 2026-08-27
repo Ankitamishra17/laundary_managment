@@ -30,7 +30,9 @@ const AddServiceModal = ({ onClose, onSuccess, showToast }) => {
       ...prev,
       [key]: value,
     }));
-  };  const handleSubmit = async (e) => {
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
 

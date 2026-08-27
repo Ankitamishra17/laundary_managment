@@ -70,7 +70,10 @@ const Notification = sequelize.define(
 
     message: {
       type: DataTypes.TEXT,
-      allowNull: true,
+
+     
+      allowNull: false,
+ 
     },
 
     // Frontend route to open when notification is clicked

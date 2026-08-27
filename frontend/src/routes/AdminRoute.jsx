@@ -6,18 +6,11 @@ import AdminLayout from "../layouts/AdminLayout";
 // Admin Pages
 import Dashboard from "../pages/admin/Dashboard";
 import Orders from "../pages/admin/Orders";
-
-
 import Customers from "../pages/admin/Customers";
-
-
-
 import Employees from "../pages/admin/Employees";
 import Tasks from "../pages/admin/Tasks";
 import Services from "../pages/admin/Services";
-
 import Inventory from "../pages/admin/Inventory";
-
 
 // Inventory Pages
 import StockInOut from "../pages/admin/inventory/StockInOut";
@@ -26,19 +19,11 @@ import Purchase from "../pages/admin/inventory/Purchase";
 import LowStockAlerts from "../pages/admin/inventory/LowStockAlerts";
 
 // Attendance
-
-
 import Attendance from "../pages/admin/Attendance";
 import DailyAttendance from "../pages/admin/DailyAttendance";
 import AttendanceReports from "../pages/admin/AttendanceReports";
 
-
-// payment pages
-// =====================================================
-// PAYMENT PAGES
-// =====================================================
-
-
+// Payment Pages
 import PaymentDashboard from "../pages/admin/PaymentDashboard";
 import AllTransactions from "../pages/admin/payment/AllTransactions";
 import CustomerPayments from "../pages/admin/payment/CustomerPayments";
@@ -47,7 +32,6 @@ import SalaryPayments from "../pages/admin/payment/SalaryPayments";
 import PaymentReports from "../pages/admin/payment/PaymentReports";
 
 // Other Admin Pages
-
 import Payroll from "../pages/admin/Payroll";
 import Reports from "../pages/admin/Reports";
 import Settings from "../pages/admin/Settings";
@@ -68,21 +52,14 @@ const AdminRoute = (
     {/* Orders */}
     <Route path="orders" element={<Orders />} />
 
-
-  
-
-     <Route path="tasks" element={<Tasks />} /> 
-
     {/* Customers */}
     <Route path="customers" element={<Customers />} />
-
 
     {/* Employees */}
     <Route path="employees" element={<Employees />} />
 
     {/* Tasks */}
     <Route path="tasks" element={<Tasks />} />
-
 
     {/* Services */}
     <Route path="services" element={<Services />} />
@@ -97,8 +74,6 @@ const AdminRoute = (
     <Route path="inventory/purchases" element={<Purchase />} />
     <Route path="inventory/low-stock" element={<LowStockAlerts />} />
 
-
-
     {/* =================================================
         ATTENDANCE
     ================================================= */}
@@ -110,7 +85,6 @@ const AdminRoute = (
     {/* =================================================
         PAYROLL
     ================================================= */}
-
 
     <Route path="payroll" element={<Payroll />} />
 

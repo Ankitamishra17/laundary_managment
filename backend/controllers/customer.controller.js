@@ -4,15 +4,24 @@ import Customer from "../models/Customer.js";
 import User from "../models/User.js";
 
 // ============================================================
-// CUSTOMER — own profile
+// CUSTOMER — GET OWN PROFILE
 // GET /api/customers/me
-// Returns the logged-in customer's profile record (address, city,
-// default laundry) so the customer UI can show saved details.
 // ============================================================
+
 export const getMyProfile = async (req, res) => {
   try {
     const customer = await Customer.findOne({
-      where: { userId: req.user.id },
+      where: {
+        userId: req.user.id,
+      },
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email", "phone", "isActive", "shopId"],
+          required: false,
+        },
+      ],
     });
 
     if (!customer) {
@@ -22,67 +31,220 @@ export const getMyProfile = async (req, res) => {
       });
     }
 
-    return res.status(200).json({ success: true, data: customer });
+    return res.status(200).json({
+      success: true,
+      data: customer,
+    });
   } catch (error) {
     console.error("Get Customer Profile Error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get customer profile.",
+    });
   }
 };
 
 // ============================================================
-// ADMIN — customers of my shop
-// GET /api/customers?search=&shopId=
-// Lists every customer who signed up / placed an order for the
-// admin's shop, with their order count, so the admin can see the
-// full customer information from the dashboard.
+// GET CUSTOMER BY ID
+// GET /api/customers/:id
 // ============================================================
-export const getShopCustomers = async (req, res) => {
+
+export const getCustomerById = async (req, res) => {
   try {
-    const { search } = req.query;
+    const customerId = Number(req.params.id);
 
-    // Shop admins and employees see only their own shop's customers; super
-    // admins can optionally pass ?shopId= to scope, otherwise see everyone.
-    // Employees live in the employees table (shop_id) while admins/customers
-    // live in the users table (shopId) — accept both shapes.
-    const shopId = req.user.shop_id ?? req.user.shopId;
-    const where = {};
-    if (shopId) {
-      where.shopId = shopId;
-    } else if (req.query.shopId) {
-      where.shopId = Number(req.query.shopId);
+    if (!customerId || Number.isNaN(customerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid customer ID.",
+      });
     }
 
-    if (search && String(search).trim()) {
-      const term = `%${String(search).trim()}%`;
-      where[Op.or] = [
-        { name: { [Op.like]: term } },
-        { email: { [Op.like]: term } },
-        { phone: { [Op.like]: term } },
-        { city: { [Op.like]: term } },
-      ];
-    }
-
-    const customers = await Customer.findAll({
-      where,
-      attributes: {
-        include: [
-          // Number of orders this customer has placed at any shop
-          [
-            sequelize.literal(
-              "(SELECT COUNT(*) FROM orders WHERE orders.customer_id = Customer.id)",
-            ),
-            "orderCount",
-          ],
-        ],
-      },
+    const customer = await Customer.findByPk(customerId, {
       include: [
         {
           model: User,
           as: "user",
-          attributes: ["id", "name", "email", "phone", "isActive"],
+          attributes: ["id", "name", "email", "phone", "isActive", "shopId"],
           required: false,
         },
       ],
+      attributes: {
+        include: [
+          [
+            sequelize.literal(`
+              (
+                SELECT COUNT(*)
+                FROM orders
+                WHERE orders.customer_id = Customer.id
+              )
+            `),
+            "orderCount",
+          ],
+        ],
+      },
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found.",
+      });
+    }
+
+    // --------------------------------------------------------
+    // ADMIN / EMPLOYEE SECURITY
+    // Customer should belong to the logged-in user's shop
+    // --------------------------------------------------------
+
+    const loggedInShopId = req.user?.shopId ?? req.user?.shop_id ?? null;
+
+    if (
+      (req.user?.role === "admin" || req.user?.role === "employee") &&
+      Number(customer.shopId) !== Number(loggedInShopId)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to view this customer.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: customer,
+    });
+  } catch (error) {
+    console.error("Get Customer By ID Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get customer.",
+    });
+  }
+};
+
+// ============================================================
+// ADMIN / EMPLOYEE / SUPER ADMIN — GET CUSTOMERS
+// GET /api/customers?search=&shopId=
+// ============================================================
+
+export const getShopCustomers = async (req, res) => {
+  try {
+    const { search, shopId: queryShopId } = req.query;
+
+    const where = {};
+
+    // ========================================================
+    // GET LOGGED-IN USER'S SHOP
+    // ========================================================
+
+    const loggedInShopId = req.user?.shopId ?? req.user?.shop_id ?? null;
+
+    // ========================================================
+    // ADMIN
+    // Only customers from ADMIN'S OWN SHOP
+    // ========================================================
+
+    if (req.user?.role === "admin") {
+      if (!loggedInShopId) {
+        return res.status(400).json({
+          success: false,
+          message: "No shop is assigned to this admin.",
+        });
+      }
+
+      where.shopId = Number(loggedInShopId);
+    }
+
+    // ========================================================
+    // EMPLOYEE
+    // Only customers from EMPLOYEE'S OWN SHOP
+    // ========================================================
+
+    if (req.user?.role === "employee") {
+      if (!loggedInShopId) {
+        return res.status(400).json({
+          success: false,
+          message: "No shop is assigned to this employee.",
+        });
+      }
+
+      where.shopId = Number(loggedInShopId);
+    }
+
+    // ========================================================
+    // SUPER ADMIN
+    // Can see all customers
+    // Optional: filter by ?shopId=
+    // ========================================================
+
+    if (req.user?.role === "super_admin" && queryShopId) {
+      where.shopId = Number(queryShopId);
+    }
+
+    // ========================================================
+    // SEARCH
+    // ========================================================
+
+    if (search && String(search).trim()) {
+      const term = `%${String(search).trim()}%`;
+
+      where[Op.or] = [
+        {
+          name: {
+            [Op.like]: term,
+          },
+        },
+        {
+          email: {
+            [Op.like]: term,
+          },
+        },
+        {
+          phone: {
+            [Op.like]: term,
+          },
+        },
+        {
+          city: {
+            [Op.like]: term,
+          },
+        },
+      ];
+    }
+
+    // ========================================================
+    // GET CUSTOMERS
+    // ========================================================
+
+    const customers = await Customer.findAll({
+      where,
+
+      attributes: {
+        include: [
+          [
+            sequelize.literal(`
+              (
+                SELECT COUNT(*)
+                FROM orders
+                WHERE orders.customer_id = Customer.id
+              )
+            `),
+            "orderCount",
+          ],
+        ],
+      },
+
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email", "phone", "isActive", "shopId"],
+          required: false,
+        },
+      ],
+
       order: [["createdAt", "DESC"]],
     });
 
@@ -93,6 +255,10 @@ export const getShopCustomers = async (req, res) => {
     });
   } catch (error) {
     console.error("Get Shop Customers Error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to load customers.",
+    });
   }
 };

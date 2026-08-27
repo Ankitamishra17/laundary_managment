@@ -15,6 +15,12 @@ const Shop = sequelize.define(
       allowNull: false,
       unique: true,
     },
+    // Customer-facing URL with the help of slug
+    slug: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+    },
 
     name: {
       type: DataTypes.STRING,

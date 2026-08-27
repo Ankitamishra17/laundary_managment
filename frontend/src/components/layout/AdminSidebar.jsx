@@ -828,7 +828,6 @@
 //   );
 // }
 
-
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useSidebar } from "../../context/SidebarContext";
@@ -1041,7 +1040,10 @@ export default function AdminSidebar() {
         <div className="flex items-center justify-between gap-3 px-5 h-20 shrink-0 border-b border-white/10">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-[#02C39A]">
-              <WashingMachine size={20} className="text-[#05282A]" />
+              <WashingMachine
+                size={20}
+                className="text-[#05282A]"
+              />
             </div>
 
             <div className={`${hideLabel} min-w-0`}>
@@ -1071,7 +1073,7 @@ export default function AdminSidebar() {
           {NAV_ITEMS.map(({ label, icon: Icon, to, children }) => {
             const isGroupOpen = !!openGroups[label];
 
-            /* Normal Menu Item */
+            {/* Normal Menu Item */}
             if (!children) {
               return (
                 <NavLink
@@ -1094,6 +1096,7 @@ export default function AdminSidebar() {
                   }
                 >
                   <Icon size={18} className="shrink-0" />
+
                   <span className={`${hideLabel} truncate`}>
                     {label}
                   </span>
@@ -1101,10 +1104,9 @@ export default function AdminSidebar() {
               );
             }
 
-            /* Menu Group */
+            {/* Menu Group */}
             return (
               <div key={label}>
-                {/* Main group */}
                 <div className="flex items-center">
                   {/* Main Group Link */}
                   <NavLink

@@ -587,3 +587,38 @@ export const deleteShop = async (req, res) => {
     });
   }
 };
+
+
+// Get shop by slug
+export const getShopBySlug = async (req, res) => {
+  try {
+    const { slug } = req.params;
+
+    const shop = await Shop.findOne({
+      where: {
+        slug,
+        isActive: true,
+        isDeleted: false,
+      },
+    });
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: "Shop not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: shop,
+    });
+  } catch (error) {
+    console.error("Get Shop By Slug Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};

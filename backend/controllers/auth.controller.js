@@ -241,10 +241,21 @@ export const register = async (req, res) => {
   try {
     const { name, email, phone, password, shopId, address, city } = req.body;
 
+    // ============================================================
+    // VALIDATION
+    // ============================================================
+
     if (!name || !email || !phone || !password) {
       return res.status(400).json({
         success: false,
         message: "Please fill all required fields.",
+      });
+    }
+
+    if (!shopId) {
+      return res.status(400).json({
+        success: false,
+        message: "Please register through a valid shop.",
       });
     }
 
@@ -255,8 +266,14 @@ export const register = async (req, res) => {
       });
     }
 
-    // Unique email
-    const existing = await User.findOne({ where: { email } });
+    // ============================================================
+    // CHECK EMAIL
+    // ============================================================
+
+    const existing = await User.findOne({
+      where: { email },
+    });
+
     if (existing) {
       return res.status(409).json({
         success: false,
@@ -264,28 +281,42 @@ export const register = async (req, res) => {
       });
     }
 
-    // Resolve the laundry this customer belongs to. If the frontend
-    // supplies a shopId (e.g. deep link from a specific laundry), use it;
-    // otherwise auto-assign the platform's first active laundry so the
-    // customer is never orphaned with a null shopId.
-    let resolvedShopId = null;
-    if (shopId) {
-      const shop = await Shop.findOne({
-        where: { id: shopId, isActive: true, subscriptionStatus: "Active" },
+    // ============================================================
+    // VALIDATE SHOP
+    //
+    // The shopId comes dynamically from the shop registration link.
+    // Example:
+    // /register?shopId=5
+    //
+    // We do NOT hardcode shopId = 2.
+    // ============================================================
+
+    const shop = await Shop.findOne({
+      where: {
+        id: Number(shopId),
+        isActive: true,
+        subscriptionStatus: "Active",
+      },
+    });
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: "Shop not found or is currently inactive.",
       });
-      if (shop) {
-        resolvedShopId = Number(shopId);
-      }
-    }
-    if (!resolvedShopId) {
-      const defaultShop = await Shop.findOne({
-        where: { isActive: true, subscriptionStatus: "Active" },
-        order: [["createdAt", "ASC"]],
-      });
-      if (defaultShop) resolvedShopId = defaultShop.id;
     }
 
+    const resolvedShopId = shop.id;
+
+    // ============================================================
+    // HASH PASSWORD
+    // ============================================================
+
     const hashedPassword = await bcrypt.hash(password, 10);
+
+    // ============================================================
+    // CREATE USER
+    // ============================================================
 
     const user = await User.create({
       name,
@@ -298,7 +329,12 @@ export const register = async (req, res) => {
       isActive: true,
     });
 
-    await Customer.create({
+    // ============================================================
+    // CREATE CUSTOMER PROFILE
+    // Same shopId as the user
+    // ============================================================
+
+    const customer = await Customer.create({
       userId: user.id,
       shopId: resolvedShopId,
       name,
@@ -306,7 +342,12 @@ export const register = async (req, res) => {
       phone,
       address: address || null,
       city: city || null,
+      isActive: true,
     });
+
+    // ============================================================
+    // GENERATE TOKEN
+    // ============================================================
 
     const token = generateToken(user, "user");
 
@@ -315,6 +356,7 @@ export const register = async (req, res) => {
       message: "Account created successfully. Welcome aboard!",
       token,
       mustChangePassword: false,
+
       user: {
         id: user.id,
         shopId: user.shopId,
@@ -323,6 +365,11 @@ export const register = async (req, res) => {
         phone: user.phone,
         role: user.role,
         avatar: user.avatar,
+      },
+
+      customer: {
+        id: customer.id,
+        shopId: customer.shopId,
       },
     });
   } catch (error) {
@@ -337,11 +384,13 @@ export const register = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Internal Server Error",
+      message: error.message || "Internal Server Error",
     });
   }
 };
 
+
+//login 
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;

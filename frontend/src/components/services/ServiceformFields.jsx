@@ -8,11 +8,8 @@ const colors = {
   textMuted: "#5C7A78",
 };
 
-
 // Common categories — suggestions only, the shop admin can type any
 // custom category (the backend stores it as free text).
-
-// Combined categories from both Ankita and Amisha branches
 const categoryOptions = [
   "Washing",
   "Ironing",
@@ -32,7 +29,14 @@ const categoryOptions = [
 ];
 
 // Combined pricing types from both branches
-const pricingTypeOptions = ["Per Kg", "Per Item", "Per Set", "Per Piece", "Per Pair", "Fixed"];
+const pricingTypeOptions = [
+  "Per Kg",
+  "Per Item",
+  "Per Set",
+  "Per Piece",
+  "Per Pair",
+  "Fixed",
+];
 
 const timeOptions = ["Same Day", "1 Day", "2 Days", "3 Days", "5 Days"];
 

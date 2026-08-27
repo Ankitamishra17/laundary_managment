@@ -1,12 +1,6 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
 
-// ============================================================
-// CUSTOMER
-// Profile record for users with role "customer"
-// Users table → login credentials
-// Customers table → customer profile & shop information
-// ============================================================
 
 const Customer = sequelize.define(
   "Customer",
@@ -17,13 +11,15 @@ const Customer = sequelize.define(
       primaryKey: true,
     },
 
+
     // Links to users.id
+
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
 
-    // Default shop
+
     shopId: {
       type: DataTypes.INTEGER,
       allowNull: true,
