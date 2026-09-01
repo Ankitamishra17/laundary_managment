@@ -81,8 +81,8 @@ export const updateOrderStatus = async (req, res) => {
     order.status = status;
 
     // Timestamps track karne ke liye (agar model me columns bana rakhe hai)
-    if (status === "picked_up") order.pickup_time = new Date();
-    if (status === "delivered") order.delivery_time = new Date();
+    if (status === "picked_up") order.pickup_time = new Date().toISOString();
+    if (status === "delivered") order.delivery_time = new Date().toISOString();
 
     await order.save();
 
@@ -105,7 +105,7 @@ export const markPickupDone = async (req, res) => {
     }
 
     order.status = "picked_up";
-    order.pickup_time = new Date();
+    order.pickup_time = new Date().toISOString();
     await order.save();
 
     return res.status(200).json({ success: true, message: "Pickup marked as done", data: order });
@@ -127,7 +127,7 @@ export const markDeliveryDone = async (req, res) => {
     }
 
     order.status = "delivered";
-    order.delivery_time = new Date();
+    order.delivery_time = new Date().toISOString();
     await order.save();
 
     return res.status(200).json({ success: true, message: "Delivery marked as done", data: order });

@@ -213,21 +213,34 @@ export const getDailyAttendance = async (req, res) => {
   try {
     const date = req.query.date || toDateStr();
 
+    const employeeWhere = { status: "active" };
+    const attendanceWhere = { date };
+
+    // Scope to the admin's shop — super admins (no shopId) see everything
+    if (req.user.shopId) {
+      employeeWhere.shop_id = req.user.shopId;
+    }
+
     const [employees, records] = await Promise.all([
       Employee.findAll({
-        where: { status: "active" },
+        where: employeeWhere,
         attributes: ["id", "name", "email", "designation", "shop_id"],
         order: [["name", "ASC"]],
       }),
       Attendance.findAll({
-        where: { date },
+        where: attendanceWhere,
         include: [
-          { model: Employee, as: "employee", attributes: ["id", "name"] },
+          { model: Employee, as: "employee", attributes: ["id", "name", "shop_id"] },
         ],
       }),
     ]);
 
     const recordMap = new Map(records.map((r) => [r.employee_id, r]));
+
+    // For admin with a shop, only include records belonging to their shop's employees
+    const shopEmployeeIds = req.user.shopId
+      ? new Set(employees.map((e) => e.id))
+      : null;
 
     const rows = employees.map((emp) => {
       const record = recordMap.get(emp.id) || null;
@@ -284,15 +297,24 @@ export const getAttendanceReport = async (req, res) => {
       ...(employee_id ? { employee_id } : {}),
     };
 
+    // Scope to the admin's shop — only show attendance for their employees
+    const include = [
+      {
+        model: Employee,
+        as: "employee",
+        attributes: ["id", "name", "email", "designation", "shop_id"],
+      },
+    ];
+
+    // If the admin has a shop, scope attendance to their shop's employees
+    if (req.user.shopId) {
+      include[0].where = { shop_id: req.user.shopId };
+      include[0].required = true;
+    }
+
     const records = await Attendance.findAll({
       where,
-      include: [
-        {
-          model: Employee,
-          as: "employee",
-          attributes: ["id", "name", "email", "designation"],
-        },
-      ],
+      include,
       order: [["date", "DESC"]],
     });
 

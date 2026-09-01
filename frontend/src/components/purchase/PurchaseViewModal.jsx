@@ -4,7 +4,6 @@ import {
   Building2,
   CalendarDays,
   FileText,
-  IndianRupee,
   CreditCard,
 } from "lucide-react";
 

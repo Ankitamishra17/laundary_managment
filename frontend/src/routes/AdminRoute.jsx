@@ -10,7 +10,6 @@ import Customers from "../pages/admin/Customers";
 import Employees from "../pages/admin/Employees";
 import Tasks from "../pages/admin/Tasks";
 import Services from "../pages/admin/Services";
-
 import Inventory from "../pages/admin/Inventory";
 
 // Inventory Pages
@@ -35,6 +34,9 @@ import PaymentReports from "../pages/admin/payment/PaymentReports";
 // Other Admin Pages
 import Payroll from "../pages/admin/Payroll";
 import Reports from "../pages/admin/Reports";
+import Reviews from "../pages/admin/Reviews";
+import Complaints from "../pages/admin/Complaints";
+import LeaveReview from "../pages/admin/LeaveReview";
 import Settings from "../pages/admin/Settings";
 import Profile from "../pages/admin/Profile";
 
@@ -122,6 +124,14 @@ const AdminRoute = (
     ================================================= */}
 
     <Route path="reports" element={<Reports />} />
+
+    {/* =================================================
+        REVIEWS & COMPLAINTS
+    ================================================= */}
+
+    <Route path="reviews" element={<Reviews />} />
+    <Route path="complaints" element={<Complaints />} />
+    <Route path="leaves" element={<LeaveReview />} />
 
     {/* =================================================
         SETTINGS

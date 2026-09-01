@@ -6,7 +6,6 @@ import {
   Search,
   ArrowDown,
   Loader2,
-  ShoppingCart,
   XCircle,
   PackagePlus,
 } from "lucide-react";

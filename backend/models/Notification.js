@@ -24,7 +24,7 @@ const Notification = sequelize.define(
     // Shop to which this notification belongs
     shopId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
     },
 
     // Recipient from users table
@@ -70,7 +70,10 @@ const Notification = sequelize.define(
 
     message: {
       type: DataTypes.TEXT,
+
+     
       allowNull: false,
+ 
     },
 
     // Frontend route to open when notification is clicked
@@ -100,7 +103,7 @@ const Notification = sequelize.define(
   {
     tableName: "notifications",
     timestamps: true,
-  },
+  }
 );
 
 export default Notification;

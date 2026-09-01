@@ -13,6 +13,10 @@ import {
   ArrowRight,
   PackageSearch,
   AlertCircle,
+  CheckCircle2,
+  Clock,
+  Wrench,
+  UserCheck,
 } from "lucide-react";
 import { getOrderById, cancelOrder } from "../../api/orderApi";
 import OrderTimeline from "../../components/customer/OrderTimeline";
@@ -172,6 +176,85 @@ export default function OrderDetails() {
         </div>
       </div>
 
+      {/* Task Progress */}
+      {order.tasks && order.tasks.length > 0 && (
+        <div className="mt-5 rounded-2xl border p-5 sm:p-6" style={{ backgroundColor: colors.bgLight, borderColor: colors.cardBorder }}>
+          <h3 className="flex items-center gap-2 text-base mb-5" style={{ color: colors.textDark, fontFamily: "'Libre Baskerville', serif" }}>
+            <Wrench size={16} color={colors.primaryTeal} /> Task progress
+          </h3>
+          <div className="space-y-3">
+            {order.tasks.map((task) => {
+              const isCompleted = task.status === "completed";
+              const isActive = task.status === "in_progress";
+              const taskTypeLabel = {
+                pickup: "Pickup",
+                wash: "Wash",
+                dry: "Dry Cleaning",
+                iron: "Ironing",
+                pack: "Packing",
+                delivery: "Delivery",
+              };
+              return (
+                <div
+                  key={task.id}
+                  className="flex items-center gap-4 rounded-xl border px-4 py-3.5 transition-all"
+                  style={{
+                    backgroundColor: isCompleted ? "#F0FBF6" : isActive ? colors.cardTint : colors.bgLight,
+                    borderColor: isCompleted ? "#A3E4CD" : isActive ? `${colors.primaryTeal}40` : colors.cardBorder,
+                  }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{
+                      backgroundColor: isCompleted ? "#02C39A" : isActive ? `${colors.primaryTeal}20` : colors.cardTint,
+                    }}
+                  >
+                    {isCompleted ? (
+                      <CheckCircle2 size={17} color="#FFFFFF" />
+                    ) : isActive ? (
+                      <Loader2 size={17} color={colors.primaryTeal} className="animate-spin" />
+                    ) : (
+                      <Clock size={17} style={{ color: colors.textMuted }} />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold" style={{ color: isCompleted ? "#0B6E63" : colors.textDark }}>
+                        {taskTypeLabel[task.task_type] || task.task_type}
+                      </span>
+                      <span
+                        className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: isCompleted ? "#DFF7F1" : isActive ? `${colors.primaryTeal}15` : colors.cardTint,
+                          color: isCompleted ? "#0B6E63" : isActive ? colors.primaryTeal : colors.textMuted,
+                        }}
+                      >
+                        {isCompleted ? "Completed" : isActive ? "In progress" : "Pending"}
+                      </span>
+                    </div>
+                    {task.started_at && (
+                      <div className="text-[11px] mt-0.5" style={{ color: colors.textMuted }}>
+                        Started {new Date(task.started_at).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    )}
+                    {isCompleted && task.completed_at && (
+                      <div className="text-[11px] mt-0.5" style={{ color: colors.textMuted }}>
+                        Completed {new Date(task.completed_at).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    )}
+                  </div>
+                  {task.notes && (
+                    <div className="text-[11px] px-2.5 py-1 rounded-lg max-w-[200px] truncate" style={{ backgroundColor: colors.cardTint, color: colors.textMuted }}>
+                      {task.notes}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="mt-5 grid lg:grid-cols-3 gap-5 lg:gap-6 items-start">
         {/* Left: items + pickup/delivery */}
         <div className="lg:col-span-2 space-y-5">
@@ -292,6 +375,23 @@ export default function OrderDetails() {
                   <X size={13} /> Cancel order
                 </button>
               )}
+            </div>
+          )}
+
+          {order.status === "delivered" && (
+            <div className="rounded-2xl border p-5 sm:p-6" style={{ backgroundColor: "#F0FBF6", borderColor: "#A3E4CD" }}>
+              <h3 className="text-sm font-semibold" style={{ color: colors.textDark }}>How was your experience?</h3>
+              <p className="mt-1.5 text-xs leading-relaxed" style={{ color: colors.textMuted }}>
+                Your order has been delivered. Share your feedback by writing a review!
+              </p>
+              <Link
+                to="/customer/reviews"
+                className="mt-4 inline-flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg text-white transition-all hover:brightness-110"
+                style={{ background: "linear-gradient(95deg, #F5A623, #F7C948)" }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                Write a review
+              </Link>
             </div>
           )}
 

@@ -2,19 +2,13 @@ import express from "express";
 import protect from "../middleware/authMiddleware.js";
 
 import {
-  // =====================================================
-  // GENERAL NOTIFICATIONS
-  // Low stock + Orders + Customer + Employee etc.
-  // =====================================================
+  // General notifications
   getMyNotifications,
   getUnreadCount,
   markAllRead,
   markRead,
 
-  // =====================================================
-  // LOW-STOCK SPECIFIC NOTIFICATIONS
-  // Existing Ankita functionality
-  // =====================================================
+  // Low-stock notifications
   getNotifications,
   getUnreadNotificationCount,
   markNotificationAsRead,
@@ -25,10 +19,7 @@ import {
 
 const router = express.Router();
 
-// =====================================================
-// ALL NOTIFICATION ROUTES REQUIRE LOGIN
-// =====================================================
-
+// All notification routes require login
 router.use(protect);
 
 // =====================================================
@@ -36,59 +27,51 @@ router.use(protect);
 // =====================================================
 
 // GET /api/notifications
-// Get all notifications for logged-in user
-// Admin: Low stock + orders
-// Customer: Order updates
-// Employee: Employee notifications
+// Get notifications for logged-in user
 router.get("/", getMyNotifications);
 
 // GET /api/notifications/unread-count
-// Get total unread notification count
+// Get total unread notifications
 router.get("/unread-count", getUnreadCount);
 
 // PATCH /api/notifications/read-all
-// Mark all logged-in user's notifications as read
+// Mark all notifications as read
 router.patch("/read-all", markAllRead);
 
 // =====================================================
-// LOW-STOCK SPECIFIC ROUTES
-// IMPORTANT: Static routes must come before /:id routes
+// LOW-STOCK SPECIFIC NOTIFICATIONS
 // =====================================================
 
 // GET /api/notifications/low-stock
-// Get active low-stock notifications only
+// Get active low-stock notifications
 router.get("/low-stock", getNotifications);
 
 // GET /api/notifications/count
-// Get unread low-stock notification count only
+// Get unread low-stock notification count
 router.get("/count", getUnreadNotificationCount);
 
 // GET /api/notifications/history
-// Get complete low-stock notification history
+// Get low-stock notification history
 router.get("/history", getNotificationHistory);
 
 // PATCH /api/notifications/mark-all-read
-// Mark all LOW_STOCK notifications as read
+// Mark all low-stock notifications as read
 router.patch("/mark-all-read", markAllNotificationsAsRead);
 
 // =====================================================
 // SINGLE NOTIFICATION ROUTES
-// Dynamic routes must come last
 // =====================================================
 
 // PATCH /api/notifications/:id/resolve
 // Resolve a low-stock notification
-// Only works when stock is above minimum
 router.patch("/:id/resolve", resolveNotification);
 
 // PATCH /api/notifications/:id/read
 // Mark any notification as read
-// Works for order, customer, employee, low-stock etc.
 router.patch("/:id/read", markRead);
 
 // PATCH /api/notifications/:id/mark-read
-// Existing low-stock specific route
-// Kept for backward compatibility
+// Backward-compatible low-stock route
 router.patch("/:id/mark-read", markNotificationAsRead);
 
 // =====================================================

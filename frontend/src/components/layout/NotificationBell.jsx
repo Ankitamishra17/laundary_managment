@@ -76,8 +76,8 @@ export default function NotificationBell({ dark = false }) {
     if (!open) {
       setLoading(true);
       try {
-        const data = await notificationApi.getNotifications();
-        const list = Array.isArray(data) ? data : [];
+        const res = await notificationApi.getNotifications();
+        const list = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
         setItems(list);
         setUnread(list.filter((n) => !n.isRead).length);
       } catch {

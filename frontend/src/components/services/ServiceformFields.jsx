@@ -8,7 +8,8 @@ const colors = {
   textMuted: "#5C7A78",
 };
 
-// Combined categories from both Ankita and Amisha branches
+// Common categories — suggestions only, the shop admin can type any
+// custom category (the backend stores it as free text).
 const categoryOptions = [
   "Washing",
   "Ironing",

@@ -26,6 +26,8 @@ const REQUIRED_COLUMNS = {
     { name: "favicon", ddl: "VARCHAR(255) NULL" },
     { name: "primaryColor", ddl: "VARCHAR(50) NULL" },
     { name: "secondaryColor", ddl: "VARCHAR(50) NULL" },
+    // Customer-facing URL slug (e.g. /neha-laundry)
+    { name: "slug", ddl: "VARCHAR(255) NULL" },
   ],
   orders: [
     // Customer order flow — pickup & delivery details

@@ -20,6 +20,8 @@ import inventoryRoutes from "./routes/inventory.routes.js";
 import inventoryTransactionRoutes from "./routes/inventoryTransaction.routes.js";
 import supplierRoutes from "./routes/supplier.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import reviewRoutes from "./routes/review.routes.js";
+import complaintRoutes from "./routes/complaint.routes.js";
 
 // Amisha routes
 import adminEmployeeRoutes from "./routes/adminEmployee.routes.js";
@@ -30,6 +32,7 @@ import verificationRoutes from "./routes/verification.js";
 import attendanceRoutes from "./routes/attendance.routes.js";
 import orderRoutes from "./routes/order.routes.js";
 import customerRoutes from "./routes/customer.routes.js";
+import leaveRoutes from "./routes/leave.routes.js";
 
 const app = express();
 
@@ -65,6 +68,10 @@ app.use("/api/suppliers", supplierRoutes);
 // Notifications - common
 app.use("/api/notifications", notificationRoutes);
 
+// Reviews & Complaints - common
+app.use("/api/reviews", reviewRoutes);
+app.use("/api/complaints", complaintRoutes);
+
 // Ankita - Payment & Payroll
 app.use("/api/payments", paymentRoutes);
 app.use("/api/purchases", purchaseRoutes);
@@ -80,6 +87,9 @@ app.use("/api/attendance", attendanceRoutes);
 // Amisha - Orders & Customers
 app.use("/api/orders", orderRoutes);
 app.use("/api/customers", customerRoutes);
+
+// Leave management
+app.use("/api/leaves", leaveRoutes);
 
 app.get("/", (req, res) => {
   res.json({

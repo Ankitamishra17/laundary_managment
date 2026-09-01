@@ -8,6 +8,8 @@ import MyOrders from "../pages/customer/MyOrders";
 import OrderDetails from "../pages/customer/OrderDetails";
 import Addresses from "../pages/customer/Addresses";
 import Profile from "../pages/customer/Profile";
+import MyReviews from "../pages/customer/MyReviews";
+import MyComplaints from "../pages/customer/MyComplaints";
 
 const CustomerRoute = (
   <Route path="/customer" element={<CustomerLayout />}>
@@ -21,6 +23,8 @@ const CustomerRoute = (
     <Route path="orders/:id" element={<OrderDetails />} />
     <Route path="addresses" element={<Addresses />} />
     <Route path="profile" element={<Profile />} />
+    <Route path="reviews" element={<MyReviews />} />
+    <Route path="complaints" element={<MyComplaints />} />
 
     {/* Old dashboard URL — keep bookmarks working */}
     <Route path="dashboard" element={<Navigate to="/" replace />} />

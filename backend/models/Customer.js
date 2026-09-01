@@ -1,6 +1,7 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
 
+
 const Customer = sequelize.define(
   "Customer",
   {
@@ -10,10 +11,14 @@ const Customer = sequelize.define(
       primaryKey: true,
     },
 
+
+    // Links to users.id
+
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+
 
     shopId: {
       type: DataTypes.INTEGER,

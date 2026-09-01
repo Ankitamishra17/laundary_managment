@@ -14,6 +14,7 @@ import {
   Package,
   Percent,
   Truck,
+  Star,
 } from "lucide-react";
 import { getMyOrders, cancelOrder } from "../../api/orderApi";
 import OrderTimeline from "../../components/customer/OrderTimeline";
@@ -279,6 +280,18 @@ export default function MyOrders() {
                         <X size={13} /> Cancel order
                       </button>
                     )}
+                  </div>
+                )}
+
+                {o.status === "delivered" && (
+                  <div className="px-5 sm:px-6 py-3.5 border-t flex justify-end" style={{ borderColor: colors.cardBorder }}>
+                    <Link
+                      to="/customer/reviews"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg text-white transition-all hover:brightness-110"
+                      style={{ background: "linear-gradient(95deg, #F5A623, #F7C948)" }}
+                    >
+                      <Star size={13} /> Write a review
+                    </Link>
                   </div>
                 )}
               </div>

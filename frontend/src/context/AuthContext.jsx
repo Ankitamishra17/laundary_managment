@@ -39,7 +39,7 @@ export const AuthProvider = ({ children }) => {
     // Old sessions may not have the avatar in localStorage. For employees,
     // quietly fetch the profile once so the photo syncs across the app even
     // after a hard refresh — no re-login needed.
-    if (parsed?.role === "employee" && parsed?.id) {
+    if (parsed?.id) {
       profileApi
         .getMyProfile()
         .then((data) => {

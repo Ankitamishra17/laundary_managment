@@ -5,18 +5,12 @@ import User from "../models/User.js";
 
 // ============================================================
 // CREATE NOTIFICATION
-// ============================================================
-// Generic helper used by:
-// - Low stock
-// - Orders
-// - Customers
-// - Employees
-// - Tasks
-//
-// IMPORTANT:
-// shopId should always be provided for shop-related notifications.
-// userId is the exact recipient when a notification belongs
-// to one specific user.
+// Supports:
+// - Inventory / low-stock notifications
+// - User notifications
+// - Employee notifications
+// - Task notifications
+// - Order notifications
 // ============================================================
 
 export const createNotification = async ({
@@ -50,7 +44,6 @@ export const createNotification = async ({
       message,
       type,
       link,
-
       isRead: false,
       isResolved: false,
       resolvedAt: null,
@@ -62,18 +55,7 @@ export const createNotification = async ({
 };
 
 // ============================================================
-// NOTIFY SHOP ADMINS ONLY
-// ============================================================
-// Used for:
-// - LOW_STOCK
-// - New customer order
-// - Order cancellation
-// - Other shop-related events
-//
-// IMPORTANT:
-// Super Admin is intentionally NOT included here.
-// Super Admin subscription notifications should use the separate
-// subscription notification system.
+// NOTIFY SHOP ADMINS
 // ============================================================
 
 export const notifyShopAdmins = async (shopId, payload) => {
@@ -114,10 +96,7 @@ export const notifyShopAdmins = async (shopId, payload) => {
 };
 
 // ============================================================
-// NOTIFY ONE CUSTOMER
-// ============================================================
-// Used when order status changes.
-// Customer model must contain userId.
+// NOTIFY CUSTOMER
 // ============================================================
 
 export const notifyCustomer = async (customer, payload) => {
@@ -138,9 +117,7 @@ export const notifyCustomer = async (customer, payload) => {
 };
 
 // ============================================================
-// NOTIFY ONE EMPLOYEE
-// ============================================================
-// Optional helper for task/attendance/etc notifications.
+// NOTIFY EMPLOYEE
 // ============================================================
 
 export const notifyEmployee = async (employee, payload) => {
@@ -152,7 +129,7 @@ export const notifyEmployee = async (employee, payload) => {
     return await createNotification({
       ...payload,
       employeeId: employee.id,
-      shopId: employee.shopId || payload.shopId || null,
+      shopId: employee.shop_id || employee.shopId || payload.shopId || null,
     });
   } catch (error) {
     console.error("Notify Employee Error:", error.message);
@@ -163,35 +140,14 @@ export const notifyEmployee = async (employee, payload) => {
 // ============================================================
 // GET NOTIFICATION SCOPE
 // ============================================================
-// SECURITY:
-// Each role can only access its own notifications.
-//
-// ADMIN:
-//   shopId + exact userId
-//
-// CUSTOMER:
-//   exact userId
-//
-// EMPLOYEE:
-//   exact employeeId
-//
-// SUPER ADMIN:
-//   This controller does not expose shop notifications to super admin.
-//   Subscription notifications should be handled separately.
-// ============================================================
 
 const scopeWhere = (req) => {
   const { role, id, shopId } = req.user;
 
-  // Default: return an impossible condition.
-  // This prevents accidentally exposing all notifications.
+  // Default: impossible condition
   const where = {
     id: -1,
   };
-
-  // ----------------------------------------------------------
-  // SHOP ADMIN
-  // ----------------------------------------------------------
 
   if (role === "admin") {
     if (!shopId || !id) return where;
@@ -202,10 +158,6 @@ const scopeWhere = (req) => {
     };
   }
 
-  // ----------------------------------------------------------
-  // CUSTOMER
-  // ----------------------------------------------------------
-
   if (role === "customer") {
     if (!id) return where;
 
@@ -214,17 +166,6 @@ const scopeWhere = (req) => {
     };
   }
 
-  // ----------------------------------------------------------
-  // EMPLOYEE
-  // ----------------------------------------------------------
-  // Your current system appears to use employeeId for employee
-  // notifications. If req.user.id is the Employee table ID,
-  // this works directly.
-  //
-  // If your Employee model uses userId instead, change this logic
-  // according to your authentication structure.
-  // ----------------------------------------------------------
-
   if (role === "employee") {
     if (!id) return where;
 
@@ -232,12 +173,6 @@ const scopeWhere = (req) => {
       employeeId: id,
     };
   }
-
-  // ----------------------------------------------------------
-  // SUPER ADMIN
-  // ----------------------------------------------------------
-  // Keep separate subscription notification controller/system.
-  // ----------------------------------------------------------
 
   if (role === "super_admin") {
     return {
@@ -250,8 +185,6 @@ const scopeWhere = (req) => {
 
 // ============================================================
 // GET MY ALL NOTIFICATIONS
-// ============================================================
-// GET /api/notifications
 // ============================================================
 
 export const getMyNotifications = async (req, res) => {
@@ -298,8 +231,6 @@ export const getMyNotifications = async (req, res) => {
 // ============================================================
 // GET UNREAD NOTIFICATION COUNT
 // ============================================================
-// GET /api/notifications/unread-count
-// ============================================================
 
 export const getUnreadCount = async (req, res) => {
   try {
@@ -329,15 +260,6 @@ export const getUnreadCount = async (req, res) => {
 
 // ============================================================
 // MARK ONE NOTIFICATION AS READ
-// ============================================================
-// PATCH /api/notifications/:id/read
-//
-// This works for:
-// - Admin
-// - Customer
-// - Employee
-//
-// Clicking/viewing a notification can call this endpoint.
 // ============================================================
 
 export const markRead = async (req, res) => {
@@ -389,8 +311,6 @@ export const markRead = async (req, res) => {
 // ============================================================
 // MARK ALL MY NOTIFICATIONS AS READ
 // ============================================================
-// PATCH /api/notifications/read-all
-// ============================================================
 
 export const markAllRead = async (req, res) => {
   try {
@@ -427,23 +347,6 @@ export const markAllRead = async (req, res) => {
 // ============================================================
 // GET ACTIVE LOW-STOCK NOTIFICATIONS
 // ============================================================
-// GET /api/notifications/low-stock
-//
-// Only for the currently logged-in shop admin.
-//
-// IMPORTANT:
-// We do NOT filter isRead here.
-//
-// Why?
-// Once admin sees a notification it becomes isRead = true,
-// but inventory is still low.
-//
-// Therefore:
-// isRead     = whether admin has seen it
-// isResolved = whether stock problem is fixed
-//
-// Active low-stock notifications remain visible until resolved.
-// ============================================================
 
 export const getNotifications = async (req, res) => {
   try {
@@ -476,7 +379,6 @@ export const getNotifications = async (req, res) => {
         {
           model: InventoryItem,
           as: "inventoryItem",
-
           attributes: [
             "id",
             "name",
@@ -486,7 +388,6 @@ export const getNotifications = async (req, res) => {
             "minStock",
             "status",
           ],
-
           required: false,
         },
       ],
@@ -515,12 +416,6 @@ export const getNotifications = async (req, res) => {
 
 // ============================================================
 // GET UNREAD LOW-STOCK COUNT
-// ============================================================
-// GET /api/notifications/count
-//
-// Supports your existing frontend API:
-//
-// getUnreadNotificationCount()
 // ============================================================
 
 export const getUnreadNotificationCount = async (req, res) => {
@@ -568,10 +463,6 @@ export const getUnreadNotificationCount = async (req, res) => {
 
 // ============================================================
 // MARK ONE LOW-STOCK NOTIFICATION AS READ
-// ============================================================
-// PATCH /api/notifications/:id/read
-//
-// Kept as a separate exported function for compatibility.
 // ============================================================
 
 export const markNotificationAsRead = async (req, res) => {
@@ -626,11 +517,6 @@ export const markNotificationAsRead = async (req, res) => {
 // ============================================================
 // MARK ALL LOW-STOCK NOTIFICATIONS AS READ
 // ============================================================
-// PATCH /api/notifications/read-all
-//
-// Only changes isRead.
-// It does NOT resolve the inventory problem.
-// ============================================================
 
 export const markAllNotificationsAsRead = async (req, res) => {
   try {
@@ -679,14 +565,6 @@ export const markAllNotificationsAsRead = async (req, res) => {
 // ============================================================
 // RESOLVE LOW-STOCK NOTIFICATION
 // ============================================================
-// PATCH /api/notifications/:id/resolve
-//
-// A notification can ONLY be resolved after:
-//
-// currentStock > minStock
-//
-// Marking as read and resolving are completely different.
-// ============================================================
 
 export const resolveNotification = async (req, res) => {
   try {
@@ -734,13 +612,11 @@ export const resolveNotification = async (req, res) => {
     const currentStock = Number(inventoryItem.currentStock || 0);
     const minimumStock = Number(inventoryItem.minStock || 0);
 
-    // Stock is still low.
     if (currentStock <= minimumStock) {
       return res.status(400).json({
         success: false,
         message:
           "Stock is still at or below the minimum level. Add stock before resolving this alert.",
-
         data: {
           currentStock,
           minimumStock,
@@ -773,14 +649,6 @@ export const resolveNotification = async (req, res) => {
 // ============================================================
 // LOW-STOCK NOTIFICATION HISTORY
 // ============================================================
-// GET /api/notifications/history
-//
-// Shows both:
-// - active
-// - resolved
-//
-// Only for the currently logged-in admin.
-// ============================================================
 
 export const getNotificationHistory = async (req, res) => {
   try {
@@ -805,7 +673,6 @@ export const getNotificationHistory = async (req, res) => {
         {
           model: InventoryItem,
           as: "inventoryItem",
-
           attributes: [
             "id",
             "name",
@@ -815,7 +682,6 @@ export const getNotificationHistory = async (req, res) => {
             "minStock",
             "status",
           ],
-
           required: false,
         },
       ],

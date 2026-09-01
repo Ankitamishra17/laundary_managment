@@ -4,25 +4,26 @@ import {
   ShieldCheck,
   UserX,
   Search,
-  Mail,
-  Phone,
   Plus,
-  X,
-  Copy,
-  CheckCircle2,
-  Loader2,
-  KeyRound,
-  Sparkles,
-  Inbox,
   Pencil,
   Trash2,
   RotateCcw,
+  X,
+  Mail,
+  Phone,
+  KeyRound,
+  Copy,
+  CheckCircle2,
+  Loader2,
   AlertTriangle,
+  Inbox,
+  Sparkles,
 } from "lucide-react";
+
 import { useEmployees } from "../../hooks/useEmployees";
 
 /* ------------------------------------------------------------------ */
-/* Small presentational helpers                                        */
+/* Presentational helpers                                              */
 /* ------------------------------------------------------------------ */
 
 function StatCard({ icon: Icon, label, value, color, bg }) {
@@ -132,7 +133,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
   const [autoPassword, setAutoPassword] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [created, setCreated] = useState(null); // { employee, tempPassword }
+  const [created, setCreated] = useState(null); // { name, tempPassword }
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
@@ -454,6 +455,7 @@ function EditEmployeeModal({ employee, onClose, onUpdate }) {
     });
     setLoading(false);
     if (ok) onClose();
+    else setError("Failed to update employee");
   };
 
   return (
@@ -720,6 +722,7 @@ function DeleteEmployeeModal({
     const ok = await onConfirm(employee.id);
     setLoading(false);
     if (ok) onClose();
+    else setError("Failed to update employee status");
   };
 
   const handleDeletePermanent = async () => {
@@ -733,6 +736,7 @@ function DeleteEmployeeModal({
     const ok = await onDeletePermanent(employee.id);
     setDeleting(false);
     if (ok) onClose();
+    else setError("Failed to delete employee");
   };
 
   return (
@@ -769,8 +773,8 @@ function DeleteEmployeeModal({
                 <span className="font-semibold text-[#0F2C2E]">
                   {employee.name}
                 </span>{" "}
-                will lose access to the employee portal. They can be reactivated
-                anytime from this page.
+                will lose access to the employee portal. They can be
+                reactivated anytime from this page.
               </>
             ) : (
               <>
@@ -877,8 +881,8 @@ function DeleteEmployeeModal({
                 className="w-full mt-2 text-[11px] text-center"
                 style={{ color: "#9A6A12" }}
               >
-                This removes the employee forever. Deactivation is reversible —
-                deletion is not.
+                This removes the employee forever. Deactivation is
+                reversible — deletion is not.
               </p>
             </>
           )}
@@ -946,7 +950,7 @@ export default function Employees() {
   };
 
   const handleUpdate = async (id, payload) => {
-    return updateEmployee(id, payload); // returns true/false; hook sets error internally
+    return updateEmployee(id, payload); // returns true/false; hook manages error internally
   };
 
   const handleDelete = async (id) => {
@@ -955,13 +959,13 @@ export default function Employees() {
       employee?.status === "active"
         ? await deactivateEmployee(id)
         : await reactivateEmployee(id);
-    // hook manages `error` internally on failure — no local setError to call here
+    // hook manages `error` internally on failure
     return ok;
   };
 
   const handleDeletePermanent = async (id) => {
     const ok = await deleteEmployeePermanently(id);
-    // hook manages `error` internally on failure — no local setError to call here
+    // hook manages `error` internally on failure
     return ok;
   };
 
