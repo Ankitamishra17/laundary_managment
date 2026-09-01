@@ -31,6 +31,11 @@ const Employee = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    monthlySalary: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+      defaultValue: 0,
+    },
     avatar: {
       type: DataTypes.STRING, // stores uploaded photo path, e.g. "/uploads/avatar-123.jpg"
       allowNull: true,

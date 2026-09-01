@@ -51,10 +51,27 @@ const Payroll = sequelize.define(
     },
 
     // ==========================================
+    // SALARY PERIOD
+    // Example:
+    // 01 Aug 2026 - 15 Aug 2026
+    // ==========================================
+
+    startDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: false,
+    },
+
+    endDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: false,
+    },
+
+    // ==========================================
     // ATTENDANCE / SALARY DAYS
     // ==========================================
 
-    // Total salary calculation days
+    // Total days used for salary calculation
+    // Example: 30
     totalDays: {
       type: DataTypes.DECIMAL(5, 2),
       allowNull: false,
@@ -65,6 +82,7 @@ const Payroll = sequelize.define(
     },
 
     // Days for which salary is payable
+    // Example: 15
     paidDays: {
       type: DataTypes.DECIMAL(5, 2),
       allowNull: false,
@@ -75,6 +93,7 @@ const Payroll = sequelize.define(
     },
 
     // Days without salary
+    // Example: 15
     unpaidDays: {
       type: DataTypes.DECIMAL(5, 2),
       allowNull: false,
@@ -88,6 +107,8 @@ const Payroll = sequelize.define(
     // MONTHLY SALARY
     // ==========================================
 
+    // Employee's monthly salary
+    // Example: ₹15,000
     basicSalary: {
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
@@ -97,8 +118,8 @@ const Payroll = sequelize.define(
       },
     },
 
-    // Automatically calculated by controller:
     // basicSalary / totalDays
+    // Example: 15000 / 30 = 500
     perDaySalary: {
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
@@ -108,8 +129,8 @@ const Payroll = sequelize.define(
       },
     },
 
-    // Salary earned for paidDays:
     // perDaySalary * paidDays
+    // Example: 500 * 15 = 7500
     earnedSalary: {
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
@@ -201,11 +222,6 @@ const Payroll = sequelize.define(
 
     // ==========================================
     // FINAL NET SALARY
-    //
-    // grossSalary
-    // - deductions
-    // - advanceDeduction
-    // - otherDeductions
     // ==========================================
 
     netSalary: {
@@ -219,9 +235,9 @@ const Payroll = sequelize.define(
 
     // ==========================================
     // PAYMENT TRACKING
-    // Updated when employee salary payment is made
     // ==========================================
 
+    // Amount actually paid through Employee Payment
     paidAmount: {
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
@@ -231,6 +247,7 @@ const Payroll = sequelize.define(
       },
     },
 
+    // netSalary - paidAmount
     dueAmount: {
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
@@ -239,6 +256,10 @@ const Payroll = sequelize.define(
         min: 0,
       },
     },
+
+    // ==========================================
+    // STATUS
+    // ==========================================
 
     status: {
       type: DataTypes.ENUM("PENDING", "PARTIAL", "PAID", "CANCELLED"),
@@ -269,15 +290,26 @@ const Payroll = sequelize.define(
       allowNull: true,
     },
   },
+
   {
     tableName: "payrolls",
     timestamps: true,
 
-    // One payroll per employee per month/year/shop
+    // ==========================================
+    // UNIQUE PAYROLL PERIOD
+    //
+    // Same employee can have:
+    //
+    // 01 Aug - 15 Aug
+    // 16 Aug - 31 Aug
+    //
+    // But cannot create the exact same period twice.
+    // ==========================================
+
     indexes: [
       {
         unique: true,
-        fields: ["shopId", "employeeId", "month", "year"],
+        fields: ["shopId", "employeeId", "startDate", "endDate"],
       },
     ],
   },

@@ -124,6 +124,7 @@ const EMPTY_FORM = {
   email: "",
   phone: "",
   designation: "",
+  monthlySalary: "",
   password: "",
 };
 
@@ -160,6 +161,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
       email: form.email,
       phone: form.phone,
       designation: form.designation || null,
+      monthlySalary: Number(form.monthlySalary) || 0,
       auto_generate_password: autoPassword,
       ...(autoPassword ? {} : { password: form.password }),
     };
@@ -273,6 +275,19 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
                     value={form.designation}
                     onChange={handleChange}
                     placeholder="Laundry Attendant"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Monthly Salary" required>
+                  <input
+                    name="monthlySalary"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.monthlySalary}
+                    onChange={handleChange}
+                    required
+                    placeholder="15000"
                     className={inputClass}
                   />
                 </Field>
@@ -414,6 +429,7 @@ function EditEmployeeModal({ employee, onClose, onUpdate }) {
     name: employee?.name || "",
     phone: employee?.phone || "",
     designation: employee?.designation || "",
+    monthlySalary: employee?.monthlySalary || "",
     status: employee?.status || "active",
   });
   const [loading, setLoading] = useState(false);
@@ -434,6 +450,7 @@ function EditEmployeeModal({ employee, onClose, onUpdate }) {
       name: form.name.trim(),
       phone: form.phone.trim(),
       designation: form.designation.trim() || null,
+      monthlySalary: Number(form.monthlySalary) || 0,
       status: form.status,
     });
     setLoading(false);
@@ -505,6 +522,19 @@ function EditEmployeeModal({ employee, onClose, onUpdate }) {
               value={form.designation}
               onChange={handleChange}
               placeholder="Laundry Attendant"
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Monthly Salary" required>
+            <input
+              name="monthlySalary"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.monthlySalary}
+              onChange={handleChange}
+              required
+              placeholder="15000"
               className={inputClass}
             />
           </Field>
@@ -1055,6 +1085,9 @@ export default function Employees() {
                     <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
                       Joined
                     </th>
+                    <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
+                      Monthly Salary
+                    </th>
                     <th className="text-right font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
                       Actions
                     </th>
@@ -1100,6 +1133,11 @@ export default function Employees() {
                           month: "short",
                           year: "numeric",
                         })}
+                      </td>
+                      <td className="py-3.5 px-5 text-[#0F2C2E] font-medium">
+                        {e.monthlySalary
+                          ? `₹${Number(e.monthlySalary).toLocaleString("en-IN")}`
+                          : "—"}
                       </td>
                       <td className="py-3.5 px-5">
                         <div className="flex items-center justify-end gap-1.5">
