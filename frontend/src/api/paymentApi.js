@@ -8,13 +8,31 @@ import api from "./axios";
 export const createPayment = async (paymentData) => {
   try {
     const { data } = await api.post("/payments", paymentData);
-
     return data;
   } catch (error) {
     throw (
       error.response?.data || {
         success: false,
         message: "Failed to create payment.",
+      }
+    );
+  }
+};
+
+/* =====================================================
+   CREATE EMPLOYEE SALARY PAYMENT
+   POST /api/payments/employee
+   ===================================================== */
+
+export const createEmployeePayment = async (paymentData) => {
+  try {
+    const { data } = await api.post("/payments/employee", paymentData);
+    return data;
+  } catch (error) {
+    throw (
+      error.response?.data || {
+        success: false,
+        message: "Failed to create employee salary payment.",
       }
     );
   }
@@ -28,7 +46,6 @@ export const createPayment = async (paymentData) => {
 export const createSupplierPayment = async (paymentData) => {
   try {
     const { data } = await api.post("/payments/supplier", paymentData);
-
     return data;
   } catch (error) {
     throw (
@@ -64,13 +81,11 @@ export const getPayments = async (params = {}) => {
 
 /* =====================================================
    GET PAYMENT BY ID
-   GET /api/payments/:id
    ===================================================== */
 
 export const getPaymentById = async (id) => {
   try {
     const { data } = await api.get(`/payments/${id}`);
-
     return data;
   } catch (error) {
     throw (
@@ -84,13 +99,11 @@ export const getPaymentById = async (id) => {
 
 /* =====================================================
    UPDATE PAYMENT
-   PUT /api/payments/:id
    ===================================================== */
 
 export const updatePayment = async (id, paymentData) => {
   try {
     const { data } = await api.put(`/payments/${id}`, paymentData);
-
     return data;
   } catch (error) {
     throw (
@@ -104,13 +117,11 @@ export const updatePayment = async (id, paymentData) => {
 
 /* =====================================================
    CANCEL PAYMENT
-   PATCH /api/payments/:id/cancel
    ===================================================== */
 
 export const cancelPayment = async (id) => {
   try {
     const { data } = await api.patch(`/payments/${id}/cancel`);
-
     return data;
   } catch (error) {
     throw (
@@ -124,7 +135,6 @@ export const cancelPayment = async (id) => {
 
 /* =====================================================
    CUSTOMER PAYMENTS
-   GET /api/payments/customer/:customerId
    ===================================================== */
 
 export const getCustomerPayments = async (customerId, params = {}) => {
@@ -146,7 +156,6 @@ export const getCustomerPayments = async (customerId, params = {}) => {
 
 /* =====================================================
    SUPPLIER PAYMENTS
-   GET /api/payments/supplier/:supplierId
    ===================================================== */
 
 export const getSupplierPayments = async (supplierId, params = {}) => {
@@ -167,8 +176,7 @@ export const getSupplierPayments = async (supplierId, params = {}) => {
 };
 
 /* =====================================================
-   EMPLOYEE / SALARY PAYMENTS
-   GET /api/payments/employee/:employeeId
+   EMPLOYEE PAYMENTS
    ===================================================== */
 
 export const getEmployeePayments = async (employeeId, params = {}) => {
@@ -190,7 +198,6 @@ export const getEmployeePayments = async (employeeId, params = {}) => {
 
 /* =====================================================
    SUBSCRIPTION PAYMENTS
-   GET /api/payments/subscriptions
    ===================================================== */
 
 export const getSubscriptionPayments = async (params = {}) => {
@@ -212,7 +219,6 @@ export const getSubscriptionPayments = async (params = {}) => {
 
 /* =====================================================
    PAYMENT DASHBOARD
-   GET /api/payments/dashboard
    ===================================================== */
 
 export const getPaymentDashboard = async (params = {}) => {
@@ -253,10 +259,27 @@ export const getPaymentSummary = async (params = {}) => {
     );
   }
 };
+// Get Employee Payroll 
+
+export const getEmployeePayrolls = async (employeeId, params = {}) => {
+  try {
+    const { data } = await api.get(`/payrolls/employee/${employeeId}`, {
+      params,
+    });
+
+    return data;
+  } catch (error) {
+    throw (
+      error.response?.data || {
+        success: false,
+        message: "Failed to fetch employee payrolls.",
+      }
+    );
+  }
+};
 
 /* =====================================================
    PAYMENT REPORT
-   GET /api/payments/report
    ===================================================== */
 
 export const getPaymentReport = async (params = {}) => {
@@ -277,33 +300,12 @@ export const getPaymentReport = async (params = {}) => {
 };
 
 /* =====================================================
-   FILTER PAYMENTS
-   GET /api/payments
-   ===================================================== */
-
-export const filterPayments = async (filters = {}) => {
-  try {
-    const { data } = await api.get("/payments", {
-      params: filters,
-    });
-
-    return data;
-  } catch (error) {
-    throw (
-      error.response?.data || {
-        success: false,
-        message: "Failed to filter payments.",
-      }
-    );
-  }
-};
-
-/* =====================================================
    DEFAULT EXPORT
    ===================================================== */
 
 const paymentApi = {
   createPayment,
+  createEmployeePayment,
   createSupplierPayment,
 
   getPayments,
@@ -315,13 +317,13 @@ const paymentApi = {
   getCustomerPayments,
   getSupplierPayments,
   getEmployeePayments,
+
+  getEmployeePayrolls,
   getSubscriptionPayments,
 
   getPaymentDashboard,
   getPaymentSummary,
   getPaymentReport,
-
-  filterPayments,
 };
 
 export default paymentApi;

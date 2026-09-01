@@ -1777,35 +1777,35 @@ export default function ShopDashboard() {
   const stats = [
     {
       label: "Today's Orders",
-      value: dashboard?.stats?.todayOrders || 0,
-      delta: dashboard?.stats?.newOrdersToday
-        ? `+${dashboard.stats.newOrdersToday}`
+      value: dashboard?.summary?.todayOrders || 0,
+      delta: dashboard?.summary?.todayOrders
+        ? `+${dashboard.summary.todayOrders}`
         : "0",
       icon: ClipboardList,
       color: colors.primaryTeal,
     },
     {
       label: "Revenue",
-      value: formatCurrency(dashboard?.stats?.todayRevenue || 0),
-      delta: dashboard?.stats?.revenueGrowth
-        ? `${dashboard.stats.revenueGrowth}%`
-        : "0%",
+      value: formatCurrency(dashboard?.summary?.todayRevenue || 0),
+      delta: dashboard?.summary?.totalRevenue
+        ? formatCurrency(dashboard.summary.totalRevenue)
+        : "₹0",
       icon: IndianRupee,
       color: colors.mint,
     },
     {
       label: "Customers",
-      value: dashboard?.stats?.totalCustomers || 0,
-      delta: dashboard?.stats?.newCustomersToday
-        ? `+${dashboard.stats.newCustomersToday}`
+      value: dashboard?.customers?.total || 0,
+      delta: dashboard?.customers?.newToday
+        ? `+${dashboard.customers.newToday}`
         : "0",
       icon: Users,
       color: colors.seafoam,
     },
     {
       label: "Employees",
-      value: dashboard?.stats?.totalEmployees || 0,
-      delta: `${dashboard?.stats?.presentEmployees || 0} present`,
+      value: dashboard?.business?.totalEmployees || 0,
+      delta: `${dashboard?.business?.presentToday || 0} present`,
       icon: UserCog,
       color: colors.primaryTeal,
     },
@@ -1818,27 +1818,27 @@ export default function ShopDashboard() {
   const orderStatus = [
     {
       label: "New",
-      count: dashboard?.orderStatus?.new || 0,
+      count: Number(dashboard?.orders?.pending || 0),
       color: colors.primaryTeal,
     },
     {
       label: "Processing",
-      count: dashboard?.orderStatus?.processing || 0,
+      count: Number(dashboard?.orders?.processing || 0),
       color: colors.seafoam,
     },
     {
       label: "Ready",
-      count: dashboard?.orderStatus?.ready || 0,
+      count: Number(dashboard?.orders?.ready || 0),
       color: colors.mint,
     },
     {
       label: "Delivered",
-      count: dashboard?.orderStatus?.delivered || 0,
+      count: Number(dashboard?.orders?.delivered || 0),
       color: "#0B6E63",
     },
     {
       label: "Cancelled",
-      count: dashboard?.orderStatus?.cancelled || 0,
+      count: Number(dashboard?.orders?.cancelled || 0),
       color: colors.danger,
     },
   ];

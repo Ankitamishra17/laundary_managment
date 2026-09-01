@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Plus, RefreshCw, AlertCircle, BriefcaseBusiness } from "lucide-react";
 
 import {
   getPayments,
-  createPayment,
+  createEmployeePayment,
   updatePayment,
- 
+  cancelPayment,
 } from "../../../api/paymentApi";
 
 import PaymentStats from "../../../components/payments/PaymentStats";
@@ -13,6 +13,10 @@ import PaymentFilters from "../../../components/payments/PaymentFilters";
 import PaymentTable from "../../../components/payments/PaymentTable";
 import PaymentDetailsModal from "../../../components/payments/PaymentDetailsModal";
 import PaymentForm from "../../../components/payments/PaymentForm";
+
+// IMPORTANT:
+// Change this import path if your employee API file has a different name.
+import { getEmployees } from "../../../api/employeeApi";
 
 const SalaryPayments = () => {
   // =====================================================
@@ -63,7 +67,7 @@ const SalaryPayments = () => {
   // FETCH SALARY PAYMENTS
   // =====================================================
 
-  const fetchSalaryPayments = async () => {
+  const fetchSalaryPayments = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -77,26 +81,31 @@ const SalaryPayments = () => {
         setPayments(response.data || []);
 
         if (response.stats) {
-          setStats(response.stats);
+          setStats((prev) => ({
+            ...prev,
+            ...response.stats,
+          }));
         }
       } else {
         setPayments(response?.data || []);
+
+        if (response?.message) {
+          setError(response.message);
+        }
       }
     } catch (err) {
       console.error("Fetch salary payments error:", err);
 
-      setError(err?.message || "Unable to load salary payments.");
+      setPayments([]);
+
+      setError(
+        err?.message ||
+          err?.response?.data?.message ||
+          "Unable to load salary payments.",
+      );
     } finally {
       setLoading(false);
     }
-  };
-
-  // =====================================================
-  // LOAD
-  // =====================================================
-
-  useEffect(() => {
-    fetchSalaryPayments();
   }, [
     filters.search,
     filters.paymentMethod,
@@ -104,6 +113,48 @@ const SalaryPayments = () => {
     filters.startDate,
     filters.endDate,
   ]);
+
+  // =====================================================
+  // FETCH EMPLOYEES
+  // =====================================================
+
+  const fetchEmployees = useCallback(async () => {
+    try {
+      const response = await getEmployees();
+
+      if (response?.success) {
+        setEmployees(response.data || []);
+      } else {
+        setEmployees(response?.data || []);
+      }
+    } catch (err) {
+      console.error("Fetch employees error:", err);
+
+      setEmployees([]);
+
+      setError(
+        err?.message ||
+          err?.response?.data?.message ||
+          "Unable to load employees.",
+      );
+    }
+  }, []);
+
+  // =====================================================
+  // INITIAL LOAD
+  // =====================================================
+
+  useEffect(() => {
+    fetchEmployees();
+  }, [fetchEmployees]);
+
+  // =====================================================
+  // LOAD SALARY PAYMENTS
+  // =====================================================
+
+  useEffect(() => {
+    fetchSalaryPayments();
+  }, [fetchSalaryPayments]);
 
   // =====================================================
   // CREATE SALARY PAYMENT
@@ -114,43 +165,119 @@ const SalaryPayments = () => {
       setSubmitting(true);
       setError("");
 
+      // -------------------------------------------------
+      // IMPORTANT VALIDATION
+      // -------------------------------------------------
+
+      if (!paymentData?.employeeId) {
+        setError("Please select an employee.");
+        return;
+      }
+
+      if (!paymentData?.payrollId) {
+        setError("Please select a payroll record.");
+        return;
+      }
+
+      if (!paymentData?.amount || Number(paymentData.amount) <= 0) {
+        setError("Please enter a valid payment amount.");
+        return;
+      }
+
+      if (!paymentData?.paymentMethod) {
+        setError("Please select a payment method.");
+        return;
+      }
+
+      // -------------------------------------------------
+      // SALARY PAYMENT PAYLOAD
+      // -------------------------------------------------
+
       const payload = {
-        ...paymentData,
-        paymentType: "SALARY",
+        employeeId: Number(paymentData.employeeId),
+        payrollId: Number(paymentData.payrollId),
+        amount: Number(paymentData.amount),
+        paymentMethod: paymentData.paymentMethod,
+
+        transactionId: paymentData.transactionId?.trim() || null,
+
+        referenceNumber: paymentData.referenceNumber?.trim() || null,
+
+        paymentDate: paymentData.paymentDate || new Date().toISOString(),
+
+        description: paymentData.description?.trim() || null,
+
+        remarks: paymentData.remarks?.trim() || null,
       };
 
-      await createPayment(payload);
+      console.log("Salary payment payload:", payload);
+
+      const response = await createEmployeePayment(payload);
+
+      if (!response?.success) {
+        throw new Error(
+          response?.message || "Failed to create salary payment.",
+        );
+      }
+
+      // -------------------------------------------------
+      // CLOSE FORM
+      // -------------------------------------------------
 
       setShowForm(false);
       setSelectedPayment(null);
+
+      // -------------------------------------------------
+      // REFRESH DATA
+      // -------------------------------------------------
 
       await fetchSalaryPayments();
     } catch (err) {
       console.error("Create salary payment error:", err);
 
-      setError(err?.message || "Unable to create salary payment.");
+      setError(
+        err?.message ||
+          err?.response?.data?.message ||
+          "Unable to create salary payment.",
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
   // =====================================================
-  // UPDATE
+  // UPDATE PAYMENT
   // =====================================================
 
   const handleUpdatePayment = async (paymentData) => {
-    if (!selectedPayment?.id) return;
+    if (!selectedPayment?.id) {
+      setError("Payment ID is missing.");
+      return;
+    }
 
     try {
       setSubmitting(true);
       setError("");
 
       const payload = {
-        ...paymentData,
-        paymentType: "SALARY",
+        paymentMethod: paymentData.paymentMethod,
+
+        transactionId: paymentData.transactionId?.trim() || null,
+
+        referenceNumber: paymentData.referenceNumber?.trim() || null,
+
+        paymentDate: paymentData.paymentDate || new Date().toISOString(),
+
+        description: paymentData.description?.trim() || null,
+
+        remarks: paymentData.remarks?.trim() || null,
       };
 
-      await updatePayment(selectedPayment.id, payload);
+      const response = await updatePayment(selectedPayment.id, payload);
+
+      if (!response?.success) {
+        throw new Error(response?.message || "Failed to update payment.");
+      }
 
       setShowForm(false);
       setSelectedPayment(null);
@@ -159,23 +286,27 @@ const SalaryPayments = () => {
     } catch (err) {
       console.error("Update salary payment error:", err);
 
-      setError(err?.message || "Unable to update salary payment.");
+      setError(
+        err?.message ||
+          err?.response?.data?.message ||
+          "Unable to update salary payment.",
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
   // =====================================================
-  // DELETE
+  // CANCEL PAYMENT
   // =====================================================
 
   const handleDeletePayment = async (payment) => {
     if (!payment?.id) return;
 
+    const paymentNumber = payment.paymentNumber || `PAY-${payment.id}`;
+
     const confirmed = window.confirm(
-      `Are you sure you want to delete salary payment ${
-        payment.paymentNumber || `PAY-${payment.id}`
-      }?`,
+      `Are you sure you want to cancel salary payment ${paymentNumber}?`,
     );
 
     if (!confirmed) return;
@@ -184,20 +315,30 @@ const SalaryPayments = () => {
       setLoading(true);
       setError("");
 
-      await deletePayment(payment.id);
+      const response = await cancelPayment(payment.id);
+
+      if (!response?.success) {
+        throw new Error(
+          response?.message || "Failed to cancel salary payment.",
+        );
+      }
 
       await fetchSalaryPayments();
     } catch (err) {
-      console.error("Delete salary payment error:", err);
+      console.error("Cancel salary payment error:", err);
 
-      setError(err?.message || "Unable to delete salary payment.");
+      setError(
+        err?.message ||
+          err?.response?.data?.message ||
+          "Unable to cancel salary payment.",
+      );
     } finally {
       setLoading(false);
     }
   };
 
   // =====================================================
-  // VIEW
+  // VIEW PAYMENT
   // =====================================================
 
   const handleViewPayment = (payment) => {
@@ -206,12 +347,36 @@ const SalaryPayments = () => {
   };
 
   // =====================================================
-  // EDIT
+  // EDIT PAYMENT
   // =====================================================
 
   const handleEditPayment = (payment) => {
     setSelectedPayment(payment);
     setShowForm(true);
+  };
+
+  // =====================================================
+  // OPEN CREATE FORM
+  // =====================================================
+
+  const handleOpenCreateForm = () => {
+    setSelectedPayment(null);
+    setError("");
+    setShowForm(true);
+
+    // Refresh employees whenever form opens
+    fetchEmployees();
+  };
+
+  // =====================================================
+  // CLOSE FORM
+  // =====================================================
+
+  const handleCloseForm = () => {
+    if (submitting) return;
+
+    setShowForm(false);
+    setSelectedPayment(null);
   };
 
   // =====================================================
@@ -233,8 +398,8 @@ const SalaryPayments = () => {
   // REFRESH
   // =====================================================
 
-  const handleRefresh = () => {
-    fetchSalaryPayments();
+  const handleRefresh = async () => {
+    await Promise.all([fetchSalaryPayments(), fetchEmployees()]);
   };
 
   // =====================================================
@@ -265,23 +430,25 @@ const SalaryPayments = () => {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {/* REFRESH */}
+
           <button
             type="button"
             onClick={handleRefresh}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
             Refresh
           </button>
 
+          {/* CREATE */}
+
           <button
             type="button"
-            onClick={() => {
-              setSelectedPayment(null);
-              setShowForm(true);
-            }}
-            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-purple-700"
+            onClick={handleOpenCreateForm}
+            disabled={submitting}
+            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus size={17} />
             Record Salary Payment
@@ -364,20 +531,39 @@ const SalaryPayments = () => {
             selectedPayment
               ? {
                   ...selectedPayment,
+
                   paymentType: "SALARY",
+
+                  employeeId:
+                    selectedPayment.employeeId ||
+                    selectedPayment.employee?.id ||
+                    "",
+
+                  payrollId:
+                    selectedPayment.payrollId ||
+                    selectedPayment.payroll?.id ||
+                    "",
+
+                  amount: selectedPayment.amount || "",
                 }
               : {
                   paymentType: "SALARY",
+                  employeeId: "",
+                  payrollId: "",
+                  amount: "",
+                  paymentMethod: "",
+                  transactionId: "",
+                  referenceNumber: "",
+                  paymentDate: "",
+                  description: "",
+                  remarks: "",
                 }
           }
           customers={customers}
           suppliers={suppliers}
           employees={employees}
           loading={submitting}
-          onClose={() => {
-            setShowForm(false);
-            setSelectedPayment(null);
-          }}
+          onClose={handleCloseForm}
           onSubmit={selectedPayment ? handleUpdatePayment : handleCreatePayment}
         />
       )}

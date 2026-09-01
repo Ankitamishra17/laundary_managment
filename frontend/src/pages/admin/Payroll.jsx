@@ -41,11 +41,42 @@ const formatCurrency = (value) => {
 const formatDate = (date) => {
   if (!date) return "-";
 
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "-";
+  }
+
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  }).format(new Date(date));
+  }).format(parsedDate);
+};
+
+// =====================================================
+// CALCULATE NUMBER OF DAYS
+//
+// Example:
+// 01 Aug -> 15 Aug = 15 days
+// 01 Aug -> 30 Aug = 30 days
+// =====================================================
+
+const calculateDays = (startDate, endDate) => {
+  if (!startDate || !endDate) return 0;
+
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 0;
+  }
+
+  const difference =
+    Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()) -
+    Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+
+  return Math.floor(difference / (1000 * 60 * 60 * 24)) + 1;
 };
 
 // =====================================================
@@ -56,10 +87,8 @@ const initialForm = {
   employeeId: "",
   startDate: "",
   endDate: "",
-  basicSalary: "",
   bonus: "0",
   deduction: "0",
-  paymentDate: new Date().toISOString().split("T")[0],
   notes: "",
 };
 
@@ -94,18 +123,26 @@ export default function Payroll() {
 
       const response = await getPayrolls();
 
-      const data =
-        response?.data?.payrolls ||
-        response?.data?.data ||
-        response?.data ||
-        [];
+      /*
+       * Your API helper already returns response.data.
+       *
+       * Backend response:
+       * {
+       *   success: true,
+       *   data: payrolls
+       * }
+       */
+
+      const data = response?.data || [];
 
       setPayrolls(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to fetch payrolls:", err);
 
       setError(
-        err?.response?.data?.message || "Failed to fetch payroll records.",
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to fetch payroll records.",
       );
     } finally {
       setLoading(false);
@@ -117,20 +154,59 @@ export default function Payroll() {
   // =====================================================
 
   const fetchEmployees = async () => {
-    try {
-      const response = await getEmployees();
+  try {
+    const response = await getEmployees();
 
-      const data =
-        response?.data?.employees ||
-        response?.data?.data ||
-        response?.data ||
-        [];
+    console.log("=================================");
+    console.log("EMPLOYEE API RESPONSE:", response);
+    console.log("RESPONSE.DATA:", response?.data);
+    console.log("RESPONSE.DATA.DATA:", response?.data?.data);
+    console.log("RESPONSE.DATA.EMPLOYEES:", response?.data?.employees);
+    console.log("=================================");
 
-      setEmployees(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Failed to fetch employees:", err);
+    let data = [];
+
+    // Case 1:
+    // { employees: [...] }
+    if (Array.isArray(response?.employees)) {
+      data = response.employees;
     }
-  };
+
+    // Case 2:
+    // { data: [...] }
+    else if (Array.isArray(response?.data)) {
+      data = response.data;
+    }
+
+    // Case 3:
+    // { data: { employees: [...] } }
+    else if (Array.isArray(response?.data?.employees)) {
+      data = response.data.employees;
+    }
+
+    // Case 4:
+    // { data: { data: [...] } }
+    else if (Array.isArray(response?.data?.data)) {
+      data = response.data.data;
+    }
+
+    // Case 5:
+    // direct [...]
+    else if (Array.isArray(response)) {
+      data = response;
+    }
+
+    console.log("FINAL EMPLOYEES ARRAY:", data);
+    console.log("EMPLOYEE COUNT:", data.length);
+
+    setEmployees(data);
+  } catch (err) {
+    console.error("FAILED TO FETCH EMPLOYEES:", err);
+    console.error("ERROR RESPONSE:", err?.response?.data);
+
+    setEmployees([]);
+  }
+};
 
   // =====================================================
   // INITIAL LOAD
@@ -142,40 +218,75 @@ export default function Payroll() {
   }, []);
 
   // =====================================================
+  // SELECTED EMPLOYEE
+  // =====================================================
+
+  const selectedEmployee = useMemo(() => {
+    return employees.find(
+      (employee) => Number(employee.id) === Number(form.employeeId),
+    );
+  }, [employees, form.employeeId]);
+
+  // =====================================================
+  // SALARY CALCULATIONS
+  // =====================================================
+
+  const monthlySalary = Number(selectedEmployee?.monthlySalary) || 0;
+
+  const paidDays = calculateDays(form.startDate, form.endDate);
+
+  /*
+   * Payroll uses 30 days for monthly salary
+   * calculation.
+   *
+   * Example:
+   * Monthly salary = ₹15,000
+   * 15 days = ₹7,500
+   */
+
+  const totalDays = 30;
+
+  const perDaySalary = monthlySalary / totalDays;
+
+  const earnedSalary = perDaySalary * paidDays;
+
+  const bonus = Number(form.bonus) || 0;
+
+  const deduction = Number(form.deduction) || 0;
+
+  const netSalary = Math.max(earnedSalary + bonus - deduction, 0);
+
+  // =====================================================
   // SUMMARY
   // =====================================================
 
   const summary = useMemo(() => {
     const totalPayroll = payrolls.reduce(
-      (sum, item) =>
-        sum + Number(item.netSalary || item.totalAmount || item.amount || 0),
+      (sum, item) => sum + Number(item.netSalary || 0),
       0,
     );
 
     const paid = payrolls
-      .filter((item) => item.status === "PAID")
-      .reduce(
-        (sum, item) =>
-          sum + Number(item.netSalary || item.totalAmount || item.amount || 0),
-        0,
-      );
+      .filter((item) => String(item.status).toUpperCase() === "PAID")
+      .reduce((sum, item) => sum + Number(item.paidAmount || 0), 0);
 
     const pending = payrolls
-      .filter((item) => item.status === "PENDING")
-      .reduce(
-        (sum, item) =>
-          sum + Number(item.netSalary || item.totalAmount || item.amount || 0),
-        0,
-      );
+      .filter((item) => String(item.status).toUpperCase() === "PENDING")
+      .reduce((sum, item) => sum + Number(item.dueAmount || 0), 0);
+
+    const partial = payrolls
+      .filter((item) => String(item.status).toUpperCase() === "PARTIAL")
+      .reduce((sum, item) => sum + Number(item.dueAmount || 0), 0);
 
     const cancelled = payrolls.filter(
-      (item) => item.status === "CANCELLED",
+      (item) => String(item.status).toUpperCase() === "CANCELLED",
     ).length;
 
     return {
       total: totalPayroll,
       paid,
       pending,
+      partial,
       cancelled,
       count: payrolls.length,
     };
@@ -188,14 +299,14 @@ export default function Payroll() {
   const filteredPayrolls = useMemo(() => {
     const query = search.toLowerCase().trim();
 
-    if (!query) return payrolls;
+    if (!query) {
+      return payrolls;
+    }
 
     return payrolls.filter((payroll) => {
-      const employeeName =
-        payroll.employee?.name ||
-        payroll.employee?.fullName ||
-        payroll.Employee?.name ||
-        "";
+      const employee = payroll.employee || payroll.Employee || {};
+
+      const employeeName = employee.name || employee.fullName || "";
 
       const status = payroll.status || "";
 
@@ -217,16 +328,9 @@ export default function Payroll() {
       ...prev,
       [name]: value,
     }));
+
+    setError("");
   };
-
-  // =====================================================
-  // CALCULATE NET SALARY
-  // =====================================================
-
-  const netSalary =
-    (Number(form.basicSalary) || 0) +
-    (Number(form.bonus) || 0) -
-    (Number(form.deduction) || 0);
 
   // =====================================================
   // CREATE PAYROLL
@@ -240,10 +344,27 @@ export default function Payroll() {
       setError("");
       setSuccess("");
 
+      // -----------------------------------------------
+      // EMPLOYEE VALIDATION
+      // -----------------------------------------------
+
       if (!form.employeeId) {
         setError("Please select an employee.");
         return;
       }
+
+      // -----------------------------------------------
+      // SALARY VALIDATION
+      // -----------------------------------------------
+
+      if (monthlySalary <= 0) {
+        setError("Employee monthly salary is not set.");
+        return;
+      }
+
+      // -----------------------------------------------
+      // DATE VALIDATION
+      // -----------------------------------------------
 
       if (!form.startDate) {
         setError("Please select the salary start date.");
@@ -255,40 +376,87 @@ export default function Payroll() {
         return;
       }
 
-      if (Number(form.basicSalary) <= 0) {
-        setError("Salary amount must be greater than ₹0.");
+      const calculatedPaidDays = calculateDays(form.startDate, form.endDate);
+
+      if (calculatedPaidDays <= 0) {
+        setError("End date must be after or equal to start date.");
         return;
       }
+
+      if (calculatedPaidDays > 30) {
+        setError("Salary period cannot be greater than 30 days.");
+        return;
+      }
+
+      // -----------------------------------------------
+      // GET MONTH AND YEAR FROM START DATE
+      //
+      // Backend still has month/year as required
+      // fields, so we send them automatically.
+      // -----------------------------------------------
+
+      const startDateObject = new Date(`${form.startDate}T00:00:00`);
+
+      const month = startDateObject.getMonth() + 1;
+
+      const year = startDateObject.getFullYear();
+
+      // -----------------------------------------------
+      // PAYLOAD
+      // -----------------------------------------------
 
       const payload = {
         employeeId: Number(form.employeeId),
 
+        month,
+        year,
+
+        totalDays: 30,
+
+        paidDays: calculatedPaidDays,
+
+        allowances: 0,
+
+        overtimeAmount: 0,
+
+        bonus: Number(form.bonus) || 0,
+
+        deductions: Number(form.deduction) || 0,
+
+        advanceDeduction: 0,
+
+        otherDeductions: 0,
+
         startDate: form.startDate,
+
         endDate: form.endDate,
 
-        basicSalary: Number(form.basicSalary),
-        bonus: Number(form.bonus) || 0,
-        deduction: Number(form.deduction) || 0,
-
-        paymentDate: form.paymentDate,
-
-        notes: form.notes,
-
-        status: "PAID",
+        notes: form.notes?.trim() || null,
       };
 
+      console.log("Creating payroll:", payload);
+
       await createPayroll(payload);
+
+      // -----------------------------------------------
+      // SUCCESS
+      // -----------------------------------------------
 
       setSuccess("Payroll created successfully.");
 
       setForm(initialForm);
+
       setShowModal(false);
 
       await fetchPayrolls();
     } catch (err) {
       console.error("Create payroll error:", err);
 
-      setError(err?.response?.data?.message || "Failed to create payroll.");
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to create payroll.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -303,7 +471,9 @@ export default function Payroll() {
       "Are you sure you want to cancel this payroll?",
     );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       setError("");
@@ -317,7 +487,11 @@ export default function Payroll() {
     } catch (err) {
       console.error("Cancel payroll error:", err);
 
-      setError(err?.response?.data?.message || "Failed to cancel payroll.");
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to cancel payroll.",
+      );
     }
   };
 
@@ -326,9 +500,12 @@ export default function Payroll() {
   // =====================================================
 
   const getStatusStyle = (status) => {
-    switch (status) {
+    switch (String(status || "").toUpperCase()) {
       case "PAID":
         return "bg-[#02C39A]/10 text-[#02C39A] border-[#02C39A]/30";
+
+      case "PARTIAL":
+        return "bg-blue-50 text-blue-700 border-blue-200";
 
       case "PENDING":
         return "bg-amber-50 text-amber-700 border-amber-200";
@@ -349,7 +526,7 @@ export default function Payroll() {
     {
       title: "Total Payroll",
       value: formatCurrency(summary.total),
-      description: "Total salary records",
+      description: "Total payroll amount",
       icon: Wallet,
       iconBg: "bg-[#EEF7F6]",
       iconColor: "text-[#028090]",
@@ -357,7 +534,7 @@ export default function Payroll() {
     {
       title: "Paid",
       value: formatCurrency(summary.paid),
-      description: "Salary paid to employees",
+      description: "Amount already paid",
       icon: CheckCircle2,
       iconBg: "bg-[#02C39A]/10",
       iconColor: "text-[#02C39A]",
@@ -365,7 +542,7 @@ export default function Payroll() {
     {
       title: "Pending",
       value: formatCurrency(summary.pending),
-      description: "Pending salary amount",
+      description: "Amount waiting for payment",
       icon: Clock3,
       iconBg: "bg-amber-50",
       iconColor: "text-amber-600",
@@ -380,10 +557,16 @@ export default function Payroll() {
     },
   ];
 
+  // =====================================================
+  // RENDER
+  // =====================================================
+
   return (
     <div
       className="min-h-full p-4 sm:p-6"
-      style={{ fontFamily: "'Inter', sans-serif" }}
+      style={{
+        fontFamily: "'Inter', sans-serif",
+      }}
     >
       {/* ================================================= */}
       {/* HEADER */}
@@ -398,19 +581,22 @@ export default function Payroll() {
           <div>
             <h1
               className="text-xl font-bold text-[#0F2C2E] sm:text-2xl"
-              style={{ fontFamily: "'Libre Baskerville', serif" }}
+              style={{
+                fontFamily: "'Libre Baskerville', serif",
+              }}
             >
               Payroll
             </h1>
 
             <p className="mt-1 text-sm text-[#51787C]">
-              Manage employee salary and payroll records.
+              Calculate and manage employee salary records.
             </p>
           </div>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <button
+            type="button"
             onClick={fetchPayrolls}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#D8ECEA] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F2C2E] transition hover:bg-[#EEF7F6]"
           >
@@ -419,15 +605,17 @@ export default function Payroll() {
           </button>
 
           <button
+            type="button"
             onClick={() => {
               setError("");
               setSuccess("");
+              setForm(initialForm);
               setShowModal(true);
             }}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#028090] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0B3B3E]"
           >
             <Plus size={18} />
-            Record Salary
+            Create Payroll
           </button>
         </div>
       </div>
@@ -440,7 +628,11 @@ export default function Payroll() {
         <div className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           <span>{error}</span>
 
-          <button onClick={() => setError("")} className="shrink-0">
+          <button
+            type="button"
+            onClick={() => setError("")}
+            className="shrink-0"
+          >
             <X size={18} />
           </button>
         </div>
@@ -450,7 +642,11 @@ export default function Payroll() {
         <div className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-[#02C39A]/30 bg-[#02C39A]/10 px-4 py-3 text-sm text-[#02866A]">
           <span>{success}</span>
 
-          <button onClick={() => setSuccess("")} className="shrink-0">
+          <button
+            type="button"
+            onClick={() => setSuccess("")}
+            className="shrink-0"
+          >
             <X size={18} />
           </button>
         </div>
@@ -492,7 +688,7 @@ export default function Payroll() {
       </div>
 
       {/* ================================================= */}
-      {/* TABLE */}
+      {/* PAYROLL TABLE */}
       {/* ================================================= */}
 
       <div className="overflow-hidden rounded-2xl border border-[#D8ECEA] bg-white shadow-sm">
@@ -500,7 +696,9 @@ export default function Payroll() {
           <div>
             <h2
               className="text-base font-bold text-[#0F2C2E] sm:text-lg"
-              style={{ fontFamily: "'Libre Baskerville', serif" }}
+              style={{
+                fontFamily: "'Libre Baskerville', serif",
+              }}
             >
               Payroll Records
             </h2>
@@ -527,7 +725,7 @@ export default function Payroll() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px]">
+          <table className="w-full min-w-[1100px]">
             <thead className="bg-[#EEF7F6]">
               <tr>
                 <th className="px-5 py-4 text-left text-xs font-semibold uppercase text-[#51787C]">
@@ -538,16 +736,24 @@ export default function Payroll() {
                   Salary Period
                 </th>
 
+                <th className="px-5 py-4 text-center text-xs font-semibold uppercase text-[#51787C]">
+                  Paid Days
+                </th>
+
                 <th className="px-5 py-4 text-right text-xs font-semibold uppercase text-[#51787C]">
-                  Basic Salary
+                  Monthly Salary
+                </th>
+
+                <th className="px-5 py-4 text-right text-xs font-semibold uppercase text-[#51787C]">
+                  Earned Salary
                 </th>
 
                 <th className="px-5 py-4 text-right text-xs font-semibold uppercase text-[#51787C]">
                   Net Salary
                 </th>
 
-                <th className="px-5 py-4 text-left text-xs font-semibold uppercase text-[#51787C]">
-                  Payment Date
+                <th className="px-5 py-4 text-right text-xs font-semibold uppercase text-[#51787C]">
+                  Due
                 </th>
 
                 <th className="px-5 py-4 text-center text-xs font-semibold uppercase text-[#51787C]">
@@ -564,7 +770,7 @@ export default function Payroll() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan="7"
+                    colSpan="9"
                     className="px-5 py-12 text-center text-sm text-[#51787C]"
                   >
                     Loading payroll records...
@@ -573,7 +779,7 @@ export default function Payroll() {
               ) : filteredPayrolls.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="7"
+                    colSpan="9"
                     className="px-5 py-12 text-center text-sm text-[#51787C]"
                   >
                     No payroll records found.
@@ -591,17 +797,19 @@ export default function Payroll() {
                       key={payroll.id}
                       className="border-t border-[#D8ECEA] transition hover:bg-[#EEF7F6]"
                     >
+                      {/* EMPLOYEE */}
+
                       <td className="px-5 py-4">
                         <p className="font-semibold text-[#0F2C2E]">
                           {employeeName}
                         </p>
 
                         <p className="mt-1 text-xs text-[#51787C]">
-                          {employee.employeeId ||
-                            employee.phone ||
-                            `Employee #${payroll.employeeId}`}
+                          {employee.email || `Employee #${payroll.employeeId}`}
                         </p>
                       </td>
+
+                      {/* SALARY PERIOD */}
 
                       <td className="px-5 py-4 text-sm text-[#51787C]">
                         <div>{formatDate(payroll.startDate)}</div>
@@ -611,21 +819,44 @@ export default function Payroll() {
                         </div>
                       </td>
 
+                      {/* PAID DAYS */}
+
+                      <td className="px-5 py-4 text-center">
+                        <span className="font-semibold text-[#0F2C2E]">
+                          {payroll.paidDays}
+                        </span>
+
+                        <span className="text-xs text-[#51787C]">
+                          {" "}
+                          / {payroll.totalDays}
+                        </span>
+                      </td>
+
+                      {/* MONTHLY SALARY */}
+
                       <td className="px-5 py-4 text-right text-sm font-medium text-[#0F2C2E]">
                         {formatCurrency(payroll.basicSalary)}
                       </td>
 
-                      <td className="px-5 py-4 text-right font-bold text-[#0F2C2E]">
-                        {formatCurrency(
-                          payroll.netSalary ||
-                            payroll.totalAmount ||
-                            payroll.amount,
-                        )}
+                      {/* EARNED SALARY */}
+
+                      <td className="px-5 py-4 text-right text-sm font-semibold text-[#028090]">
+                        {formatCurrency(payroll.earnedSalary)}
                       </td>
 
-                      <td className="px-5 py-4 text-sm text-[#51787C]">
-                        {formatDate(payroll.paymentDate)}
+                      {/* NET SALARY */}
+
+                      <td className="px-5 py-4 text-right font-bold text-[#0F2C2E]">
+                        {formatCurrency(payroll.netSalary)}
                       </td>
+
+                      {/* DUE */}
+
+                      <td className="px-5 py-4 text-right font-semibold text-amber-700">
+                        {formatCurrency(payroll.dueAmount)}
+                      </td>
+
+                      {/* STATUS */}
 
                       <td className="px-5 py-4 text-center">
                         <span
@@ -633,19 +864,23 @@ export default function Payroll() {
                             payroll.status,
                           )}`}
                         >
-                          {payroll.status || "PENDING"}
+                          {String(payroll.status || "PENDING").toUpperCase()}
                         </span>
                       </td>
 
+                      {/* ACTION */}
+
                       <td className="px-5 py-4 text-right">
-                        {payroll.status !== "CANCELLED" && (
-                          <button
-                            onClick={() => handleCancel(payroll.id)}
-                            className="rounded-lg px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
-                          >
-                            Cancel
-                          </button>
-                        )}
+                        {String(payroll.status).toUpperCase() !== "CANCELLED" &&
+                          String(payroll.status).toUpperCase() !== "PAID" && (
+                            <button
+                              type="button"
+                              onClick={() => handleCancel(payroll.id)}
+                              className="rounded-lg px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
+                            >
+                              Cancel
+                            </button>
+                          )}
                       </td>
                     </tr>
                   );
@@ -669,17 +904,20 @@ export default function Payroll() {
               <div>
                 <h2
                   className="text-lg font-bold text-[#0F2C2E] sm:text-xl"
-                  style={{ fontFamily: "'Libre Baskerville', serif" }}
+                  style={{
+                    fontFamily: "'Libre Baskerville', serif",
+                  }}
                 >
-                  Record Salary Payment
+                  Create Payroll
                 </h2>
 
                 <p className="mt-1 text-sm text-[#51787C]">
-                  Create employee payroll for any period.
+                  Create salary for a selected period.
                 </p>
               </div>
 
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
                 className="shrink-0 rounded-lg p-2 text-[#51787C] hover:bg-[#EEF7F6]"
               >
@@ -716,6 +954,28 @@ export default function Payroll() {
                 </select>
               </div>
 
+              {/* EMPLOYEE SALARY */}
+
+              {selectedEmployee && (
+                <div className="rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-[#51787C]">
+                        Monthly Salary
+                      </p>
+
+                      <p className="mt-1 text-lg font-bold text-[#0F2C2E]">
+                        {formatCurrency(monthlySalary)}
+                      </p>
+                    </div>
+
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white">
+                      <IndianRupee size={20} className="text-[#028090]" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* SALARY PERIOD */}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -744,32 +1004,54 @@ export default function Payroll() {
                     name="endDate"
                     value={form.endDate}
                     onChange={handleChange}
+                    min={form.startDate || undefined}
                     required
                     className="w-full rounded-xl border border-[#D8ECEA] px-4 py-3 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:ring-2 focus:ring-[#028090]/20"
                   />
                 </div>
               </div>
 
-              {/* SALARY */}
+              {/* CALCULATED DAYS */}
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#0F2C2E]">
-                    Basic Salary *
-                  </label>
+              {form.startDate && form.endDate && (
+                <div className="rounded-xl border border-[#D8ECEA] bg-white p-4">
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div>
+                      <p className="text-xs text-[#51787C]">Total Days</p>
 
-                  <input
-                    type="number"
-                    name="basicSalary"
-                    value={form.basicSalary}
-                    onChange={handleChange}
-                    min="0"
-                    required
-                    placeholder="0"
-                    className="w-full rounded-xl border border-[#D8ECEA] px-4 py-3 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:ring-2 focus:ring-[#028090]/20"
-                  />
+                      <p className="mt-1 font-bold text-[#0F2C2E]">30</p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-[#51787C]">Paid Days</p>
+
+                      <p className="mt-1 font-bold text-[#028090]">
+                        {paidDays}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-[#51787C]">Per Day</p>
+
+                      <p className="mt-1 font-bold text-[#0F2C2E]">
+                        {formatCurrency(perDaySalary)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-[#51787C]">Earned</p>
+
+                      <p className="mt-1 font-bold text-[#028090]">
+                        {formatCurrency(earnedSalary)}
+                      </p>
+                    </div>
+                  </div>
                 </div>
+              )}
 
+              {/* BONUS + DEDUCTION */}
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-[#0F2C2E]">
                     Bonus
@@ -781,6 +1063,8 @@ export default function Payroll() {
                     value={form.bonus}
                     onChange={handleChange}
                     min="0"
+                    step="0.01"
+                    placeholder="0"
                     className="w-full rounded-xl border border-[#D8ECEA] px-4 py-3 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:ring-2 focus:ring-[#028090]/20"
                   />
                 </div>
@@ -796,6 +1080,8 @@ export default function Payroll() {
                     value={form.deduction}
                     onChange={handleChange}
                     min="0"
+                    step="0.01"
+                    placeholder="0"
                     className="w-full rounded-xl border border-[#D8ECEA] px-4 py-3 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:ring-2 focus:ring-[#028090]/20"
                   />
                 </div>
@@ -804,35 +1090,26 @@ export default function Payroll() {
               {/* NET SALARY */}
 
               <div className="rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] p-4">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
-                  <span className="text-sm font-medium text-[#0F2C2E]">
-                    Net Salary
-                  </span>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-[#0F2C2E]">
+                      Net Salary
+                    </p>
 
-                  <span className="flex items-center text-lg font-bold text-[#028090] sm:text-xl">
-                    <IndianRupee size={18} />
+                    <p className="mt-1 text-xs text-[#51787C]">
+                      Earned salary + bonus - deduction
+                    </p>
+                  </div>
+
+                  <span className="flex items-center text-xl font-bold text-[#028090]">
+                    <IndianRupee size={19} />
 
                     {netSalary.toLocaleString("en-IN", {
                       minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
                     })}
                   </span>
                 </div>
-              </div>
-
-              {/* PAYMENT DATE */}
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-[#0F2C2E]">
-                  Payment Date
-                </label>
-
-                <input
-                  type="date"
-                  name="paymentDate"
-                  value={form.paymentDate}
-                  onChange={handleChange}
-                  className="w-full rounded-xl border border-[#D8ECEA] px-4 py-3 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:ring-2 focus:ring-[#028090]/20"
-                />
               </div>
 
               {/* NOTES */}
@@ -852,6 +1129,15 @@ export default function Payroll() {
                 />
               </div>
 
+              {/* INFO */}
+
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
+                <strong>Note:</strong> Creating payroll does not mean the
+                employee has been paid. The payroll will be created as{" "}
+                <strong>PENDING</strong>. Actual payment should be recorded from
+                the separate Payment page.
+              </div>
+
               {/* BUTTONS */}
 
               <div className="flex flex-col-reverse gap-3 border-t border-[#D8ECEA] pt-5 sm:flex-row sm:justify-end">
@@ -859,7 +1145,7 @@ export default function Payroll() {
                   type="button"
                   onClick={() => setShowModal(false)}
                   disabled={submitting}
-                  className="rounded-xl border border-[#D8ECEA] px-5 py-2.5 text-sm font-semibold text-[#0F2C2E] transition hover:bg-[#EEF7F6]"
+                  className="rounded-xl border border-[#D8ECEA] px-5 py-2.5 text-sm font-semibold text-[#0F2C2E] transition hover:bg-[#EEF7F6] disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -869,7 +1155,7 @@ export default function Payroll() {
                   disabled={submitting}
                   className="rounded-xl bg-[#028090] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0B3B3E] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {submitting ? "Saving..." : "Save Payroll"}
+                  {submitting ? "Creating..." : "Create Payroll"}
                 </button>
               </div>
             </form>
