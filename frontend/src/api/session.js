@@ -16,16 +16,19 @@ export function handleSessionExpired() {
   if (now - lastRedirectAt < 3000) return;
   lastRedirectAt = now;
 
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
-
   const path = window.location.pathname;
   const alreadyOnAuthPage =
     path.startsWith("/login") || path.startsWith("/create-password");
 
-  if (!alreadyOnAuthPage) {
-    window.location.assign("/login?session=expired");
-  }
+  // If the user is already on a login/auth page, do NOT touch localStorage.
+  // A stale profile check (AuthContext mount) can return 401 while the user
+  // is simultaneously logging in — clearing localStorage here would wipe the
+  // fresh token the login just saved, causing an immediate redirect back.
+  if (alreadyOnAuthPage) return;
+
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  window.location.assign("/login?session=expired");
 }
 
 /**

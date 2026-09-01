@@ -522,9 +522,9 @@ export default function Orders() {
   const [reassignTarget, setReassignTarget] = useState(null);
   const { employees, loading: employeesLoading } = useEmployees();
 
-  const load = async () => {
+  const load = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const [ordersRes, statsRes] = await Promise.all([
         getShopOrders(),
         getOrderStats(),
@@ -538,8 +538,11 @@ export default function Orders() {
     }
   };
 
+  // Live tracking — refresh every 10s so employee status updates show up immediately.
   useEffect(() => {
     load();
+    const t = setInterval(() => load(true), 10000);
+    return () => clearInterval(t);
   }, []);
 
   // Fetch tasks when an order is expanded
@@ -708,7 +711,9 @@ export default function Orders() {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: COLORS.border }}>
+        <>
+        {/* Desktop / tablet table */}
+        <div className="hidden md:block overflow-x-auto rounded-2xl border" style={{ borderColor: COLORS.border }}>
           <table className="w-full text-sm min-w-[900px]" style={{ backgroundColor: "#FFFFFF" }}>
             <thead>
               <tr className="text-left" style={{ color: COLORS.muted, borderBottom: `1px solid ${COLORS.border}` }}>
@@ -916,6 +921,111 @@ export default function Orders() {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile card list */}
+        <div className="md:hidden rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.border, backgroundColor: "#FFFFFF" }}>
+          {filtered.map((o) => {
+            const meta = statusMeta(o.status);
+            const isOpen = expanded === o.id;
+            return (
+              <div key={o.id} className="border-b last:border-b-0 p-4" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="font-semibold" style={{ color: COLORS.dark }}>#{o.id}</div>
+                  <div className="text-[11px]" style={{ color: COLORS.muted }}>{formatDateTime(o.createdAt)}</div>
+                </div>
+                <div className="flex items-center gap-2 mb-1">
+                  <UserIcon size={13} style={{ color: COLORS.primary }} />
+                  <span className="text-sm font-medium" style={{ color: COLORS.dark }}>{o.customer?.name || "—"}</span>
+                  <span className="text-xs" style={{ color: COLORS.muted }}>&middot; {o.shop?.name || ""}</span>
+                </div>
+                <div className="flex items-center gap-1 text-xs mb-2" style={{ color: COLORS.muted }}>
+                  <Phone size={11} /> {o.customer?.phone || "—"}
+                </div>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-sm font-semibold" style={{ color: COLORS.dark }}>{formatINR(o.total_amount)}</span>
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ backgroundColor: COLORS.light, color: COLORS.primary }}>
+                    {(o.items || []).length} item{(o.items || []).length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <select
+                    value={o.status}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => handleStatus(o.id, e.target.value)}
+                    className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border appearance-none"
+                    style={{ backgroundColor: meta.bg, color: meta.color, borderColor: `${meta.color}44` }}
+                  >
+                    {ORDER_STATUSES.map((s) => (
+                      <option key={s} value={s}>{statusMeta(s).label}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={o.payment_status}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => handlePayment(o.id, e.target.value)}
+                    className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border"
+                    style={{ backgroundColor: COLORS.light, color: COLORS.dark, borderColor: COLORS.border }}
+                  >
+                    {PAYMENT_STATUSES.map((p) => (
+                      <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                    ))}
+                  </select>
+                  {o.status !== "delivered" && o.status !== "cancelled" && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setAssignOrder(o); }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-white"
+                      style={{ background: "linear-gradient(95deg, #028090, #02C39A)" }}
+                    >
+                      <UserPlus size={12} /> Assign
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExpanded(isOpen ? null : o.id)}
+                  className="w-full mt-3 flex items-center justify-center gap-1 text-xs font-medium py-1.5 rounded-lg border"
+                  style={{ borderColor: COLORS.border, color: COLORS.muted }}
+                >
+                  {isOpen ? "Hide details" : "View details"}
+                  <ChevronDown size={13} style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                </button>
+                {isOpen && (
+                  <div className="mt-3 pt-3 border-t space-y-3" style={{ borderColor: COLORS.border }}>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide font-semibold mb-1.5" style={{ color: COLORS.muted }}>Services</div>
+                      {(o.items || []).map((item) => (
+                        <div key={item.id} className="flex items-center justify-between text-xs py-0.5">
+                          <span style={{ color: COLORS.dark }}>{item.item_label ? `${item.item_label} · ${item.name}` : item.name} <span style={{ color: COLORS.muted }}>×{item.quantity}</span></span>
+                          <span className="font-medium" style={{ color: COLORS.dark }}>{formatINR(item.lineTotal)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {o.pickup_date && (
+                      <div className="text-xs" style={{ color: COLORS.dark }}>
+                        <span className="font-medium">Pickup:</span> {formatDate(o.pickup_date)}{o.pickup_time ? ` · ${o.pickup_time}` : ""}
+                        {o.pickup_address && <div className="mt-0.5 flex items-start gap-1"><MapPin size={11} className="mt-0.5 shrink-0" style={{ color: COLORS.primary }} />{o.pickup_address}</div>}
+                      </div>
+                    )}
+                    {o.delivery_address && (
+                      <div className="text-xs" style={{ color: COLORS.dark }}>
+                        <span className="font-medium">Delivery:</span>
+                        <div className="mt-0.5 flex items-start gap-1"><MapPin size={11} className="mt-0.5 shrink-0" style={{ color: COLORS.primary }} />{o.delivery_address}</div>
+                      </div>
+                    )}
+                    <TaskAssignmentTable
+                      orderId={o.id}
+                      tasks={orderTasks}
+                      onReassign={(t) => setReassignTarget(t)}
+                      onRefresh={() => { taskApi.getOrderTasks(o.id).then((d) => setOrderTasks(Array.isArray(d) ? d : [])); }}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        </>
       )}
 
       <AssignTaskModal

@@ -9,6 +9,11 @@ const extractCount = (responseData) => {
     return responseData;
   }
 
+  // Backend returns { success: true, data: count } where data IS the number
+  if (typeof responseData?.data === "number") {
+    return responseData.data;
+  }
+
   return Number(
     responseData?.count ??
       responseData?.data?.count ??

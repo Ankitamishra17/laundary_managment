@@ -22,7 +22,7 @@ export default function Avatar({ user, className = "", style, fallbackBg }) {
 
   const name = user?.name || "User";
   const avatar = user?.avatar;
-  const src = avatar ? `${import.meta.env.VITE_API_URL}${avatar}` : null;
+  const src = avatar ? `${import.meta.env.VITE_API_URL || "http://localhost:5000"}${avatar}` : null;
 
   // A new avatar URL (e.g. right after an upload) should always be tried again,
   // even if the previous image failed to load.

@@ -145,7 +145,7 @@ export const getAllTasks = async (req, res) => {
           required: false,
         },
       ],
-      order: [["scheduled_time", "DESC"]],
+      order: [["createdAt", "DESC"]],
     });
 
     return res.status(200).json({ success: true, data: tasks });
@@ -454,11 +454,11 @@ export const getMyTasks = async (req, res) => {
           required: false,
         },
       ],
-      // Priority sort: urgent tasks first, then by scheduled_time.
+      // Priority sort: urgent tasks first, then by newest first.
       // Sequelize literal sorts urgent=1 before normal=0.
       order: [
         [literal("CASE WHEN priority = 'urgent' THEN 0 ELSE 1 END"), "ASC"],
-        ["scheduled_time", "ASC"],
+        ["createdAt", "DESC"],
       ],
     });
 
@@ -581,8 +581,6 @@ export const updateTaskStatus = async (req, res) => {
       }
     }
 
-    const previousOrderStatus = task.order?.status;
-
     // --- ONE ACTIVE TASK RULE ----------------------------------------
     // An employee can have only ONE in_progress task at a time.  If the
     // employee is starting a new task, any existing in_progress task is
@@ -643,19 +641,35 @@ export const updateTaskStatus = async (req, res) => {
     // --- ORDER STATUS UPDATE -------------------------------------------
     // Propagate the progress to the linked order so the admin's order list
     // and the customer's tracking view stay in sync with the employee's work.
-    if (task.order && task.order.status !== "cancelled") {
+    // Reload the order fresh to avoid stale Sequelize include issues.
+    let freshOrder = null;
+    if (task.order_id) {
+      freshOrder = await Order.findByPk(task.order_id, {
+        include: [
+          {
+            model: Customer,
+            as: "customer",
+            attributes: ["id", "userId", "name", "shopId"],
+            required: false,
+          },
+        ],
+      });
+    }
+    const previousOrderStatus = freshOrder?.status || task.order?.status;
+
+    if (freshOrder && freshOrder.status !== "cancelled") {
       const implied = impliedOrderStatus(task.task_type, status);
-      const currentRank = ORDER_STATUS_RANK[task.order.status] ?? -1;
+      const currentRank = ORDER_STATUS_RANK[freshOrder.status] ?? -1;
       if (implied && (ORDER_STATUS_RANK[implied] ?? 0) > currentRank) {
-        task.order.status = implied;
-        if (implied === "delivered") task.order.delivery_time = new Date();
-        await task.order.save();
+        freshOrder.status = implied;
+        if (implied === "delivered") freshOrder.delivery_time = new Date().toISOString();
+        await freshOrder.save();
       }
     }
 
     // --- NOTIFICATIONS ------------------------------------------------
     // 1) The shop admin
-    const shopIdForAdmin = task.employee?.shop_id || task.order?.shop_id;
+    const shopIdForAdmin = task.employee?.shop_id || freshOrder?.shop_id || task.order?.shop_id;
     const orderRef = task.order ? ` for order #${task.order.id}` : "";
     const doneWord = status === "completed" ? "completed" : status === "in_progress" ? "started" : "updated";
     const typeLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
@@ -710,13 +724,31 @@ export const updateTaskStatus = async (req, res) => {
     }
 
     // 3) The customer
-    if (task.order && previousOrderStatus !== task.order.status) {
-      await notifyCustomer(task.order.customer, {
-        title: "Order updated",
-        message: `Your order #${task.order.id} is now ${ORDER_STATUS_LABELS[task.order.status] || task.order.status}.`,
-        type: "order",
-        link: `/customer/orders/${task.order.id}`,
-      });
+    const effectiveOrder = freshOrder || task.order;
+    if (effectiveOrder) {
+      const orderStatus = effectiveOrder.status;
+      const orderId = effectiveOrder.id;
+      const customerObj = effectiveOrder.customer || null;
+
+      // When delivery task is completed, always send the review prompt
+      // notification so the customer knows they can review.
+      if (task.task_type === "delivery" && status === "completed") {
+        await notifyCustomer(customerObj, {
+          title: "Order delivered — Review us!",
+          message: `Your order #${orderId} has been delivered! We'd love your feedback — write a review to share your experience.`,
+          type: "order",
+          orderId: orderId,
+          link: "/customer/reviews",
+        });
+      } else if (previousOrderStatus !== orderStatus) {
+        await notifyCustomer(customerObj, {
+          title: "Order updated",
+          message: `Your order #${orderId} is now ${ORDER_STATUS_LABELS[orderStatus] || orderStatus}.`,
+          type: "order",
+          orderId: orderId,
+          link: `/customer/orders/${orderId}`,
+        });
+      }
     }
 
     return res.status(200).json({ success: true, data: task });
@@ -772,7 +804,7 @@ export const getOrderTasks = async (req, res) => {
           attributes: ["id", "name", "email", "designation"],
         },
       ],
-      order: [["id", "ASC"]],
+      order: [["createdAt", "DESC"]],
     });
 
     return res.status(200).json({ success: true, data: tasks });
@@ -976,7 +1008,7 @@ export const getAdminTaskHistory = async (req, res) => {
           ],
         },
       ],
-      order: [["scheduled_time", "DESC"]],
+      order: [["createdAt", "DESC"]],
     });
 
     return res.status(200).json({ success: true, data: tasks });
@@ -1032,7 +1064,7 @@ export const getEmployeeTaskHistory = async (req, res) => {
           ],
         },
       ],
-      order: [["scheduled_time", "DESC"]],
+      order: [["createdAt", "DESC"]],
     });
 
     return res.status(200).json({ success: true, data: tasks });
@@ -1072,7 +1104,7 @@ export const getMyCustomerTasks = async (req, res) => {
           ],
         },
       ],
-      order: [["scheduled_time", "DESC"]],
+      order: [["createdAt", "DESC"]],
     });
 
     // Group tasks by customer_name so the UI can display per-customer cards.

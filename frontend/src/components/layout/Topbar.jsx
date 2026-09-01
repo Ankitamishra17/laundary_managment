@@ -163,6 +163,14 @@ function getNotificationKind(notification) {
     return "order";
   }
 
+  if (type === "leave") {
+    return "leave";
+  }
+
+  if (type === "task") {
+    return "task";
+  }
+
   return "general";
 }
 
@@ -172,6 +180,28 @@ function getNotificationKind(notification) {
 
 function NotificationIcon({ notification, isSuperAdmin }) {
   const kind = getNotificationKind(notification);
+
+  if (kind === "leave") {
+    return (
+      <div
+        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full"
+        style={{ backgroundColor: colors.infoBg }}
+      >
+        <CalendarDays size={17} style={{ color: colors.info }} />
+      </div>
+    );
+  }
+
+  if (kind === "task") {
+    return (
+      <div
+        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full"
+        style={{ backgroundColor: colors.successBg }}
+      >
+        <CheckCircle2 size={17} style={{ color: colors.success }} />
+      </div>
+    );
+  }
 
   if (isSuperAdmin || kind === "subscription") {
     return (
@@ -294,8 +324,9 @@ const Topbar = () => {
 
   const isAdmin = user?.role === "admin";
   const isSuperAdmin = user?.role === "super_admin";
+  const isEmployee = user?.role === "employee";
 
-  const canReceiveNotifications = isAdmin || isSuperAdmin;
+  const canReceiveNotifications = isAdmin || isSuperAdmin || isEmployee;
 
   // ===================================================
   // PAGE TITLE
@@ -337,39 +368,6 @@ const Topbar = () => {
       setNotificationLoading(true);
 
       // =================================================
-      // ADMIN
-      // General notifications:
-      // LOW STOCK + ORDERS + CANCELLED + OTHER TYPES
-      // =================================================
-
-      if (isAdmin) {
-        const [notificationResponse, countResponse] =
-          await Promise.all([
-            getNotifications(),
-            getUnreadNotificationCount(),
-          ]);
-
-        const notificationData =
-          Array.isArray(notificationResponse)
-            ? notificationResponse
-            : Array.isArray(notificationResponse?.data)
-              ? notificationResponse.data
-              : [];
-
-        setNotifications(notificationData);
-
-        const count =
-          countResponse?.count ??
-          countResponse?.data?.count ??
-          countResponse ??
-          0;
-
-        setNotificationCount(Number(count));
-
-        return;
-      }
-
-      // =================================================
       // SUPER ADMIN
       // Subscription notifications
       // =================================================
@@ -397,7 +395,39 @@ const Topbar = () => {
           0;
 
         setNotificationCount(Number(count));
+
+        return;
       }
+
+      // =================================================
+      // ADMIN & EMPLOYEE
+      // General notifications (orders, tasks, leave, low stock, etc.)
+      // Both use the same /api/notifications endpoint which scopes
+      // by role via scopeWhere in the controller.
+      // =================================================
+
+      const [notificationResponse, countResponse] =
+        await Promise.all([
+          getNotifications(),
+          getUnreadNotificationCount(),
+        ]);
+
+      const notificationData =
+        Array.isArray(notificationResponse)
+          ? notificationResponse
+          : Array.isArray(notificationResponse?.data)
+            ? notificationResponse.data
+            : [];
+
+      setNotifications(notificationData);
+
+      const count =
+        countResponse?.count ??
+        countResponse?.data?.count ??
+        countResponse ??
+        0;
+
+      setNotificationCount(Number(count));
     } catch (error) {
       console.error("Notification Load Error:", error);
 
@@ -406,7 +436,7 @@ const Topbar = () => {
     } finally {
       setNotificationLoading(false);
     }
-  }, [canReceiveNotifications, isAdmin, isSuperAdmin]);
+  }, [canReceiveNotifications, isSuperAdmin]);
 
   // ===================================================
   // INITIAL LOAD / ROLE CHANGE
@@ -454,8 +484,8 @@ const Topbar = () => {
 
   const handleNotificationItemClick = async (notification) => {
     try {
-      // Admin general notifications
-      if (isAdmin && !notification.isRead) {
+      // Mark as read for admin and employee (both use general notifications)
+      if ((isAdmin || isEmployee) && !notification.isRead) {
         await markNotificationAsRead(notification.id);
 
         setNotifications((previous) =>
@@ -1046,6 +1076,44 @@ const Topbar = () => {
                                       size={11}
                                     />
                                     Order Notification
+                                  </div>
+                                )}
+
+                                {/* LEAVE LABEL */}
+
+                                {kind === "leave" && (
+                                  <div
+                                    className="mt-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium"
+                                    style={{
+                                      backgroundColor:
+                                        colors.infoBg,
+                                      color:
+                                        colors.info,
+                                    }}
+                                  >
+                                    <CalendarDays
+                                      size={11}
+                                    />
+                                    Leave Request
+                                  </div>
+                                )}
+
+                                {/* TASK LABEL */}
+
+                                {kind === "task" && (
+                                  <div
+                                    className="mt-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium"
+                                    style={{
+                                      backgroundColor:
+                                        colors.successBg,
+                                      color:
+                                        colors.success,
+                                    }}
+                                  >
+                                    <CheckCircle2
+                                      size={11}
+                                    />
+                                    Task Update
                                   </div>
                                 )}
 

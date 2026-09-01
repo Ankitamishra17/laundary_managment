@@ -7,12 +7,14 @@ import AssignedPickups from "../pages/employee/AssignedPickups";
 import MyDeliveries from "../pages/employee/MyDeliveries";
 import MyTasks from "../pages/employee/MyTasks";
 import MyAttendance from "../pages/employee/MyAttendance";
+import MyLeave from "../pages/employee/MyLeave";
 import MyProfile from "../pages/employee/MyProfile";
 import VerifyEmail from "../pages/employee/VerifyEmail";
 import Customers from "../pages/employee/Customers";
 import Notifications from "../pages/employee/Notifications";
 import OrdersInProcess from "../pages/employee/OrdersInProcess";
 import CompletedOrders from "../pages/employee/CompletedOrders";
+import MyComplaints from "../pages/employee/MyComplaints";
 
 const EmployeeRoute = (
   <Route path="/employee" element={<EmployeeLayout />}>
@@ -27,6 +29,8 @@ const EmployeeRoute = (
     <Route path="customers" element={<Customers />} />
     <Route path="notifications" element={<Notifications />} />
     <Route path="attendance" element={<MyAttendance />} />
+    <Route path="leaves" element={<MyLeave />} />
+    <Route path="complaints" element={<MyComplaints />} />
     <Route path="profile" element={<MyProfile />} />
     <Route path="myProfile" element={<MyProfile />} />
     <Route path="verifyEmail" element={<VerifyEmail />} />

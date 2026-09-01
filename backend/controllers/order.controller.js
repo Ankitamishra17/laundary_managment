@@ -7,6 +7,7 @@ import Customer from "../models/Customer.js";
 import Shop from "../models/Shop.js";
 import Service from "../models/Service.js";
 import Employee from "../models/Employee.js";
+import Task from "../models/Tasks.js";
 import { notifyShopAdmins, notifyCustomer } from "./notification.controller.js";
 import { getShopPlan, countShopOrdersThisMonth } from "../utils/subscription.js";
 
@@ -47,6 +48,12 @@ const ORDER_INCLUDES = [
     model: Shop,
     as: "shop",
     attributes: ["id", "name", "shopCode", "city", "address", "phone"],
+  },
+  {
+    model: Task,
+    as: "tasks",
+    attributes: ["id", "task_type", "status", "scheduled_time", "started_at", "completed_at", "employee_id", "notes"],
+    required: false,
   },
 ];
 
@@ -408,18 +415,28 @@ export const updateOrderStatus = async (req, res) => {
     order.status = status;
     // Note: pickup_time is the customer's preferred pickup time (string) —
     // never overwrite it with a Date here.
-    if (status === "delivered") order.delivery_time = new Date();
+    if (status === "delivered") order.delivery_time = new Date().toISOString();
 
     await order.save();
 
     // Tell the customer their order moved forward.
     const customer = await Customer.findOne({ where: { id: order.customer_id } });
-    await notifyCustomer(customer, {
-      title: "Order status updated",
-      message: `Your order #${order.id} is now ${STATUS_LABELS[status] || status}.`,
-      type: "order",
-      link: `/customer/orders/${order.id}`,
-    });
+
+    if (status === "delivered") {
+      await notifyCustomer(customer, {
+        title: "Order delivered — Review us!",
+        message: `Your order #${order.id} has been delivered! We'd love your feedback — write a review to share your experience.`,
+        type: "order",
+        link: "/customer/reviews",
+      });
+    } else {
+      await notifyCustomer(customer, {
+        title: "Order status updated",
+        message: `Your order #${order.id} is now ${STATUS_LABELS[status] || status}.`,
+        type: "order",
+        link: `/customer/orders/${order.id}`,
+      });
+    }
 
     return res.status(200).json({
       success: true,

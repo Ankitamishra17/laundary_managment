@@ -5,7 +5,6 @@ import {
   CreditCard,
   IndianRupee,
   CheckCircle2,
-  XCircle,
   Clock3,
   AlertTriangle,
   RefreshCw,

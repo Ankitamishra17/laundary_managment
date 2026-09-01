@@ -8,6 +8,7 @@ import Employee from "./Employee.js";
 import Task from "./Tasks.js";
 import Attendance from "./Attendance.js";
 import Payroll from "./Payroll.js";
+import Leave from "./Leave.js";
 
 import InventoryItem from "./InventoryItem.js";
 import Supplier from "./Supplier.js";
@@ -23,6 +24,9 @@ import Order from "./Order.js";
 import OrderItem from "./OrderItem.js";
 
 import Notification from "./Notification.js";
+import Complaint from "./Complaint.js";
+import ComplaintReply from "./ComplaintReply.js";
+import Review from "./Review.js";
 
 // =====================================================
 // SHOP ↔ USER
@@ -521,6 +525,112 @@ Notification.belongsTo(InventoryItem, {
 // EXPORT
 // =====================================================
 
+// =====================================================
+// EMPLOYEE ↔ LEAVE
+// =====================================================
+
+Employee.hasMany(Leave, {
+  foreignKey: "employee_id",
+  as: "leaves",
+});
+
+Leave.belongsTo(Employee, {
+  foreignKey: "employee_id",
+  as: "employee",
+});
+
+// =====================================================
+// COMPLAINT ↔ REPLY
+// =====================================================
+
+Complaint.hasMany(ComplaintReply, {
+  foreignKey: "complaint_id",
+  as: "replies",
+});
+
+ComplaintReply.belongsTo(Complaint, {
+  foreignKey: "complaint_id",
+  as: "complaint",
+});
+
+// =====================================================
+// COMPLAINT ↔ CUSTOMER / ORDER / SHOP / EMPLOYEE
+// =====================================================
+
+Customer.hasMany(Complaint, {
+  foreignKey: "customer_id",
+  as: "complaints",
+});
+
+Complaint.belongsTo(Customer, {
+  foreignKey: "customer_id",
+  as: "customer",
+});
+
+Order.hasMany(Complaint, {
+  foreignKey: "order_id",
+  as: "complaints",
+});
+
+Complaint.belongsTo(Order, {
+  foreignKey: "order_id",
+  as: "order",
+});
+
+Shop.hasMany(Complaint, {
+  foreignKey: "shop_id",
+  as: "complaints",
+});
+
+Complaint.belongsTo(Shop, {
+  foreignKey: "shop_id",
+  as: "shop",
+});
+
+Employee.hasMany(Complaint, {
+  foreignKey: "assigned_employee_id",
+  as: "assignedComplaints",
+});
+
+Complaint.belongsTo(Employee, {
+  foreignKey: "assigned_employee_id",
+  as: "assignedEmployee",
+});
+
+// =====================================================
+// REVIEW ↔ CUSTOMER / ORDER / SHOP
+// =====================================================
+
+Customer.hasMany(Review, {
+  foreignKey: "customer_id",
+  as: "reviews",
+});
+
+Review.belongsTo(Customer, {
+  foreignKey: "customer_id",
+  as: "customer",
+});
+
+Order.hasMany(Review, {
+  foreignKey: "order_id",
+  as: "reviews",
+});
+
+Review.belongsTo(Order, {
+  foreignKey: "order_id",
+  as: "order",
+});
+
+Shop.hasMany(Review, {
+  foreignKey: "shop_id",
+  as: "reviews",
+});
+
+Review.belongsTo(Shop, {
+  foreignKey: "shop_id",
+  as: "shop",
+});
+
 export {
   Shop,
   User,
@@ -529,6 +639,7 @@ export {
   Task,
   Attendance,
   Payroll,
+  Leave,
   InventoryItem,
   Supplier,
   InventoryTransaction,
@@ -540,6 +651,9 @@ export {
   Order,
   OrderItem,
   Notification,
+  Complaint,
+  ComplaintReply,
+  Review,
 };
 
 export default sequelize;

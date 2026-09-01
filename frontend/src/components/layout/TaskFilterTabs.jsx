@@ -9,15 +9,15 @@ const TABS = [
 
 export default function TaskFilterTabs({ active, onChange }) {
   return (
-    <div className="flex items-center gap-2 bg-card-tint p-1 rounded-lg w-full sm:w-fit overflow-x-auto">
+    <div className="flex items-center gap-2 bg-[#EEF7F6] p-1 rounded-lg w-full sm:w-fit overflow-x-auto">
       {TABS.map((tab) => (
         <button
           key={tab.key}
           onClick={() => onChange(tab.key)}
           className={`px-4 py-1.5 rounded-md text-xs font-medium transition-colors ${
             active === tab.key
-              ? "bg-white text-teal-primary shadow-sm"
-              : "text-text-muted hover:text-text-dark"
+              ? "bg-white text-[#028090] shadow-sm"
+              : "text-[#6B8482] hover:text-[#0F2C2E]"
           }`}
         >
           {tab.label}

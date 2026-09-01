@@ -12,6 +12,8 @@ import {
   CheckCircle2,
   Users,
   Clock,
+  CalendarDays,
+  ShieldCheck,
   User,
   Bell,
   LogOut,
@@ -39,6 +41,8 @@ const NAV_SECTIONS = [
     items: [
       { icon: Users, label: "Customers", to: "/employee/customers" },
       { icon: Clock, label: "My Attendance", to: "/employee/attendance" },
+      { icon: CalendarDays, label: "My Leaves", to: "/employee/leaves" },
+      { icon: ShieldCheck, label: "Complaints", to: "/employee/complaints" },
     ],
   },
   {

@@ -16,6 +16,7 @@ const colors = {
 const TYPE_COLORS = {
   order: "#028090",
   task: "#00A896",
+  leave: "#2563EB",
   payment: "#D4A017",
   system: "#5C7A78",
 };
@@ -40,8 +41,10 @@ export default function Notifications() {
   const load = useCallback(async () => {
     try {
       setError("");
-      const data = await notificationApi.getNotifications();
-      setItems(Array.isArray(data) ? data : []);
+      const res = await notificationApi.getNotifications();
+      // Backend returns { success, data: [...] } or direct array
+      const items = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+      setItems(items);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to load notifications");
     } finally {

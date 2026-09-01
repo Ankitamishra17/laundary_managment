@@ -169,7 +169,7 @@ export default function Profile() {
           <div className="relative">
             {profile?.avatar ? (
               <img
-                src={profile.avatar}
+                src={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}${profile.avatar}`}
                 alt="Profile"
                 className="w-20 h-20 rounded-full object-cover border-2"
                 style={{ borderColor: colors.primaryTeal }}

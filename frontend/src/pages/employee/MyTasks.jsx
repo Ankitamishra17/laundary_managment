@@ -605,7 +605,9 @@ function EmployeeTaskHistoryTab() {
             <p className="text-xs text-[#6B8482] mt-1">Adjust filters or check back later.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#EEF7F6] bg-[#FAFDFC]">
@@ -624,46 +626,52 @@ function EmployeeTaskHistoryTab() {
                   <tr key={t.id} className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC] transition-colors duration-150">
                     <td className="py-3.5 px-5">
                       {t.order ? (
-                        <span className="text-[12px] font-semibold" style={{ color: "#028090" }}>
-                          Order #{t.order.id}
-                        </span>
+                        <span className="text-[12px] font-semibold" style={{ color: "#028090" }}>Order #{t.order.id}</span>
                       ) : (
                         <span className="text-[11px] text-[#6B8482]">—</span>
                       )}
                     </td>
                     <td className="py-3.5 px-5">
                       <div className="text-[#0F2C2E] font-medium">{t.customer_name}</div>
-                      {t.customer_phone && (
-                        <div className="text-[11px] text-[#6B8482]">{t.customer_phone}</div>
-                      )}
+                      {t.customer_phone && <div className="text-[11px] text-[#6B8482]">{t.customer_phone}</div>}
                     </td>
-                    <td className="py-3.5 px-5">
-                      <span className="text-[12px] font-semibold" style={{ color: "#028090" }}>
-                        {TASK_TYPE_LABEL[t.task_type] || t.task_type}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">
-                      {formatDateTime(t.scheduled_time)}
-                    </td>
-                    <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">
-                      {formatDateTime(t.started_at)}
-                    </td>
-                    <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">
-                      {formatDateTime(t.completed_at)}
-                    </td>
-                    <td className="py-3.5 px-5">
-                      <StatusPill status={t.status} />
-                    </td>
-                    <td className="py-3.5 px-5">
-                      <div className="text-[11px] text-[#6B8482] max-w-[150px] truncate">
-                        {t.notes || "—"}
-                      </div>
-                    </td>
+                    <td className="py-3.5 px-5"><span className="text-[12px] font-semibold" style={{ color: "#028090" }}>{TASK_TYPE_LABEL[t.task_type] || t.task_type}</span></td>
+                    <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">{formatDateTime(t.scheduled_time)}</td>
+                    <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">{formatDateTime(t.started_at)}</td>
+                    <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">{formatDateTime(t.completed_at)}</td>
+                    <td className="py-3.5 px-5"><StatusPill status={t.status} /></td>
+                    <td className="py-3.5 px-5"><div className="text-[11px] text-[#6B8482] max-w-[150px] truncate">{t.notes || "—"}</div></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y divide-[#EEF7F6]">
+            {history.map((t) => (
+              <div key={t.id} className="p-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold" style={{ color: "#028090" }}>{t.order ? `Order #${t.order.id}` : "Standalone"}</span>
+                  <StatusPill status={t.status} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-[#0F2C2E]">{t.customer_name}</span>
+                  <span className="text-xs font-semibold" style={{ color: "#028090" }}>{TASK_TYPE_LABEL[t.task_type] || t.task_type}</span>
+                </div>
+                <div className="flex items-center gap-4 text-[11px] text-[#6B8482]">
+                  <span>Assigned: {formatDateTime(t.scheduled_time)}</span>
+                </div>
+                {(t.started_at || t.completed_at) && (
+                  <div className="flex items-center gap-4 text-[11px] text-[#6B8482]">
+                    {t.started_at && <span>Started: {formatDateTime(t.started_at)}</span>}
+                    {t.completed_at && <span>Completed: {formatDateTime(t.completed_at)}</span>}
+                  </div>
+                )}
+                {t.notes && <div className="text-[11px] text-[#6B8482]">Note: {t.notes}</div>}
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </div>
     </div>

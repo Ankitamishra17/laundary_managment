@@ -6,7 +6,7 @@ import api from "./axios";
 // ============================================
 
 export const getEmployees = async () => {
-  const response = await api.get("/employees");
+  const response = await api.get("/admin/employees");
   return response.data;
 };
 

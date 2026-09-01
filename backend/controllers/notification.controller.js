@@ -129,7 +129,7 @@ export const notifyEmployee = async (employee, payload) => {
     return await createNotification({
       ...payload,
       employeeId: employee.id,
-      shopId: employee.shopId || payload.shopId || null,
+      shopId: employee.shop_id || employee.shopId || payload.shopId || null,
     });
   } catch (error) {
     console.error("Notify Employee Error:", error.message);

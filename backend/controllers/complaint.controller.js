@@ -16,6 +16,7 @@ const VALID_STATUSES = ["open", "in_progress", "resolved", "closed"];
 export const submitComplaint = async (req, res) => {
   try {
     const { order_id, category, subject, description, image_url } = req.body;
+    const uploadedImage = req.file ? `/uploads/complaints/${req.file.filename}` : image_url || null;
 
     if (!category || !subject || !description) {
       return res.status(400).json({
@@ -55,7 +56,7 @@ export const submitComplaint = async (req, res) => {
       category,
       subject,
       description,
-      image_url: image_url || null,
+      image_url: uploadedImage,
     });
 
     await notifyShopAdmins(shopId, {
@@ -253,7 +254,7 @@ export const assignComplaint = async (req, res) => {
       title: "Complaint assigned to you",
       message: `You have been assigned complaint #${complaint.id}: "${complaint.subject}"`,
       type: "complaint",
-      link: "/employee/tasks",
+      link: "/employee/complaints",
     });
 
     return res.status(200).json({ success: true, data: complaint });
@@ -302,9 +303,147 @@ export const adminReply = async (req, res) => {
       link: "/customer/complaints",
     });
 
+    // Notify assigned employee if any
+    if (complaint.assigned_employee_id) {
+      const assignedEmp = await Employee.findByPk(complaint.assigned_employee_id);
+      if (assignedEmp) {
+        await notifyEmployee(assignedEmp, {
+          title: "Admin replied to complaint",
+          message: `Admin replied to complaint #${complaint.id}: "${complaint.subject}"`,
+          type: "complaint",
+          link: "/employee/complaints",
+        });
+      }
+    }
+
     return res.status(201).json({ success: true, data: reply });
   } catch (error) {
     console.error("Admin Reply Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================
+// EMPLOYEE — my assigned complaints
+// GET /api/complaints/my-assigned
+// ============================================================
+export const getMyAssignedComplaints = async (req, res) => {
+  try {
+    const employeeId = req.user.id;
+
+    const complaints = await Complaint.findAll({
+      where: { assigned_employee_id: employeeId },
+      include: [
+        { model: Customer, as: "customer", attributes: ["id", "name", "phone"] },
+        { model: Order, as: "order", attributes: ["id", "status"] },
+        { model: ComplaintReply, as: "replies", order: [["createdAt", "ASC"]] },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    return res.status(200).json({ success: true, data: complaints });
+  } catch (error) {
+    console.error("Get My Assigned Complaints Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================
+// EMPLOYEE — resolve a complaint
+// PATCH /api/complaints/:id/resolve
+// ============================================================
+export const resolveComplaint = async (req, res) => {
+  try {
+    const employeeId = req.user.id;
+    const { resolution_note } = req.body;
+
+    const complaint = await Complaint.findOne({
+      where: { id: req.params.id, assigned_employee_id: employeeId },
+    });
+
+    if (!complaint) {
+      return res.status(404).json({ success: false, message: "Complaint not found or not assigned to you." });
+    }
+
+    complaint.status = "resolved";
+    complaint.resolved_at = new Date();
+    await complaint.save();
+
+    // If employee provided a resolution note, add it as a reply
+    if (resolution_note && resolution_note.trim()) {
+      await ComplaintReply.create({
+        complaint_id: complaint.id,
+        user_id: req.user.id,
+        message: resolution_note.trim(),
+        is_admin: false,
+      });
+    }
+
+    // Notify admin
+    const employee = await Employee.findByPk(employeeId);
+    await notifyShopAdmins(complaint.shop_id, {
+      title: "Complaint resolved by employee",
+      message: `${employee?.name || "Employee"} resolved complaint #${complaint.id}: "${complaint.subject}"`,
+      type: "complaint",
+      link: "/admin/complaints",
+    });
+
+    // Notify customer
+    const customer = await Customer.findByPk(complaint.customer_id);
+    await notifyCustomer(customer, {
+      title: "Complaint resolved",
+      message: `Your complaint "${complaint.subject}" has been resolved.`,
+      type: "complaint",
+      link: "/customer/complaints",
+    });
+
+    return res.status(200).json({ success: true, data: complaint });
+  } catch (error) {
+    console.error("Resolve Complaint Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================
+// EMPLOYEE — reply to an assigned complaint
+// POST /api/complaints/:id/employee-reply
+// ============================================================
+export const employeeReplyToComplaint = async (req, res) => {
+  try {
+    const employeeId = req.user.id;
+    const { message } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ success: false, message: "Message is required." });
+    }
+
+    const complaint = await Complaint.findOne({
+      where: { id: req.params.id, assigned_employee_id: employeeId },
+    });
+
+    if (!complaint) {
+      return res.status(404).json({ success: false, message: "Complaint not found or not assigned to you." });
+    }
+
+    const employee = await Employee.findByPk(employeeId);
+    const reply = await ComplaintReply.create({
+      complaint_id: complaint.id,
+      user_id: req.user.id,
+      message,
+      is_admin: false,
+    });
+
+    // Notify admin
+    await notifyShopAdmins(complaint.shop_id, {
+      title: "Employee replied to complaint",
+      message: `${employee?.name || "Employee"} replied to complaint #${complaint.id}: "${complaint.subject}"`,
+      type: "complaint",
+      link: "/admin/complaints",
+    });
+
+    return res.status(201).json({ success: true, data: reply });
+  } catch (error) {
+    console.error("Employee Reply Error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
