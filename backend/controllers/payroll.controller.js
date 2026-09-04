@@ -893,3 +893,144 @@ export const cancelPayroll = async (
     });
   }
 };
+
+// =====================================================
+// GET MY PAYROLLS (Employee)
+// GET /api/payroll/my
+// =====================================================
+
+export const getMyPayrolls = async (req, res) => {
+  try {
+    const employeeId = req.user.id;
+
+    // Find the employee record linked to this user
+    const employee = await Employee.findOne({
+      where: { id: employeeId },
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    // Dynamically import Shop to avoid circular deps
+    const { default: Shop } = await import("../models/Shop.js");
+
+    const payrolls = await Payroll.findAll({
+      where: { employeeId: employee.id },
+      include: [
+        {
+          model: Employee,
+          as: "employee",
+          attributes: ["id", "name", "email", "designation", "monthlySalary", "dailySalary"],
+        },
+        {
+          model: Shop,
+          as: "shop",
+          attributes: ["id", "name", "address", "phone", "email", "logo"],
+        },
+      ],
+      order: [["startDate", "DESC"], ["createdAt", "DESC"]],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: payrolls,
+    });
+  } catch (error) {
+    console.error("Get my payrolls error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get payrolls",
+    });
+  }
+};
+
+// =====================================================
+// GET MY PAYROLL BY ID (Employee)
+// GET /api/payroll/my/:id
+// =====================================================
+
+export const getMyPayrollById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Find the employee record for this user
+    const employee = await Employee.findOne({ where: { id: userId } });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    // Dynamically import Shop to avoid circular deps
+    const { default: Shop } = await import("../models/Shop.js");
+
+    const payroll = await Payroll.findOne({
+      where: { id, employeeId: employee.id },
+      include: [
+        { model: Employee, as: "employee", attributes: ["id", "name", "email", "designation", "monthlySalary", "dailySalary"] },
+        { model: Shop, as: "shop", attributes: ["id", "name", "address", "phone", "email", "logo"] },
+      ],
+    });
+
+    if (!payroll) {
+      return res.status(404).json({ success: false, message: "Payroll not found" });
+    }
+
+    return res.status(200).json({ success: true, data: payroll });
+  } catch (error) {
+    console.error("Get my payroll by id error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to get payroll" });
+  }
+};
+
+// =====================================================
+// MARK PAYROLL AS PAID
+// PATCH /api/payroll/:id/mark-paid
+// =====================================================
+
+export const markPayrollPaid = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const shopId = req.user.shopId;
+
+    const payroll = await Payroll.findOne({
+      where: { id, shopId },
+    });
+
+    if (!payroll) {
+      return res.status(404).json({
+        success: false,
+        message: "Payroll not found",
+      });
+    }
+
+    if (payroll.status === "PAID") {
+      return res.status(400).json({
+        success: false,
+        message: "Payroll is already marked as paid",
+      });
+    }
+
+    await payroll.update({
+      status: "PAID",
+      paidAmount: payroll.netSalary,
+      dueAmount: 0,
+      updatedBy: req.user.id,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Payroll marked as paid",
+      data: payroll,
+    });
+  } catch (error) {
+    console.error("Mark payroll paid error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to mark payroll as paid",
+    });
+  }
+};

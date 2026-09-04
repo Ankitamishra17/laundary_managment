@@ -27,6 +27,7 @@ import Notification from "./Notification.js";
 import Complaint from "./Complaint.js";
 import ComplaintReply from "./ComplaintReply.js";
 import Review from "./Review.js";
+import Invoice from "./Invoice.js";
 
 // =====================================================
 // SHOP ↔ USER
@@ -598,6 +599,48 @@ Complaint.belongsTo(Employee, {
 });
 
 // =====================================================
+// SHOP ↔ INVOICE
+// =====================================================
+
+Shop.hasMany(Invoice, {
+  foreignKey: "shopId",
+  as: "invoices",
+});
+
+Invoice.belongsTo(Shop, {
+  foreignKey: "shopId",
+  as: "shop",
+});
+
+// =====================================================
+// CUSTOMER ↔ INVOICE
+// =====================================================
+
+Customer.hasMany(Invoice, {
+  foreignKey: "customerId",
+  as: "invoices",
+});
+
+Invoice.belongsTo(Customer, {
+  foreignKey: "customerId",
+  as: "customer",
+});
+
+// =====================================================
+// ORDER ↔ INVOICE
+// =====================================================
+
+Order.hasOne(Invoice, {
+  foreignKey: "orderId",
+  as: "invoice",
+});
+
+Invoice.belongsTo(Order, {
+  foreignKey: "orderId",
+  as: "order",
+});
+
+// =====================================================
 // REVIEW ↔ CUSTOMER / ORDER / SHOP
 // =====================================================
 
@@ -654,6 +697,7 @@ export {
   Complaint,
   ComplaintReply,
   Review,
+  Invoice,
 };
 
 export default sequelize;

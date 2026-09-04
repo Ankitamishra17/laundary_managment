@@ -16,6 +16,7 @@ import {
   Loader2,
   Star,
   ShieldAlert,
+  FileText,
 } from "lucide-react";
 import Avatar from "./Avatar";
 import NotificationBell from "./NotificationBell";
@@ -110,6 +111,7 @@ export default function CustomerNavbar() {
     { label: "Track Order", icon: PackageSearch, action: "track" },
     { label: "My Reviews", icon: Star, to: "/customer/reviews" },
     { label: "My Complaints", icon: ShieldAlert, to: "/customer/complaints" },
+    { label: "My Invoices", icon: FileText, to: "/customer/invoices" },
     { label: "Addresses", icon: MapPin, to: "/customer/addresses" },
     { label: "Order History", icon: History, to: "/customer/orders" },
   ];
@@ -385,6 +387,15 @@ export default function CustomerNavbar() {
               className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/80 hover:bg-white/10"
             >
               <ShieldAlert size={17} /> My Complaints
+            </button>
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                navigate("/customer/invoices");
+              }}
+              className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/80 hover:bg-white/10"
+            >
+              <FileText size={17} /> My Invoices
             </button>
             <button
               onClick={() => {

@@ -15,6 +15,7 @@ import Notifications from "../pages/employee/Notifications";
 import OrdersInProcess from "../pages/employee/OrdersInProcess";
 import CompletedOrders from "../pages/employee/CompletedOrders";
 import MyComplaints from "../pages/employee/MyComplaints";
+import MyPayroll from "../pages/employee/MyPayroll";
 
 const EmployeeRoute = (
   <Route path="/employee" element={<EmployeeLayout />}>
@@ -31,6 +32,8 @@ const EmployeeRoute = (
     <Route path="attendance" element={<MyAttendance />} />
     <Route path="leaves" element={<MyLeave />} />
     <Route path="complaints" element={<MyComplaints />} />
+    <Route path="payroll" element={<MyPayroll />} />
+    <Route path="payroll/:id" element={<MyPayroll />} />
     <Route path="profile" element={<MyProfile />} />
     <Route path="myProfile" element={<MyProfile />} />
     <Route path="verifyEmail" element={<VerifyEmail />} />

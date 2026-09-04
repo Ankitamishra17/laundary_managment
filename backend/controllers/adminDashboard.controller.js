@@ -1,6 +1,7 @@
 import { Op, fn, col } from "sequelize";
 
 import Order from "../models/Order.js";
+import OrderItem from "../models/OrderItem.js";
 import Customer from "../models/Customer.js";
 import Employee from "../models/Employee.js";
 import Payment from "../models/Payment.js";
@@ -9,6 +10,8 @@ import Payroll from "../models/Payroll.js";
 import InventoryItem from "../models/InventoryItem.js";
 import Supplier from "../models/Supplier.js";
 import Attendance from "../models/Attendance.js";
+import Service from "../models/Service.js";
+import Task from "../models/Tasks.js";
 
 // =====================================================
 // HELPERS
@@ -56,55 +59,58 @@ export const getAdminDashboard = async (req, res) => {
     // =================================================
 
     const [
-      // COUNTS
       totalEmployees,
       totalSuppliers,
       totalInventoryItems,
       totalOrders,
       todayOrders,
 
-      // CUSTOMERS
       totalCustomers,
       newCustomersToday,
       recentCustomers,
 
-      // PAYMENTS
       totalCustomerPayments,
       todayCustomerPayments,
       totalSupplierPayments,
       totalSalaryPayments,
       pendingPayments,
 
-      // PURCHASES
       totalPurchaseData,
       purchaseDueData,
 
-      // PAYROLL
       payrollData,
 
-      // INVENTORY
       lowStockItems,
 
-      // RECENT DATA
       recentOrders,
       recentPayments,
       recentPurchases,
 
-      // ORDER STATUS
       orderStatusData,
 
-      // ATTENDANCE
       presentToday,
       absentToday,
+      lateToday,
+
+      // NEW: Revenue from delivered orders
+      deliveredOrderRevenue,
+      todayDeliveredRevenue,
+
+      // NEW: Recent 30 days of orders for chart
+      recentOrderData,
+
+      // NEW: Employee tasks (pending/in-progress)
+      employeeTaskData,
+
+      // NEW: Top services by order count
+      topServiceData,
     ] = await Promise.all([
       // =================================================
       // TOTAL EMPLOYEES
       // =================================================
 
       Employee.count({
-        where: {
-          shop_id: shopId,
-        },
+        where: { shop_id: shopId },
       }),
 
       // =================================================
@@ -112,9 +118,7 @@ export const getAdminDashboard = async (req, res) => {
       // =================================================
 
       Supplier.count({
-        where: {
-          shopId,
-        },
+        where: { shopId },
       }),
 
       // =================================================
@@ -122,9 +126,7 @@ export const getAdminDashboard = async (req, res) => {
       // =================================================
 
       InventoryItem.count({
-        where: {
-          shopId,
-        },
+        where: { shopId },
       }),
 
       // =================================================
@@ -132,9 +134,7 @@ export const getAdminDashboard = async (req, res) => {
       // =================================================
 
       Order.count({
-        where: {
-          shop_id: shopId,
-        },
+        where: { shop_id: shopId },
       }),
 
       // =================================================
@@ -144,9 +144,7 @@ export const getAdminDashboard = async (req, res) => {
       Order.count({
         where: {
           shop_id: shopId,
-          createdAt: {
-            [Op.between]: [todayStart, todayEnd],
-          },
+          createdAt: { [Op.between]: [todayStart, todayEnd] },
         },
       }),
 
@@ -155,9 +153,7 @@ export const getAdminDashboard = async (req, res) => {
       // =================================================
 
       Customer.count({
-        where: {
-          shopId,
-        },
+        where: { shopId },
       }),
 
       // =================================================
@@ -167,9 +163,7 @@ export const getAdminDashboard = async (req, res) => {
       Customer.count({
         where: {
           shopId,
-          createdAt: {
-            [Op.between]: [todayStart, todayEnd],
-          },
+          createdAt: { [Op.between]: [todayStart, todayEnd] },
         },
       }),
 
@@ -178,16 +172,10 @@ export const getAdminDashboard = async (req, res) => {
       // =================================================
 
       Customer.findAll({
-        where: {
-          shopId,
-        },
-
+        where: { shopId },
         attributes: ["id", "name", "phone", "email", "createdAt"],
-
         order: [["createdAt", "DESC"]],
-
         limit: 5,
-
         raw: true,
       }),
 
@@ -212,9 +200,7 @@ export const getAdminDashboard = async (req, res) => {
           shopId,
           paymentType: "CUSTOMER",
           status: "Paid",
-          paymentDate: {
-            [Op.between]: [todayStart, todayEnd],
-          },
+          paymentDate: { [Op.between]: [todayStart, todayEnd] },
         },
       }),
 
@@ -258,9 +244,7 @@ export const getAdminDashboard = async (req, res) => {
       // =================================================
 
       Purchase.sum("totalAmount", {
-        where: {
-          shopId,
-        },
+        where: { shopId },
       }),
 
       // =================================================
@@ -268,9 +252,7 @@ export const getAdminDashboard = async (req, res) => {
       // =================================================
 
       Purchase.sum("dueAmount", {
-        where: {
-          shopId,
-        },
+        where: { shopId },
       }),
 
       // =================================================
@@ -283,56 +265,36 @@ export const getAdminDashboard = async (req, res) => {
           [fn("COALESCE", fn("SUM", col("paidAmount")), 0), "paidSalary"],
           [fn("COALESCE", fn("SUM", col("dueAmount")), 0), "pendingSalary"],
         ],
-
-        where: {
-          shopId,
-        },
-
+        where: { shopId },
         raw: true,
       }),
 
       // =================================================
       // LOW STOCK ITEMS
-      //
-      // Uses quantity <= minimumStock
       // =================================================
 
       InventoryItem.findAll({
         where: {
           shopId,
-          currentStock: {
-            [Op.lte]: col("minStock"),
-          },
+          currentStock: { [Op.lte]: col("minStock") },
           isDeleted: false,
         },
-
         attributes: [
-          "id",
-          "name",
-          "category",
-          "unit",
-          "currentStock",
-          "minStock",
-          "status",
+          "id", "name", "category", "unit",
+          "currentStock", "minStock", "status",
         ],
-
         order: [["currentStock", "ASC"]],
-
         limit: 5,
-
         raw: true,
       }),
+
       // =================================================
       // RECENT ORDERS
       // =================================================
 
       Order.findAll({
-        where: {
-          shop_id: shopId,
-        },
-
-        attributes: ["id", "total_amount", "status", "createdAt"],
-
+        where: { shop_id: shopId },
+        attributes: ["id", "total_amount", "status", "createdAt", "pickup_time", "delivery_date", "employee_id"],
         include: [
           {
             model: Customer,
@@ -343,12 +305,11 @@ export const getAdminDashboard = async (req, res) => {
             model: Employee,
             as: "employee",
             attributes: ["id", "name"],
+            required: false,
           },
         ],
-
         order: [["createdAt", "DESC"]],
-
-        limit: 5,
+        limit: 10,
       }),
 
       // =================================================
@@ -356,25 +317,13 @@ export const getAdminDashboard = async (req, res) => {
       // =================================================
 
       Payment.findAll({
-        where: {
-          shopId,
-        },
-
+        where: { shopId },
         attributes: [
-          "id",
-          "paymentNumber",
-          "paymentType",
-          "amount",
-          "paymentMethod",
-          "status",
-          "paymentDate",
-          "createdAt",
+          "id", "paymentNumber", "paymentType", "amount",
+          "paymentMethod", "status", "paymentDate", "createdAt",
         ],
-
         order: [["createdAt", "DESC"]],
-
         limit: 5,
-
         raw: true,
       }),
 
@@ -383,25 +332,13 @@ export const getAdminDashboard = async (req, res) => {
       // =================================================
 
       Purchase.findAll({
-        where: {
-          shopId,
-        },
-
+        where: { shopId },
         attributes: [
-          "id",
-          "invoiceNo",
-          "totalAmount",
-          "paidAmount",
-          "dueAmount",
-          "status",
-          "purchaseDate",
-          "createdAt",
+          "id", "invoiceNo", "totalAmount", "paidAmount",
+          "dueAmount", "status", "purchaseDate", "createdAt",
         ],
-
         order: [["createdAt", "DESC"]],
-
         limit: 5,
-
         raw: true,
       }),
 
@@ -411,13 +348,8 @@ export const getAdminDashboard = async (req, res) => {
 
       Order.findAll({
         attributes: ["status", [fn("COUNT", col("id")), "count"]],
-
-        where: {
-          shop_id: shopId,
-        },
-
+        where: { shop_id: shopId },
         group: ["status"],
-
         raw: true,
       }),
 
@@ -428,20 +360,15 @@ export const getAdminDashboard = async (req, res) => {
       Attendance.count({
         where: {
           status: "PRESENT",
-          date: {
-            [Op.between]: [todayStart, todayEnd],
-          },
+          date: { [Op.between]: [todayStart, todayEnd] },
         },
-
         include: [
           {
             model: Employee,
             as: "employee",
             required: true,
             attributes: [],
-            where: {
-              shop_id: shopId,
-            },
+            where: { shop_id: shopId },
           },
         ],
       }),
@@ -453,22 +380,135 @@ export const getAdminDashboard = async (req, res) => {
       Attendance.count({
         where: {
           status: "ABSENT",
-          date: {
-            [Op.between]: [todayStart, todayEnd],
-          },
+          date: { [Op.between]: [todayStart, todayEnd] },
         },
-
         include: [
           {
             model: Employee,
             as: "employee",
             required: true,
             attributes: [],
-            where: {
-              shop_id: shopId,
-            },
+            where: { shop_id: shopId },
           },
         ],
+      }),
+
+      // =================================================
+      // LATE TODAY
+      // =================================================
+
+      Attendance.count({
+        where: {
+          status: "LATE",
+          date: { [Op.between]: [todayStart, todayEnd] },
+        },
+        include: [
+          {
+            model: Employee,
+            as: "employee",
+            required: true,
+            attributes: [],
+            where: { shop_id: shopId },
+          },
+        ],
+      }).catch(() => 0),
+
+      // =================================================
+      // TOTAL REVENUE FROM DELIVERED ORDERS
+      // =================================================
+
+      Order.sum("total_amount", {
+        where: {
+          shop_id: shopId,
+          status: "delivered",
+        },
+      }),
+
+      // =================================================
+      // TODAY'S REVENUE FROM DELIVERED ORDERS
+      // =================================================
+
+      Order.sum("total_amount", {
+        where: {
+          shop_id: shopId,
+          status: "delivered",
+          delivery_time: { [Op.between]: [todayStart, todayEnd] },
+        },
+      }).catch(() => 0),
+
+      // =================================================
+      // RECENT 30 DAYS ORDERS (for revenue chart)
+      // =================================================
+
+      Order.findAll({
+        where: {
+          shop_id: shopId,
+          createdAt: {
+            [Op.gte]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          },
+          status: { [Op.ne]: "cancelled" },
+        },
+        attributes: ["id", "total_amount", "status", "createdAt"],
+        order: [["createdAt", "ASC"]],
+        raw: true,
+      }),
+
+      // =================================================
+      // EMPLOYEE TASKS (pending/in-progress only)
+      // =================================================
+
+      Task.findAll({
+        where: {
+          status: { [Op.in]: ["pending", "in_progress"] },
+        },
+        attributes: [
+          "id", "task_type", "status", "employee_id", "order_id", "createdAt",
+        ],
+        include: [
+          {
+            model: Employee,
+            as: "employee",
+            attributes: ["id", "name"],
+            where: { shop_id: shopId },
+            required: true,
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+        raw: true,
+      }),
+
+      // =================================================
+      // TOP SERVICES (by order item usage)
+      // =================================================
+
+      OrderItem.findAll({
+        attributes: [
+          "serviceId",
+          [fn("COUNT", col("OrderItem.id")), "orderCount"],
+          [fn("SUM", col("OrderItem.quantity")), "totalQuantity"],
+        ],
+        include: [
+          {
+            model: Order,
+            as: "order",
+            attributes: [],
+            where: {
+              shop_id: shopId,
+              status: { [Op.ne]: "cancelled" },
+            },
+            required: true,
+          },
+          {
+            model: Service,
+            as: "service",
+            attributes: ["id", "serviceName"],
+            required: true,
+          },
+        ],
+        group: ["serviceId", "service.id", "service.serviceName"],
+        order: [[fn("COUNT", col("OrderItem.id")), "DESC"]],
+        limit: 5,
+        raw: true,
       }),
     ]);
 
@@ -476,16 +516,22 @@ export const getAdminDashboard = async (req, res) => {
     // CALCULATE PAYMENT VALUES
     // =================================================
 
-    const totalRevenue = toNumber(totalCustomerPayments);
+    // Use delivered order revenue as the primary revenue source
+    // (this captures ALL revenue, not just explicitly recorded payments)
+    const totalRevenueFromOrders = toNumber(deliveredOrderRevenue);
+    const todayRevenueFromOrders = toNumber(todayDeliveredRevenue);
 
-    const todayRevenue = toNumber(todayCustomerPayments);
+    // Also consider recorded payments
+    const totalRevenueFromPayments = toNumber(totalCustomerPayments);
+    const todayRevenueFromPayments = toNumber(todayCustomerPayments);
+
+    // Take the higher of order-based or payment-based revenue
+    const totalRevenue = Math.max(totalRevenueFromOrders, totalRevenueFromPayments);
+    const todayRevenue = Math.max(todayRevenueFromOrders, todayRevenueFromPayments);
 
     const supplierExpenses = toNumber(totalSupplierPayments);
-
     const salaryExpenses = toNumber(totalSalaryPayments);
-
     const totalExpenses = supplierExpenses + salaryExpenses;
-
     const netProfit = totalRevenue - totalExpenses;
 
     // =================================================
@@ -493,7 +539,6 @@ export const getAdminDashboard = async (req, res) => {
     // =================================================
 
     const totalPurchases = toNumber(totalPurchaseData);
-
     const purchaseDueAmount = toNumber(purchaseDueData);
 
     // =================================================
@@ -501,9 +546,7 @@ export const getAdminDashboard = async (req, res) => {
     // =================================================
 
     const totalSalary = toNumber(payrollData?.totalSalary);
-
     const paidSalary = toNumber(payrollData?.paidSalary);
-
     const pendingSalary = toNumber(payrollData?.pendingSalary);
 
     // =================================================
@@ -527,45 +570,25 @@ export const getAdminDashboard = async (req, res) => {
         case "pending":
           orderSummary.pending += count;
           break;
-
         case "picked_up":
         case "processing":
+        case "in_progress":
           orderSummary.processing += count;
           break;
-
         case "ready_for_delivery":
         case "out_for_delivery":
           orderSummary.ready += count;
           break;
-
         case "delivered":
+        case "completed":
           orderSummary.delivered += count;
           break;
-
         case "cancelled":
+        case "canceled":
           orderSummary.cancelled += count;
           break;
-
         default:
           break;
-      }
-    });
-
-    orderStatusData.forEach((item) => {
-      const status = String(item.status || "").toLowerCase();
-
-      const count = toNumber(item.count);
-
-      if (status === "pending") {
-        orderSummary.pending = count;
-      } else if (status === "processing" || status === "in_progress") {
-        orderSummary.processing = count;
-      } else if (status === "ready") {
-        orderSummary.ready = count;
-      } else if (status === "delivered" || status === "completed") {
-        orderSummary.delivered = count;
-      } else if (status === "cancelled" || status === "canceled") {
-        orderSummary.cancelled = count;
       }
     });
 
@@ -575,6 +598,141 @@ export const getAdminDashboard = async (req, res) => {
 
     const activeOrders =
       orderSummary.pending + orderSummary.processing + orderSummary.ready;
+
+    // =================================================
+    // PICKUPS AND DELIVERIES
+    // =================================================
+
+    const pendingOrders = recentOrders.filter(
+      (o) => o.status === "pending",
+    );
+
+    const readyOrders = recentOrders.filter(
+      (o) =>
+        o.status === "ready_for_delivery" ||
+        o.status === "out_for_delivery",
+    );
+
+    const pickups = pendingOrders.slice(0, 5).map((o) => ({
+      id: o.id,
+      customer: o.customer?.name || `Order #${o.id}`,
+      time: o.pickup_time || "—",
+    }));
+
+    const deliveries = readyOrders.slice(0, 5).map((o) => ({
+      id: o.id,
+      customer: o.customer?.name || `Order #${o.id}`,
+      time: o.delivery_date
+        ? new Date(o.delivery_date).toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "short",
+          })
+        : "—",
+    }));
+
+    // =================================================
+    // EMPLOYEE TASKS AGGREGATION
+    // =================================================
+
+    const taskMap = {};
+    employeeTaskData.forEach((task) => {
+      const empName = task["employee.name"] || "Employee";
+      const empId = task.employee_id;
+      if (!taskMap[empId]) {
+        taskMap[empId] = { name: empName, orders: 0 };
+      }
+      taskMap[empId].orders += 1;
+    });
+
+    const employeeTasks = Object.values(taskMap)
+      .sort((a, b) => b.orders - a.orders)
+      .slice(0, 6);
+
+    // =================================================
+    // TOP SERVICES
+    // =================================================
+
+    const topServices = topServiceData.map((item) => ({
+      id: item.serviceId,
+      name: item["service.serviceName"] || "Unknown Service",
+      orderCount: toNumber(item.orderCount),
+      totalQuantity: toNumber(item.totalQuantity),
+    }));
+
+    // =================================================
+    // REVENUE CHART DATA (last 7 days)
+    // =================================================
+
+    const buildRevenueChart = (days, ordersData) => {
+      const now = new Date();
+      const buckets = [];
+
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        d.setHours(0, 0, 0, 0);
+
+        const key = d.toDateString();
+        const label =
+          days <= 7
+            ? d.toLocaleDateString("en-US", { weekday: "short" })
+            : d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+
+        buckets.push({ key, label, value: 0 });
+      }
+
+      const bucketMap = new Map(buckets.map((b) => [b.key, b]));
+
+      ordersData.forEach((order) => {
+        if (order.status === "cancelled") return;
+        const d = new Date(order.createdAt);
+        d.setHours(0, 0, 0, 0);
+        const bucket = bucketMap.get(d.toDateString());
+        if (bucket) {
+          bucket.value += Number(order.total_amount) || 0;
+        }
+      });
+
+      return buckets.map(({ label, value }) => ({ label, value }));
+    };
+
+    const revenue = {
+      daily: buildRevenueChart(7, recentOrderData),
+      weekly: buildRevenueChart(4, recentOrderData.map((o) => {
+        // Group by week
+        const d = new Date(o.createdAt);
+        const weekStart = new Date(d);
+        weekStart.setDate(d.getDate() - d.getDay());
+        weekStart.setHours(0, 0, 0, 0);
+        return { ...o, createdAt: weekStart.toISOString() };
+      })),
+      monthly: (() => {
+        // Build last 6 months
+        const now = new Date();
+        const months = [];
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          months.push({
+            key: `${d.getFullYear()}-${d.getMonth()}`,
+            label: d.toLocaleDateString("en-IN", { month: "short" }),
+            value: 0,
+          });
+        }
+        const monthMap = new Map(months.map((m) => [m.key, m]));
+
+        recentOrderData.forEach((order) => {
+          if (order.status === "cancelled") return;
+          const d = new Date(order.createdAt);
+          const mKey = `${d.getFullYear()}-${d.getMonth()}`;
+          const bucket = monthMap.get(mKey);
+          if (bucket) {
+            bucket.value += Number(order.total_amount) || 0;
+          }
+        });
+
+        return months.map(({ label, value }) => ({ label, value }));
+      })(),
+    };
 
     // =================================================
     // RECENT ACTIVITIES
@@ -599,11 +757,11 @@ export const getAdminDashboard = async (req, res) => {
         date: purchase.purchaseDate || purchase.createdAt,
       })),
 
-      ...recentOrders.map((order) => ({
+      ...recentOrders.slice(0, 5).map((order) => ({
         id: `order-${order.id}`,
         type: "ORDER",
         title: `Order #${order.id} created`,
-        amount: toNumber(order.totalAmount),
+        amount: toNumber(order.total_amount),
         status: order.status,
         date: order.createdAt,
       })),
@@ -652,11 +810,9 @@ export const getAdminDashboard = async (req, res) => {
 
       // ===============================================
       // RECENT ORDERS
-      //
-      // Order ID | Customer | Employee | Amount | Status
       // ===============================================
 
-      recentOrders,
+      recentOrders: recentOrders.slice(0, 5),
 
       // ===============================================
       // EMPLOYEE / BUSINESS DATA
@@ -666,20 +822,38 @@ export const getAdminDashboard = async (req, res) => {
         totalEmployees,
         presentToday,
         absentToday,
-
         totalSuppliers,
-
         totalInventoryItems,
-
         lowStockCount: lowStockItems.length,
-
         totalPurchases,
         purchaseDueAmount,
-
         totalSalary,
         paidSalary,
         pendingSalary,
       },
+
+      // ===============================================
+      // ATTENDANCE (used by dashboard)
+      // ===============================================
+
+      attendance: {
+        present: toNumber(presentToday),
+        absent: toNumber(absentToday),
+        late: toNumber(lateToday),
+      },
+
+      // ===============================================
+      // EMPLOYEE TASKS
+      // ===============================================
+
+      employeeTasks,
+
+      // ===============================================
+      // PICKUPS & DELIVERIES
+      // ===============================================
+
+      pickups,
+      deliveries,
 
       // ===============================================
       // PAYMENT DATA
@@ -691,6 +865,18 @@ export const getAdminDashboard = async (req, res) => {
         salaryPayments: salaryExpenses,
         totalExpenses,
       },
+
+      // ===============================================
+      // REVENUE CHART DATA
+      // ===============================================
+
+      revenue,
+
+      // ===============================================
+      // TOP SERVICES
+      // ===============================================
+
+      topServices,
 
       // ===============================================
       // INVENTORY
@@ -716,26 +902,11 @@ export const getAdminDashboard = async (req, res) => {
 
       charts: {
         orderStatus: [
-          {
-            name: "Pending",
-            value: orderSummary.pending,
-          },
-          {
-            name: "Processing",
-            value: orderSummary.processing,
-          },
-          {
-            name: "Ready",
-            value: orderSummary.ready,
-          },
-          {
-            name: "Delivered",
-            value: orderSummary.delivered,
-          },
-          {
-            name: "Cancelled",
-            value: orderSummary.cancelled,
-          },
+          { name: "Pending", value: orderSummary.pending },
+          { name: "Processing", value: orderSummary.processing },
+          { name: "Ready", value: orderSummary.ready },
+          { name: "Delivered", value: orderSummary.delivered },
+          { name: "Cancelled", value: orderSummary.cancelled },
         ],
       },
     });

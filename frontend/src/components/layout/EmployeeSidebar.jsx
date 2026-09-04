@@ -19,6 +19,7 @@ import {
   LogOut,
   Droplet,
   X,
+  Wallet,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
@@ -42,6 +43,7 @@ const NAV_SECTIONS = [
       { icon: Users, label: "Customers", to: "/employee/customers" },
       { icon: Clock, label: "My Attendance", to: "/employee/attendance" },
       { icon: CalendarDays, label: "My Leaves", to: "/employee/leaves" },
+      { icon: Wallet, label: "My Payroll", to: "/employee/payroll" },
       { icon: ShieldCheck, label: "Complaints", to: "/employee/complaints" },
     ],
   },

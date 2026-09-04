@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import { Op } from "sequelize";
-import { Employee, Shop } from "../models/index.js";
+import { Employee, Shop, Task, Order } from "../models/index.js";
 import { getShopPlan } from "../utils/subscription.js";
+import { notifyShopAdmins } from "./notification.controller.js";
 
 // ============================================================
 // Helper — generates a readable temporary password
@@ -557,9 +558,57 @@ export const deactivateEmployee = async (req, res) => {
 
     await employee.save();
 
+    // ==========================================================
+    // CHECK FOR PENDING/IN-PROGRESS TASKS
+    // Notify the admin so they can reassign
+    // ==========================================================
+
+    const pendingTasks = await Task.findAll({
+      where: {
+        employee_id: employee.id,
+        status: { [Op.in]: ["pending", "in_progress"] },
+      },
+      include: [
+        {
+          model: Order,
+          as: "order",
+          attributes: ["id", "status"],
+          required: false,
+        },
+      ],
+    });
+
+    if (pendingTasks.length > 0) {
+      const taskTypes = pendingTasks
+        .map((t) => {
+          const labels = {
+            pickup: "Pickup",
+            wash: "Wash",
+            dry: "Dry Cleaning",
+            iron: "Ironing",
+            pack: "Packing",
+            delivery: "Delivery",
+          };
+          const label = labels[t.task_type] || t.task_type;
+          const orderRef = t.order_id ? ` (Order #${t.order_id})` : "";
+          return `${label}${orderRef}`;
+        })
+        .join(", ");
+
+      await notifyShopAdmins(employee.shop_id, {
+        title: "Employee deactivated - tasks need reassignment",
+        message: `${employee.name} has been deactivated but has ${pendingTasks.length} pending task${pendingTasks.length > 1 ? "s" : ""}: ${taskTypes}. Please reassign them to an active employee.`,
+        type: "system",
+        link: "/admin/tasks",
+      });
+    }
+
     return res.status(200).json({
       success: true,
-      message: "Employee deactivated",
+      message: pendingTasks.length > 0
+        ? `Employee deactivated. ${pendingTasks.length} pending task${pendingTasks.length > 1 ? "s" : ""} require${pendingTasks.length === 1 ? "s" : ""} reassignment.`
+        : "Employee deactivated",
+      pendingTaskCount: pendingTasks.length,
     });
   } catch (error) {
     console.error("Deactivate employee error:", error);

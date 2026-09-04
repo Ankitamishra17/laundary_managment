@@ -136,7 +136,7 @@ export const getAllTasks = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "name", "email", "designation", "shop_id"],
+          attributes: ["id", "name", "email", "designation", "shop_id", "status"],
         },
         {
           model: Order,
@@ -668,54 +668,96 @@ export const updateTaskStatus = async (req, res) => {
     }
 
     // --- NOTIFICATIONS ------------------------------------------------
-    // 1) The shop admin
-    const shopIdForAdmin = task.employee?.shop_id || freshOrder?.shop_id || task.order?.shop_id;
-    const orderRef = task.order ? ` for order #${task.order.id}` : "";
-    const doneWord = status === "completed" ? "completed" : status === "in_progress" ? "started" : "updated";
-    const typeLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
-    await notifyShopAdmins(shopIdForAdmin, {
-      title: "Task update from employee",
-      message: `${task.employee?.name || "An employee"} ${doneWord} the ${typeLabel} task${orderRef}.${
-        status === "completed" && task.task_type !== "delivery" && task.task_type !== "pickup"
-          ? " Order is ready for delivery — assign a delivery employee."
-          : ""
-      }`,
-      type: "task",
-      link: "/admin/tasks",
-    });
-
-    // 2) The next assigned employee — so they know their task is ready
+    // Resolve the next task and its employee (used by multiple sections)
+    let nextTask = null;
+    let nextEmployee = null;
     if (status === "completed" && task.order_id) {
       if (!allOrderTasks) allOrderTasks = await getOrderTasksSorted(task.order_id);
-      const next = findNextTask(task.task_type, allOrderTasks);
-      if (next && next.employee_id && next.employee_id !== task.employee_id) {
-        const completedLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
-        const nextLabel = TASK_TYPE_LABELS[next.task_type] || next.task_type;
-        const employeeName = task.employee?.name || "An employee";
-        const orderId = task.order?.id || task.order_id;
-        const customerName = task.customer_name || task.order?.customer?.name || "the customer";
+      nextTask = findNextTask(task.task_type, allOrderTasks);
+      if (nextTask && nextTask.employee_id) {
+        nextEmployee = await Employee.findByPk(nextTask.employee_id, {
+          attributes: ["id", "name"],
+        }).catch(() => null);
+      }
+    }
+
+    const shopIdForAdmin = task.employee?.shop_id || freshOrder?.shop_id || task.order?.shop_id;
+    const typeLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
+    const orderId = task.order?.id || task.order_id;
+    const customerName = task.customer_name || task.order?.customer?.name || "the customer";
+    const newOrderStatus = freshOrder?.status || task.order?.status;
+    const orderStatusChanged = previousOrderStatus !== newOrderStatus && newOrderStatus;
+
+    // 1) Notify the shop admin — comprehensive update
+    if (status === "completed") {
+      // Build a detailed admin notification about the completed task
+      let adminMessage = `${task.employee?.name || "An employee"} completed the ${typeLabel} task for ${customerName}'s Order #${orderId}.`;
+
+      // Include next assigned employee info
+      if (nextTask && nextEmployee) {
+        const nextLabel = TASK_TYPE_LABELS[nextTask.task_type] || nextTask.task_type;
+        if (nextEmployee.id === task.employee_id) {
+          adminMessage += ` Next task (${nextLabel}) auto-activated for the same employee.`;
+        } else {
+          adminMessage += ` Next task (${nextLabel}) assigned to ${nextEmployee.name}.`;
+        }
+      } else if (task.task_type === "delivery") {
+        adminMessage += ` Order is now delivered!`;
+      } else if (task.task_type !== "pickup") {
+        adminMessage += ` Order is ready for delivery — assign a delivery employee.`;
+      }
+
+      // Include order status change info
+      if (orderStatusChanged) {
+        adminMessage += ` Order status: ${ORDER_STATUS_LABELS[previousOrderStatus] || previousOrderStatus} → ${ORDER_STATUS_LABELS[newOrderStatus] || newOrderStatus}.`;
+      }
+
+      await notifyShopAdmins(shopIdForAdmin, {
+        title: `Task completed: ${typeLabel}`,
+        message: adminMessage,
+        type: "task",
+        orderId: orderId,
+        link: "/admin/tasks",
+      });
+    } else {
+      // For in_progress or other status changes, send a simpler notification
+      const doneWord = status === "in_progress" ? "started" : "updated";
+      await notifyShopAdmins(shopIdForAdmin, {
+        title: "Task update from employee",
+        message: `${task.employee?.name || "An employee"} ${doneWord} the ${typeLabel} task for Order #${orderId}.${
+          orderStatusChanged
+            ? ` Order status: ${ORDER_STATUS_LABELS[previousOrderStatus] || previousOrderStatus} → ${ORDER_STATUS_LABELS[newOrderStatus] || newOrderStatus}.`
+            : ""
+        }`,
+        type: "task",
+        orderId: orderId,
+        link: "/admin/tasks",
+      });
+    }
+
+    // 2) Notify the next assigned employee — so they know their task is ready
+    if (status === "completed" && nextTask) {
+      const completedLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
+      const nextLabel = TASK_TYPE_LABELS[nextTask.task_type] || nextTask.task_type;
+
+      if (nextTask.employee_id !== task.employee_id) {
+        // Different employee — they need to start the task themselves
         await createNotification({
-          employeeId: next.employee_id,
-          taskId: next.id,
+          employeeId: nextTask.employee_id,
+          taskId: nextTask.id,
           orderId: orderId,
-          title: `${completedLabel} Completed — Your ${nextLabel} is ready`,
-          message: `${completedLabel} completed by ${employeeName} for ${customerName}'s Order #${orderId}. Your ${nextLabel} task is ready to start.`,
+          title: `${completedLabel} done — your ${nextLabel} is ready`,
+          message: `${task.employee?.name || "An employee"} completed ${completedLabel} for ${customerName}'s Order #${orderId}. Your ${nextLabel} task is ready to start.`,
           type: "task",
           link: "/employee/mytask",
         });
-      }
-      // Same employee — they got auto-activated, but still notify so the
-      // bell badge updates and they see "your next task is ready".
-      if (next && next.employee_id === task.employee_id && next.status === "in_progress") {
-        const completedLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
-        const nextLabel = TASK_TYPE_LABELS[next.task_type] || next.task_type;
-        const orderId = task.order?.id || task.order_id;
-        const customerName = task.customer_name || task.order?.customer?.name || "the customer";
+      } else if (nextTask.status === "in_progress") {
+        // Same employee — auto-activated, notify so bell badge updates
         await createNotification({
-          employeeId: next.employee_id,
-          taskId: next.id,
+          employeeId: nextTask.employee_id,
+          taskId: nextTask.id,
           orderId: orderId,
-          title: `${completedLabel} Done — Next: ${nextLabel}`,
+          title: `${completedLabel} done — next: ${nextLabel}`,
           message: `Your ${completedLabel.toLowerCase()} task for ${customerName}'s Order #${orderId} is completed. Your next task is ${nextLabel} — it's ready to go.`,
           type: "task",
           link: "/employee/mytask",
@@ -723,15 +765,13 @@ export const updateTaskStatus = async (req, res) => {
       }
     }
 
-    // 3) The customer
+    // 3) Notify the customer about order status changes
     const effectiveOrder = freshOrder || task.order;
     if (effectiveOrder) {
       const orderStatus = effectiveOrder.status;
-      const orderId = effectiveOrder.id;
       const customerObj = effectiveOrder.customer || null;
 
       // When delivery task is completed, always send the review prompt
-      // notification so the customer knows they can review.
       if (task.task_type === "delivery" && status === "completed") {
         await notifyCustomer(customerObj, {
           title: "Order delivered — Review us!",
@@ -740,9 +780,9 @@ export const updateTaskStatus = async (req, res) => {
           orderId: orderId,
           link: "/customer/reviews",
         });
-      } else if (previousOrderStatus !== orderStatus) {
+      } else if (orderStatusChanged) {
         await notifyCustomer(customerObj, {
-          title: "Order updated",
+          title: "Order status updated",
           message: `Your order #${orderId} is now ${ORDER_STATUS_LABELS[orderStatus] || orderStatus}.`,
           type: "order",
           orderId: orderId,

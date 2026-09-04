@@ -5,11 +5,13 @@ import Order from "../models/Order.js";
 import OrderItem from "../models/OrderItem.js";
 import Customer from "../models/Customer.js";
 import Shop from "../models/Shop.js";
+import Invoice from "../models/Invoice.js";
 import Service from "../models/Service.js";
 import Employee from "../models/Employee.js";
 import Task from "../models/Tasks.js";
 import { notifyShopAdmins, notifyCustomer } from "./notification.controller.js";
 import { getShopPlan, countShopOrdersThisMonth } from "../utils/subscription.js";
+import { sendInvoiceEmail } from "../utils/invoiceEmail.js";
 
 const STATUS_LABELS = {
   pending: "Pending",
@@ -349,6 +351,32 @@ export const cancelMyOrder = async (req, res) => {
   }
 };
 
+
+// const reorderOrder = async(req,res)=>{
+//   const oldOrder = await Order.findByPk(req.params.orderId);
+
+//   if(!oldOrder){
+//     return res.status(404).json({
+//       success:false,
+//       message:"Order not found"
+//     })
+//   }
+
+// const newOrder = await Order.create({
+//   customerId: oldOrder.customerId,
+//   shopId:oldOrder.shopId,
+//   totalAmount: oldOrder.totalAmount,
+//   status:'Pending',
+//   reorderOrderFromOrderId: oldOrder.id
+
+// });
+
+// res.status(201).json({
+//   success:true,
+//   message:"Order reordered successfully",
+//   order:newOrder
+// })
+// }
 // ============================================================
 // ADMIN — all orders of my shop
 // GET /api/orders
@@ -429,6 +457,83 @@ export const updateOrderStatus = async (req, res) => {
         type: "order",
         link: "/customer/reviews",
       });
+
+      // Auto-generate invoice when order is delivered
+      try {
+        const existingInvoice = await Invoice.findOne({ where: { orderId: order.id } });
+        if (!existingInvoice) {
+          const orderWithItems = await Order.findByPk(order.id, {
+            include: [
+              { model: OrderItem, as: "items" },
+              { model: Shop, as: "shop" },
+            ],
+          });
+          const shopObj = orderWithItems?.shop;
+          const customerObj = customer;
+
+          const itemsSnapshot = (orderWithItems?.items || []).map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: Number(item.price),
+            lineTotal: Number(item.lineTotal),
+            itemLabel: item.item_label || null,
+          }));
+          const subtotal = itemsSnapshot.reduce((sum, item) => sum + Number(item.lineTotal), 0);
+
+          // Generate invoice number with shop code prefix
+          const shopPrefix = shopObj?.shopCode
+            ? shopObj.shopCode.toUpperCase().slice(0, 2)
+            : "INV";
+          const seqPrefix = `${shopPrefix}-INV-`;
+          const lastInv = await Invoice.findOne({
+            where: { shopId: order.shop_id, invoiceNumber: { [Op.like]: `${seqPrefix}%` } },
+            order: [["invoiceNumber", "DESC"]],
+          });
+          let seq = 1;
+          if (lastInv) {
+            const parts = lastInv.invoiceNumber.split("-");
+            seq = parseInt(parts[2], 10) + 1;
+          }
+          const invoiceNumber = `${seqPrefix}${String(seq).padStart(5, "0")}`;
+
+          const dueDate = new Date();
+          dueDate.setDate(dueDate.getDate() + 30);
+
+          const newInvoice = await Invoice.create({
+            invoiceNumber,
+            orderId: order.id,
+            customerId: order.customer_id,
+            shopId: order.shop_id,
+            items: itemsSnapshot,
+            subtotal: Number(subtotal.toFixed(2)),
+            taxRate: 0,
+            taxAmount: 0,
+            discount: 0,
+            deliveryCharge: 0,
+            total: Number(subtotal.toFixed(2)),
+            paymentStatus: order.payment_status === "paid" ? "Paid" : "Unpaid",
+            amountPaid: order.payment_status === "paid" ? Number(subtotal.toFixed(2)) : 0,
+            issuedDate: new Date().toISOString().split("T")[0],
+            dueDate: dueDate.toISOString().split("T")[0],
+            customerName: customerObj?.name || null,
+            customerEmail: customerObj?.email || null,
+            customerPhone: customerObj?.phone || null,
+            customerAddress: customerObj?.address || null,
+            shopName: shopObj?.name || null,
+            shopAddress: shopObj?.address || null,
+            shopPhone: shopObj?.phone || null,
+            shopGstNumber: shopObj?.gstNumber || null,
+          });
+
+          // Send invoice email to customer (non-blocking)
+          sendInvoiceEmail(newInvoice.toJSON()).catch((err) => {
+            console.error("Auto-invoice email failed (non-blocking):", err.message);
+          });
+        }
+      } catch (invErr) {
+        console.error("Auto-invoice generation failed:", invErr.message);
+        // Non-critical — don't fail the status update
+      }
     } else {
       await notifyCustomer(customer, {
         title: "Order status updated",
