@@ -4,6 +4,86 @@ import InventoryItem from "../models/InventoryItem.js";
 import User from "../models/User.js";
 
 // ============================================================
+// TENANT ISOLATION CORE
+// ============================================================
+//
+// IMPOSSIBLE_WHERE is returned whenever a request has no legitimate
+// scope (unknown role, missing shopId/id, or super_admin hitting the
+// general API). Sequelize will simply find zero rows for it — this
+// is what makes "return nothing" and "return 404" safe defaults
+// instead of accidentally matching every row.
+// ============================================================
+
+const IMPOSSIBLE_WHERE = { id: -1 };
+
+// Customers must only ever be able to read/count/mark notifications
+// that represent a delivered order. This is intentionally baked into
+// scopeWhere() itself (rather than left to each handler to remember)
+// so no future endpoint can forget to apply it.
+const deliveredOrderFilter = () => ({
+  type: "order",
+  title: { [Op.like]: "%delivered%" },
+});
+
+// The single source of truth for "what can this authenticated user
+// see". Never trusts shopId/userId from query, body, or params —
+// only from the verified JWT payload (req.user).
+const scopeWhere = (req) => {
+  const user = req.user || {};
+  const { role, id, shopId } = user;
+
+  if (!role || !id) {
+    return IMPOSSIBLE_WHERE;
+  }
+
+  if (role === "admin") {
+    if (!shopId) return IMPOSSIBLE_WHERE;
+    return {
+      shopId,
+      userId: id,
+    };
+  }
+
+  if (role === "employee") {
+    if (!shopId) return IMPOSSIBLE_WHERE;
+    return {
+      shopId,
+      employeeId: id,
+    };
+  }
+
+  if (role === "customer") {
+    if (!shopId) return IMPOSSIBLE_WHERE;
+    return {
+      shopId,
+      userId: id,
+      ...deliveredOrderFilter(),
+    };
+  }
+
+  // super_admin (and any unrecognized role) must never receive
+  // normal shop-user notifications through this API.
+  return IMPOSSIBLE_WHERE;
+};
+
+// Separate scope helper for LOW_STOCK — admin-only, always includes
+// type: "LOW_STOCK" so it can never be confused with general scope.
+const lowStockScopeWhere = (req) => {
+  const user = req.user || {};
+  const { role, id, shopId } = user;
+
+  if (role !== "admin" || !shopId || !id) {
+    return IMPOSSIBLE_WHERE;
+  }
+
+  return {
+    shopId,
+    userId: id,
+    type: "LOW_STOCK",
+  };
+};
+
+// ============================================================
 // CREATE NOTIFICATION
 // Supports:
 // - Inventory / low-stock notifications
@@ -11,6 +91,7 @@ import User from "../models/User.js";
 // - Employee notifications
 // - Task notifications
 // - Order notifications
+// - Subscription notifications (admin-facing)
 // ============================================================
 
 export const createNotification = async ({
@@ -20,6 +101,10 @@ export const createNotification = async ({
   inventoryItemId = null,
   taskId = null,
   orderId = null,
+  subscriptionId = null,
+  daysRemaining = null,
+  notificationDate = null,
+  emailSent = false,
   title,
   message,
   type = "system",
@@ -40,6 +125,10 @@ export const createNotification = async ({
       inventoryItemId,
       taskId,
       orderId,
+      subscriptionId,
+      daysRemaining,
+      notificationDate,
+      emailSent,
       title,
       message,
       type,
@@ -56,6 +145,9 @@ export const createNotification = async ({
 
 // ============================================================
 // NOTIFY SHOP ADMINS
+// Only ever targets admins belonging to the given shopId — the
+// query itself is the isolation, so an admin from another shop can
+// never receive one of these.
 // ============================================================
 
 export const notifyShopAdmins = async (shopId, payload) => {
@@ -97,6 +189,10 @@ export const notifyShopAdmins = async (shopId, payload) => {
 
 // ============================================================
 // NOTIFY CUSTOMER
+// If payload.shopId is supplied and disagrees with the customer's
+// own shopId, the notification is refused outright — this prevents
+// a caller from accidentally (or maliciously) cross-wiring a
+// customer notification into another shop's tenant.
 // ============================================================
 
 export const notifyCustomer = async (customer, payload) => {
@@ -105,10 +201,25 @@ export const notifyCustomer = async (customer, payload) => {
       return null;
     }
 
+    const customerShopId = customer.shopId ?? null;
+
+    if (
+      payload.shopId != null &&
+      customerShopId != null &&
+      Number(payload.shopId) !== Number(customerShopId)
+    ) {
+      console.error(
+        "Notify Customer Error: shop mismatch — notification blocked.",
+      );
+      return null;
+    }
+
+    const resolvedShopId = customerShopId ?? payload.shopId ?? null;
+
     return await createNotification({
       ...payload,
       userId: customer.userId,
-      shopId: customer.shopId || payload.shopId || null,
+      shopId: resolvedShopId,
     });
   } catch (error) {
     console.error("Notify Customer Error:", error.message);
@@ -118,6 +229,7 @@ export const notifyCustomer = async (customer, payload) => {
 
 // ============================================================
 // NOTIFY EMPLOYEE
+// Same cross-tenant guard as notifyCustomer, applied to employees.
 // ============================================================
 
 export const notifyEmployee = async (employee, payload) => {
@@ -126,10 +238,25 @@ export const notifyEmployee = async (employee, payload) => {
       return null;
     }
 
+    const employeeShopId = employee.shop_id ?? employee.shopId ?? null;
+
+    if (
+      payload.shopId != null &&
+      employeeShopId != null &&
+      Number(payload.shopId) !== Number(employeeShopId)
+    ) {
+      console.error(
+        "Notify Employee Error: shop mismatch — notification blocked.",
+      );
+      return null;
+    }
+
+    const resolvedShopId = employeeShopId ?? payload.shopId ?? null;
+
     return await createNotification({
       ...payload,
       employeeId: employee.id,
-      shopId: employee.shop_id || employee.shopId || payload.shopId || null,
+      shopId: resolvedShopId,
     });
   } catch (error) {
     console.error("Notify Employee Error:", error.message);
@@ -138,56 +265,17 @@ export const notifyEmployee = async (employee, payload) => {
 };
 
 // ============================================================
-// GET NOTIFICATION SCOPE
+// GENERAL NOTIFICATIONS — shared implementations
+//
+// These power BOTH the original names (getMyNotifications,
+// getUnreadCount, markRead, markAllRead) and the newer explicit
+// names (getNotifications, getUnreadNotificationCount,
+// markNotificationAsRead, markAllNotificationsAsRead). Both sets
+// are exported further down, pointing at the exact same function —
+// one implementation, zero drift risk between the two names.
 // ============================================================
 
-const scopeWhere = (req) => {
-  const { role, id, shopId } = req.user;
-
-  // Default: impossible condition
-  const where = {
-    id: -1,
-  };
-
-  if (role === "admin") {
-    if (!shopId || !id) return where;
-
-    return {
-      shopId,
-      userId: id,
-    };
-  }
-
-  if (role === "customer") {
-    if (!id) return where;
-
-    return {
-      userId: id,
-    };
-  }
-
-  if (role === "employee") {
-    if (!id) return where;
-
-    return {
-      employeeId: id,
-    };
-  }
-
-  if (role === "super_admin") {
-    return {
-      id: -1,
-    };
-  }
-
-  return where;
-};
-
-// ============================================================
-// GET MY ALL NOTIFICATIONS
-// ============================================================
-
-export const getMyNotifications = async (req, res) => {
+async function handleGetScopedNotifications(req, res) {
   try {
     const notifications = await Notification.findAll({
       where: scopeWhere(req),
@@ -209,16 +297,20 @@ export const getMyNotifications = async (req, res) => {
         },
       ],
 
-      order: [["createdAt", "DESC"]],
+      order: [
+        ["isRead", "ASC"],
+        ["createdAt", "DESC"],
+      ],
       limit: 60,
     });
 
     return res.status(200).json({
       success: true,
+      count: notifications.length,
       data: notifications,
     });
   } catch (error) {
-    console.error("Get My Notifications Error:", error);
+    console.error("Get Notifications Error:", error);
 
     return res.status(500).json({
       success: false,
@@ -226,13 +318,9 @@ export const getMyNotifications = async (req, res) => {
       error: error.message,
     });
   }
-};
+}
 
-// ============================================================
-// GET UNREAD NOTIFICATION COUNT
-// ============================================================
-
-export const getUnreadCount = async (req, res) => {
+async function handleGetUnreadCount(req, res) {
   try {
     const count = await Notification.count({
       where: {
@@ -256,23 +344,22 @@ export const getUnreadCount = async (req, res) => {
       error: error.message,
     });
   }
-};
+}
 
-// ============================================================
-// MARK ONE NOTIFICATION AS READ
-// ============================================================
-
-export const markRead = async (req, res) => {
+async function handleMarkOneRead(req, res) {
   try {
     const notificationId = Number(req.params.id);
 
-    if (!notificationId) {
+    if (!notificationId || Number.isNaN(notificationId)) {
       return res.status(400).json({
         success: false,
         message: "Valid notification ID is required.",
       });
     }
 
+    // Deliberately NOT findByPk() — the tenant scope must be part of
+    // the WHERE clause itself, so a notification belonging to
+    // another shop/user simply does not match and returns 404.
     const notification = await Notification.findOne({
       where: {
         id: notificationId,
@@ -306,13 +393,9 @@ export const markRead = async (req, res) => {
       error: error.message,
     });
   }
-};
+}
 
-// ============================================================
-// MARK ALL MY NOTIFICATIONS AS READ
-// ============================================================
-
-export const markAllRead = async (req, res) => {
+async function handleMarkAllRead(req, res) {
   try {
     const [updatedCount] = await Notification.update(
       {
@@ -342,15 +425,31 @@ export const markAllRead = async (req, res) => {
       error: error.message,
     });
   }
-};
+}
+
+// ---- Original general-API names (preserved) ----
+export const getMyNotifications = handleGetScopedNotifications;
+export const getUnreadCount = handleGetUnreadCount;
+export const markRead = handleMarkOneRead;
+export const markAllRead = handleMarkAllRead;
+
+// ---- Explicit general-API names (previously collided with the
+//      LOW_STOCK functions of the same name — now unambiguous) ----
+export const getNotifications = handleGetScopedNotifications;
+export const getUnreadNotificationCount = handleGetUnreadCount;
+export const markNotificationAsRead = handleMarkOneRead;
+export const markAllNotificationsAsRead = handleMarkAllRead;
 
 // ============================================================
-// GET ACTIVE LOW-STOCK NOTIFICATIONS
+// LOW-STOCK NOTIFICATIONS (ADMIN ONLY)
+// Renamed from the old getNotifications / getUnreadNotificationCount
+// / markNotificationAsRead / markAllNotificationsAsRead, which
+// previously collided with the general-API names above.
 // ============================================================
 
-export const getNotifications = async (req, res) => {
+export const getLowStockNotifications = async (req, res) => {
   try {
-    const { id: userId, shopId, role } = req.user;
+    const { id: userId, shopId, role } = req.user || {};
 
     if (role !== "admin") {
       return res.status(200).json({
@@ -414,13 +513,9 @@ export const getNotifications = async (req, res) => {
   }
 };
 
-// ============================================================
-// GET UNREAD LOW-STOCK COUNT
-// ============================================================
-
-export const getUnreadNotificationCount = async (req, res) => {
+export const getLowStockUnreadNotificationCount = async (req, res) => {
   try {
-    const { id: userId, shopId, role } = req.user;
+    const { id: userId, shopId, role } = req.user || {};
 
     if (role !== "admin") {
       return res.status(200).json({
@@ -461,19 +556,29 @@ export const getUnreadNotificationCount = async (req, res) => {
   }
 };
 
-// ============================================================
-// MARK ONE LOW-STOCK NOTIFICATION AS READ
-// ============================================================
-
-export const markNotificationAsRead = async (req, res) => {
+export const markLowStockNotificationAsRead = async (req, res) => {
   try {
     const notificationId = Number(req.params.id);
-    const { id: userId, shopId, role } = req.user;
+    const { id: userId, shopId, role } = req.user || {};
 
     if (role !== "admin") {
       return res.status(403).json({
         success: false,
         message: "Only admin can access low-stock notifications.",
+      });
+    }
+
+    if (!notificationId || Number.isNaN(notificationId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid notification ID is required.",
+      });
+    }
+
+    if (!shopId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Admin or shop is not properly assigned.",
       });
     }
 
@@ -514,18 +619,21 @@ export const markNotificationAsRead = async (req, res) => {
   }
 };
 
-// ============================================================
-// MARK ALL LOW-STOCK NOTIFICATIONS AS READ
-// ============================================================
-
-export const markAllNotificationsAsRead = async (req, res) => {
+export const markAllLowStockNotificationsAsRead = async (req, res) => {
   try {
-    const { id: userId, shopId, role } = req.user;
+    const { id: userId, shopId, role } = req.user || {};
 
     if (role !== "admin") {
       return res.status(403).json({
         success: false,
         message: "Only admin can access low-stock notifications.",
+      });
+    }
+
+    if (!shopId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Admin or shop is not properly assigned.",
       });
     }
 
@@ -564,17 +672,34 @@ export const markAllNotificationsAsRead = async (req, res) => {
 
 // ============================================================
 // RESOLVE LOW-STOCK NOTIFICATION
+// Verifies: shopId ownership, userId ownership, type === LOW_STOCK,
+// currently unresolved, AND that the referenced InventoryItem also
+// belongs to this admin's shop before allowing resolution.
 // ============================================================
 
 export const resolveNotification = async (req, res) => {
   try {
     const notificationId = Number(req.params.id);
-    const { id: userId, shopId, role } = req.user;
+    const { id: userId, shopId, role } = req.user || {};
 
     if (role !== "admin") {
       return res.status(403).json({
         success: false,
         message: "Only admin can resolve low-stock notifications.",
+      });
+    }
+
+    if (!notificationId || Number.isNaN(notificationId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid notification ID is required.",
+      });
+    }
+
+    if (!shopId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Admin or shop is not properly assigned.",
       });
     }
 
@@ -652,13 +777,20 @@ export const resolveNotification = async (req, res) => {
 
 export const getNotificationHistory = async (req, res) => {
   try {
-    const { id: userId, shopId, role } = req.user;
+    const { id: userId, shopId, role } = req.user || {};
 
     if (role !== "admin") {
       return res.status(200).json({
         success: true,
         count: 0,
         data: [],
+      });
+    }
+
+    if (!shopId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Admin or shop is not properly assigned.",
       });
     }
 

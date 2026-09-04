@@ -1,522 +1,240 @@
+import { Op } from "sequelize";
 import crypto from "crypto";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+
+import sequelize from "../config/database.js";
 import User from "../models/User.js";
-import Employee from "../models/Employee.js";
-import Customer from "../models/Customer.js";
 import Shop from "../models/Shop.js";
-import generateToken from "../utils/generateToken.js";
-import { sendResetOtpEmail } from "../utils/Email.js";
+import Customer from "../models/Customer.js";
+import Employee from "../models/Employee.js";
 
 // ============================================================
-// Password reset (OTP via email)
+// CONFIG
 // ============================================================
 
-const RESET_OTP_TTL_MIN = 10;
-const RESET_OTP_PATTERN = /^\d{6}$/;
-const RESET_MAX_ATTEMPTS = 5;
-// Minimum wait between OTP emails for the same address — the public,
-// unauthenticated endpoint would otherwise let anyone spam a victim's inbox.
-const RESEND_COOLDOWN_MS = 60 * 1000;
+const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
-// In-memory store for password-reset OTPs, keyed by normalized email.
-// The code is stored hashed (bcrypt) and entries are removed on success,
-// expiry, or when a fresh code is requested. (A Redis-backed store would be
-// the scale-up path; consistent with the existing OTP attempt pattern.)
-const resetOtps = new Map();
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 
-function generateOtp() {
-  return String(crypto.randomInt(100000, 1000000));
-}
+const OTP_EXPIRES_MINUTES = Number(process.env.OTP_EXPIRES_MINUTES || 10);
 
-function normalizeEmail(email = "") {
-  return String(email).trim().toLowerCase();
-}
+// ============================================================
+// HELPERS
+// ============================================================
 
-// Accounts live in two tables: users (super_admin / admin / customer) and
-// employees. Returns the matched account plus which table it came from.
-async function findAccountByEmail(email) {
-  const user = await User.findOne({ where: { email } });
-  if (user) return { account: user, type: "user" };
-
-  const employee = await Employee.findOne({ where: { email } });
-  if (employee) return { account: employee, type: "employee" };
-
-  return null;
-}
-
-// POST /api/auth/forgot-password   { email }
-export const forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ success: false, message: "Please enter your registered email." });
-    }
-
-    const found = await findAccountByEmail(email);
-
-    // Respond the same whether or not an account exists (and whether or not
-    // it's active) so the endpoint can't be used to probe registered emails.
-    const genericOk = {
-      success: true,
-      message: "If an account exists with that email, a reset code has been sent.",
-    };
-
-    if (!found) return res.status(200).json(genericOk);
-
-    const { account, type } = found;
-    const isActive =
-      type === "user" ? account.isActive : account.status === "active";
-    if (!isActive) return res.status(200).json(genericOk);
-
-    // Don't reveal the resend-cooldown rejection either — keep the response
-    // shape identical whether or not the account exists.
-    const key = normalizeEmail(email);
-    const existing = resetOtps.get(key);
-    if (existing && Date.now() - existing.lastSentAt < RESEND_COOLDOWN_MS) {
-      return res.status(200).json(genericOk);
-    }
-
-    const otp = generateOtp();
-    resetOtps.set(key, {
-      hash: await bcrypt.hash(otp, 10),
-      expires: new Date(Date.now() + RESET_OTP_TTL_MIN * 60 * 1000),
-      attempts: 0,
-      lastSentAt: Date.now(),
-    });
-
-    try {
-      await sendResetOtpEmail(account.email, account.name, otp);
-    } catch (sendErr) {
-      // Don't leave a stored code the user never received
-      resetOtps.delete(key);
-      console.error("forgot-password email failed:", sendErr.message);
-      return res.status(500).json({ success: false, message: "Could not send the reset code. Please try again." });
-    }
-
-    return res.status(200).json(genericOk);
-  } catch (error) {
-    console.error("Forgot Password Error:", error);
-    return res.status(500).json({ success: false, message: error.message });
-  }
+const normalizeEmail = (email) => {
+  return String(email || "")
+    .trim()
+    .toLowerCase();
 };
 
-// POST /api/auth/verify-reset-otp   { email, otp }
-export const verifyResetOtp = async (req, res) => {
-  try {
-    const { email, otp } = req.body;
-    if (!email) {
-      return res.status(400).json({ success: false, message: "Email is required." });
-    }
-    if (!otp || !RESET_OTP_PATTERN.test(String(otp))) {
-      return res.status(400).json({ success: false, message: "Please enter the 6-digit code." });
-    }
-
-    const key = normalizeEmail(email);
-    const entry = resetOtps.get(key);
-
-    if (!entry) {
-      return res.status(400).json({
-        success: false,
-        message: "No reset code was requested for this email. Please request a new one.",
-      });
-    }
-
-    if (new Date(entry.expires) < new Date()) {
-      resetOtps.delete(key);
-      return res.status(400).json({ success: false, message: "This code has expired. Please request a new one." });
-    }
-
-    const match = await bcrypt.compare(String(otp), entry.hash);
-    if (!match) {
-      entry.attempts += 1;
-      if (entry.attempts >= RESET_MAX_ATTEMPTS) {
-        resetOtps.delete(key);
-        return res.status(400).json({ success: false, message: "Too many incorrect attempts. Please request a new code." });
-      }
-      const left = RESET_MAX_ATTEMPTS - entry.attempts;
-      return res.status(400).json({
-        success: false,
-        message: `Incorrect code. ${left} attempt${left > 1 ? "s" : ""} left.`,
-      });
-    }
-
-    // Success — consume the code and hand out a short-lived, purpose-scoped
-    // token so the next step can't be replayed with a different email.
-    resetOtps.delete(key);
-
-    const found = await findAccountByEmail(email);
-    if (!found) {
-      return res.status(400).json({ success: false, message: "Account no longer exists. Please contact support." });
-    }
-
-    const token = jwt.sign(
-      { id: found.account.id, type: found.type, purpose: "password_reset" },
-      process.env.JWT_SECRET,
-      { expiresIn: `${RESET_OTP_TTL_MIN}m` }
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: "Code verified successfully.",
-      token,
-    });
-  } catch (error) {
-    console.error("Verify Reset OTP Error:", error);
-    return res.status(500).json({ success: false, message: error.message });
-  }
+const normalizePhone = (phone) => {
+  return String(phone || "")
+    .trim()
+    .replace(/\s+/g, "");
 };
 
-// POST /api/auth/reset-password   { token, newPassword }
-export const resetPassword = async (req, res) => {
-  try {
-    const { token, newPassword, confirmPassword } = req.body;
+const normalizeSlug = (slug) => {
+  return String(slug || "")
+    .trim()
+    .toLowerCase();
+};
 
-    if (!token) {
-      return res.status(400).json({ success: false, message: "Reset token is missing. Please start over." });
-    }
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: "New password must be at least 6 characters." });
-    }
-    if (newPassword !== confirmPassword) {
-      return res.status(400).json({ success: false, message: "New password and confirm password do not match." });
-    }
+const normalizeRole = (role) => {
+  return String(role || "")
+    .trim()
+    .toLowerCase();
+};
 
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } catch (err) {
-      const message =
-        err.name === "TokenExpiredError"
-          ? "This reset link has expired. Please request a new code."
-          : "Invalid reset link. Please request a new code.";
-      return res.status(400).json({ success: false, message });
-    }
+const safeUser = (user) => {
+  if (!user) return null;
 
-    if (decoded.purpose !== "password_reset") {
-      return res.status(400).json({ success: false, message: "Invalid reset link. Please request a new code." });
-    }
+  const data = user.toJSON ? user.toJSON() : { ...user };
 
-    if (decoded.type === "employee") {
-      const employee = await Employee.findByPk(decoded.id);
-      if (!employee) return res.status(404).json({ success: false, message: "Account not found." });
+  delete data.password;
+  delete data.resetOtp;
+  delete data.resetOtpExpires;
 
-      const isSame = await employee.comparePassword(newPassword);
-      if (isSame) {
-        return res.status(400).json({ success: false, message: "New password must be different from your current password." });
-      }
-
-      employee.password = newPassword; // hashed automatically by the model hook
-      await employee.save();
-    } else {
-      const user = await User.findByPk(decoded.id);
-      if (!user) return res.status(404).json({ success: false, message: "Account not found." });
-
-      const isSame = await bcrypt.compare(newPassword, user.password);
-      if (isSame) {
-        return res.status(400).json({ success: false, message: "New password must be different from your current password." });
-      }
-
-      user.password = await bcrypt.hash(newPassword, 10);
-      user.mustChangePassword = false;
-      await user.save();
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Password reset successfully. You can now sign in with your new password.",
-    });
-  } catch (error) {
-    console.error("Reset Password Error:", error);
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return data;
 };
 
 // ============================================================
-// Customer self sign-up (public)
-// Creates the login account (users table, role "customer") plus
-// the customer profile record (customers table).
+// JWT
 // ============================================================
-export const register = async (req, res) => {
-  try {
-    const { name, email, phone, password, shopId, address, city } = req.body;
 
-    // ============================================================
-    // VALIDATION
-    // ============================================================
-
-    if (!name || !email || !phone || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Please fill all required fields.",
-      });
-    }
-
-    if (!shopId) {
-      return res.status(400).json({
-        success: false,
-        message: "Please register through a valid shop.",
-      });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: "Password must be at least 6 characters.",
-      });
-    }
-
-    // ============================================================
-    // CHECK EMAIL
-    // ============================================================
-
-    const existing = await User.findOne({
-      where: { email },
-    });
-
-    if (existing) {
-      return res.status(409).json({
-        success: false,
-        message: "An account with this email already exists.",
-      });
-    }
-
-    // ============================================================
-    // VALIDATE SHOP
-    //
-    // The shopId comes dynamically from the shop registration link.
-    // Example:
-    // /register?shopId=5
-    //
-    // We do NOT hardcode shopId = 2.
-    // ============================================================
-
-    const shop = await Shop.findOne({
-      where: {
-        id: Number(shopId),
-        isActive: true,
-        subscriptionStatus: "Active",
-      },
-    });
-
-    if (!shop) {
-      return res.status(404).json({
-        success: false,
-        message: "Shop not found or is currently inactive.",
-      });
-    }
-
-    const resolvedShopId = shop.id;
-
-    // ============================================================
-    // HASH PASSWORD
-    // ============================================================
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // ============================================================
-    // CREATE USER
-    // ============================================================
-
-    const user = await User.create({
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-      role: "customer",
-      shopId: resolvedShopId,
-      mustChangePassword: false,
-      isActive: true,
-    });
-
-    // ============================================================
-    // CREATE CUSTOMER PROFILE
-    // Same shopId as the user
-    // ============================================================
-
-    const customer = await Customer.create({
-      userId: user.id,
-      shopId: resolvedShopId,
-      name,
-      email,
-      phone,
-      address: address || null,
-      city: city || null,
-      isActive: true,
-    });
-
-    // ============================================================
-    // GENERATE TOKEN
-    // ============================================================
-
-    const token = generateToken(user, "user");
-
-    return res.status(201).json({
-      success: true,
-      message: "Account created successfully. Welcome aboard!",
-      token,
-      mustChangePassword: false,
-
-      user: {
-        id: user.id,
-        shopId: user.shopId,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        avatar: user.avatar,
-      },
-
-      customer: {
-        id: customer.id,
-        shopId: customer.shopId,
-      },
-    });
-  } catch (error) {
-    console.error("Register Error:", error);
-
-    if (error.name === "SequelizeUniqueConstraintError") {
-      return res.status(409).json({
-        success: false,
-        message: "An account with this email or phone already exists.",
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Internal Server Error",
-    });
-  }
+const generateToken = (user, extra = {}) => {
+  return jwt.sign(
+    {
+      id: user.id,
+      role: user.role,
+      shopId: user.shopId ?? user.shop_id ?? null,
+      ...extra,
+    },
+    JWT_SECRET,
+    {
+      expiresIn: JWT_EXPIRES_IN,
+    },
+  );
 };
 
+// ============================================================
+// ERROR LOGGER
+// ============================================================
 
-//login 
+const logAuthError = (label, error) => {
+  console.error(`\n========== ${label} ERROR ==========`);
+
+  console.error("Message:", error?.message);
+  console.error("Name:", error?.name);
+  console.error("Code:", error?.code);
+  console.error("SQL Message:", error?.parent?.sqlMessage);
+  console.error("SQL:", error?.sql);
+
+  console.error("====================================\n");
+};
+
+// ============================================================
+// 1. GLOBAL LOGIN
+//
+// POST /api/auth/login
+//
+// Used by:
+// - super_admin
+// - admin
+//
+// NOT used by:
+// - customer
+// - employee
+// ============================================================
+
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate input
-    if (!email || !password) {
+    const normalizedEmail = normalizeEmail(email);
+
+    // ----------------------------------------------------------
+    // VALIDATION
+    // ----------------------------------------------------------
+
+    if (!normalizedEmail || !password) {
       return res.status(400).json({
         success: false,
-        message: "Email and password are required.",
+        message: "Email and password are required",
       });
     }
 
-    // 1) Try platform users (super_admin / admin / customer)
+    // ----------------------------------------------------------
+    // FIND ADMIN / SUPER ADMIN
+    // ----------------------------------------------------------
+
     const user = await User.findOne({
-      where: { email },
+      where: {
+        email: normalizedEmail,
+        role: {
+          [Op.in]: ["super_admin", "admin"],
+        },
+      },
+      include: [
+        {
+          model: Shop,
+          as: "shop",
+          required: false,
+        },
+      ],
     });
 
-    if (user) {
-      // Check account status
-      if (!user.isActive) {
-        return res.status(403).json({
-          success: false,
-          message: "Your account has been deactivated.",
-        });
-      }
+    // ----------------------------------------------------------
+    // USER NOT FOUND
+    // ----------------------------------------------------------
 
-      // Compare password
-      const isPasswordMatch = await bcrypt.compare(password, user.password);
-
-      if (!isPasswordMatch) {
-        return res.status(401).json({
-          success: false,
-          message: "Invalid email or password.",
-        });
-      }
-
-      // Generate JWT
-      const token = generateToken(user, "user");
-
-      return res.status(200).json({
-        success: true,
-        message: "Login successful.",
-        token,
-
-        // First login check
-        mustChangePassword: user.mustChangePassword,
-
-        user: {
-          id: user.id,
-          shopId: user.shopId,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-          avatar: user.avatar,
-        },
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
       });
     }
 
-    // 2) Try employees (employees table)
-    const employee = await Employee.findOne({
-      where: { email },
-    });
+    // ----------------------------------------------------------
+    // DELETED CHECK
+    // ----------------------------------------------------------
 
-    if (employee) {
-      // Check account status
-      if (employee.status !== "active") {
-        return res.status(403).json({
-          success: false,
-          message: "Your account has been deactivated.",
-        });
-      }
-
-      // Compare password (hashed automatically by the Employee model hook)
-      const isPasswordMatch = await employee.comparePassword(password);
-
-      if (!isPasswordMatch) {
-        return res.status(401).json({
-          success: false,
-          message: "Invalid email or password.",
-        });
-      }
-
-      // Generate JWT scoped to the employees table
-      const token = generateToken(employee, "employee");
-
-      return res.status(200).json({
-        success: true,
-        message: "Login successful.",
-        token,
-        mustChangePassword: false,
-
-        user: {
-          id: employee.id,
-          shopId: employee.shop_id,
-          name: employee.name,
-          email: employee.email,
-          phone: employee.phone,
-          designation: employee.designation,
-          avatar: employee.avatar,
-          role: "employee",
-        },
+    if (user.isDeleted === true) {
+      return res.status(403).json({
+        success: false,
+        message: "This account has been deleted",
       });
     }
 
-    // 3) No account found in either table
-    return res.status(401).json({
-      success: false,
-      message: "Invalid email or password.",
+    // ----------------------------------------------------------
+    // ACTIVE CHECK
+    // ----------------------------------------------------------
+
+    if (
+      user.isActive === false ||
+      user.status === "inactive" ||
+      user.status === "blocked"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is inactive",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // PASSWORD CHECK
+    // ----------------------------------------------------------
+
+    let passwordMatch = false;
+
+    if (typeof user.comparePassword === "function") {
+      passwordMatch = await user.comparePassword(password);
+    } else {
+      passwordMatch = await bcrypt.compare(password, user.password);
+    }
+
+    if (!passwordMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // CREATE TOKEN
+    // ----------------------------------------------------------
+
+    const token = generateToken(user, {
+      type: "user",
+    });
+
+    // ----------------------------------------------------------
+    // RESPONSE
+    // ----------------------------------------------------------
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+
+      token,
+
+      user: safeUser(user),
+
+      shop: user.shop
+        ? {
+            id: user.shop.id,
+            shopCode: user.shop.shopCode,
+            slug: user.shop.slug,
+            name: user.shop.name,
+            logo: user.shop.logo,
+          }
+        : null,
+
+      mustChangePassword: Boolean(user.mustChangePassword),
     });
   } catch (error) {
-    console.error("Login Error:", error);
-
-    // Fail fast with a clear message when the DB is unreachable — the most
-    // common cause of sudden "login failed" reports.
-    const isDbDown =
-      error.name === "SequelizeConnectionRefusedError" ||
-      error.name === "SequelizeConnectionError" ||
-      error.parent?.code === "ECONNREFUSED";
-
-    if (isDbDown) {
-      return res.status(503).json({
-        success: false,
-        message: "Database is not reachable. Please make sure MySQL is running and try again.",
-      });
-    }
+    logAuthError("GLOBAL LOGIN", error);
 
     return res.status(500).json({
       success: false,
@@ -525,70 +243,1240 @@ export const login = async (req, res) => {
   }
 };
 
-// Create Password (First Login)
-// Only for platform users (super_admin / admin / customer) — employees use
-// the /api/profile/password endpoint instead.
-export const createPassword = async (req, res) => {
+// ============================================================
+// 2. SHOP LOGIN
+//
+// POST /api/auth/shop/:slug/login
+//
+// Used by:
+// - customer
+// - employee
+//
+// Example:
+// POST /api/auth/shop/fresh/login
+//
+// Customer:
+// User table
+//
+// Employee:
+// Employee table
+//
+// Tenant isolation:
+// email + shopId / shop_id
+// ============================================================
+
+export const shopLogin = async (req, res) => {
   try {
-    if (req.user.role === "employee") {
-      return res.status(403).json({
-        success: false,
-        message: "Employees use the profile settings to change their password.",
-      });
-    }
+    const { slug } = req.params;
+    const { email, password } = req.body;
 
-    const { currentPassword, newPassword, confirmPassword } = req.body;
+    const normalizedSlug = normalizeSlug(slug);
+    const normalizedEmail = normalizeEmail(email);
 
-    // Validate input
-    if (!currentPassword || !newPassword || !confirmPassword) {
+    // ============================================================
+    // 1. VALIDATION
+    // ============================================================
+
+    if (!normalizedSlug) {
       return res.status(400).json({
         success: false,
-        message: "All fields are required.",
+        message: "Shop slug is required",
       });
     }
 
-    // Check new password & confirm password
+    if (!normalizedEmail || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+      });
+    }
+
+    // ============================================================
+    // 2. FIND SHOP
+    // ============================================================
+
+    const shop = await Shop.findOne({
+      where: {
+        slug: normalizedSlug,
+      },
+    });
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: "Laundry shop not found",
+      });
+    }
+
+    // ============================================================
+    // 3. CHECK SHOP STATUS
+    // ============================================================
+
+    if (shop.isDeleted === true) {
+      return res.status(403).json({
+        success: false,
+        message: "This laundry shop is no longer available",
+      });
+    }
+
+    if (shop.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: "This laundry shop is inactive",
+      });
+    }
+
+    // ============================================================
+    // 4. CUSTOMER LOGIN
+    // ============================================================
+    //
+    // Customer is stored in User table.
+    //
+    // Search:
+    // email + shopId + role customer
+    //
+    // IMPORTANT:
+    // Do NOT search employee here.
+    // ============================================================
+
+    const customer = await User.findOne({
+      where: {
+        email: normalizedEmail,
+        shopId: shop.id,
+        role: "customer",
+      },
+    });
+
+    // ============================================================
+    // 5. CUSTOMER FOUND
+    // ============================================================
+
+    if (customer) {
+      // ----------------------------------------------------------
+      // DELETED CHECK
+      // ----------------------------------------------------------
+
+      if (customer.isDeleted === true) {
+        return res.status(403).json({
+          success: false,
+          message: "This account has been deleted",
+        });
+      }
+
+      // ----------------------------------------------------------
+      // ACTIVE CHECK
+      // ----------------------------------------------------------
+
+      if (
+        customer.isActive === false ||
+        customer.status === "inactive" ||
+        customer.status === "blocked"
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "Your account is inactive",
+        });
+      }
+
+      // ----------------------------------------------------------
+      // PASSWORD CHECK
+      // ----------------------------------------------------------
+
+      let passwordMatch = false;
+
+      if (typeof customer.comparePassword === "function") {
+        passwordMatch = await customer.comparePassword(password);
+      } else {
+        passwordMatch = await bcrypt.compare(password, customer.password);
+      }
+
+      if (!passwordMatch) {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid email or password",
+        });
+      }
+
+      // ----------------------------------------------------------
+      // CUSTOMER TOKEN
+      // ----------------------------------------------------------
+
+      const token = generateToken(customer, {
+        type: "user",
+        slug: shop.slug,
+      });
+
+      // ----------------------------------------------------------
+      // CUSTOMER RESPONSE
+      // ----------------------------------------------------------
+
+      return res.status(200).json({
+        success: true,
+        message: "Customer login successful",
+
+        token,
+
+        user: {
+          ...safeUser(customer),
+          id: customer.id,
+          role: "customer",
+          shopId: customer.shopId,
+        },
+
+        shop: {
+          id: shop.id,
+          shopCode: shop.shopCode,
+          slug: shop.slug,
+          name: shop.name,
+          ownerName: shop.ownerName,
+          email: shop.email,
+          phone: shop.phone,
+          address: shop.address,
+          city: shop.city,
+          state: shop.state,
+          country: shop.country,
+          logo: shop.logo,
+          favicon: shop.favicon,
+          primaryColor: shop.primaryColor,
+          secondaryColor: shop.secondaryColor,
+        },
+
+        mustChangePassword: Boolean(customer.mustChangePassword),
+      });
+    }
+
+    // ============================================================
+    // 6. EMPLOYEE LOGIN
+    // ============================================================
+    //
+    // Employee is stored in Employee table.
+    //
+    // Search:
+    // email + shop_id
+    //
+    // This guarantees tenant isolation.
+    // ============================================================
+
+    const employee = await Employee.findOne({
+      where: {
+        email: normalizedEmail,
+        shop_id: shop.id,
+      },
+    });
+
+    // ============================================================
+    // 7. EMPLOYEE NOT FOUND
+    // ============================================================
+
+    if (!employee) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    // ============================================================
+    // 8. EMPLOYEE STATUS
+    // ============================================================
+
+    if (employee.status !== "active") {
+      return res.status(403).json({
+        success: false,
+        message: "Employee account is inactive",
+      });
+    }
+
+    // ============================================================
+    // 9. EMPLOYEE PASSWORD
+    // ============================================================
+
+    let employeePasswordMatch = false;
+
+    if (typeof employee.comparePassword === "function") {
+      employeePasswordMatch = await employee.comparePassword(password);
+    } else {
+      employeePasswordMatch = await bcrypt.compare(password, employee.password);
+    }
+
+    if (!employeePasswordMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    // ============================================================
+    // 10. EMPLOYEE TOKEN
+    // ============================================================
+    //
+    // VERY IMPORTANT:
+    //
+    // type: "employee"
+    //
+    // Your authMiddleware uses this to identify Employee.
+    // ============================================================
+
+    const employeeToken = jwt.sign(
+      {
+        id: employee.id,
+        type: "employee",
+        role: "employee",
+        shopId: employee.shop_id,
+        slug: shop.slug,
+      },
+      JWT_SECRET,
+      {
+        expiresIn: JWT_EXPIRES_IN,
+      },
+    );
+
+    // ============================================================
+    // 11. REMOVE PASSWORD
+    // ============================================================
+
+    const employeeData = employee.toJSON ? employee.toJSON() : { ...employee };
+
+    delete employeeData.password;
+
+    // ============================================================
+    // 12. EMPLOYEE RESPONSE
+    // ============================================================
+
+    return res.status(200).json({
+      success: true,
+      message: "Employee login successful",
+
+      token: employeeToken,
+
+      user: {
+        ...employeeData,
+        id: employee.id,
+        role: "employee",
+        shopId: employee.shop_id,
+      },
+
+      shop: {
+        id: shop.id,
+        shopCode: shop.shopCode,
+        slug: shop.slug,
+        name: shop.name,
+        ownerName: shop.ownerName,
+        email: shop.email,
+        phone: shop.phone,
+        address: shop.address,
+        city: shop.city,
+        state: shop.state,
+        country: shop.country,
+        logo: shop.logo,
+        favicon: shop.favicon,
+        primaryColor: shop.primaryColor,
+        secondaryColor: shop.secondaryColor,
+      },
+
+      mustChangePassword: false,
+    });
+  } catch (error) {
+    logAuthError("SHOP LOGIN", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
+// ============================================================
+// 3. CUSTOMER REGISTRATION
+//
+// POST /api/auth/register
+//
+// Frontend sends:
+//
+// {
+//   name,
+//   email,
+//   phone,
+//   password,
+//   address,
+//   city,
+//   shopId
+// }
+//
+// Email/phone uniqueness is checked PER SHOP.
+// ============================================================
+
+export const register = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { name, email, phone, password, address, city, slug } = req.body;
+
+    const normalizedName = String(name || "").trim();
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedPhone = normalizePhone(phone);
+    const normalizedSlug = normalizeSlug(slug);
+
+    // ----------------------------------------------------------
+    // VALIDATION
+    // ----------------------------------------------------------
+
+    if (!normalizedName) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Name is required",
+      });
+    }
+
+    if (!normalizedEmail) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    if (!normalizedPhone) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Phone is required",
+      });
+    }
+
+    if (!password) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Password is required",
+      });
+    }
+
+    if (password.length < 6) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // SLUG REQUIRED
+    // ----------------------------------------------------------
+
+    if (!normalizedSlug) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Shop slug is required",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // FIND SHOP BY SLUG
+    // ----------------------------------------------------------
+
+    const shop = await Shop.findOne({
+      where: {
+        slug: normalizedSlug,
+      },
+      transaction,
+    });
+
+    if (!shop) {
+      await transaction.rollback();
+
+      return res.status(404).json({
+        success: false,
+        message: "Laundry shop not found",
+      });
+    }
+
+    if (shop.isDeleted === true) {
+      await transaction.rollback();
+
+      return res.status(403).json({
+        success: false,
+        message: "This shop is no longer available",
+      });
+    }
+
+    if (shop.isActive === false) {
+      await transaction.rollback();
+
+      return res.status(403).json({
+        success: false,
+        message: "This shop is inactive",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // IMPORTANT
+    //
+    // Backend determines shopId.
+    // Customer does NOT send shopId.
+    // ----------------------------------------------------------
+
+    const shopId = shop.id;
+
+    // ----------------------------------------------------------
+    // EMAIL CHECK
+    //
+    // email + shopId
+    // ----------------------------------------------------------
+
+    const existingEmail = await User.findOne({
+      where: {
+        email: normalizedEmail,
+        shopId,
+        role: "customer",
+      },
+      transaction,
+    });
+
+    if (existingEmail) {
+      await transaction.rollback();
+
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email already exists in this shop.",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // PHONE CHECK
+    // ----------------------------------------------------------
+
+    const existingPhone = await User.findOne({
+      where: {
+        phone: normalizedPhone,
+        shopId,
+        role: "customer",
+      },
+      transaction,
+    });
+
+    if (existingPhone) {
+      await transaction.rollback();
+
+      return res.status(409).json({
+        success: false,
+        message:
+          "An account with this phone number already exists in this shop.",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // CUSTOMER EMAIL CHECK
+    // ----------------------------------------------------------
+
+    const existingCustomerEmail = await Customer.findOne({
+      where: {
+        email: normalizedEmail,
+        shopId,
+      },
+      transaction,
+    });
+
+    if (existingCustomerEmail) {
+      await transaction.rollback();
+
+      return res.status(409).json({
+        success: false,
+        message: "A customer with this email already exists in this shop.",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // CUSTOMER PHONE CHECK
+    // ----------------------------------------------------------
+
+    const existingCustomerPhone = await Customer.findOne({
+      where: {
+        phone: normalizedPhone,
+        shopId,
+      },
+      transaction,
+    });
+
+    if (existingCustomerPhone) {
+      await transaction.rollback();
+
+      return res.status(409).json({
+        success: false,
+        message:
+          "A customer with this phone number already exists in this shop.",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // HASH PASSWORD
+    // ----------------------------------------------------------
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // ----------------------------------------------------------
+    // CREATE USER
+    // ----------------------------------------------------------
+
+    const user = await User.create(
+      {
+        name: normalizedName,
+        email: normalizedEmail,
+        phone: normalizedPhone,
+
+        password: hashedPassword,
+
+        role: "customer",
+
+        shopId,
+
+        isActive: true,
+
+        mustChangePassword: false,
+      },
+      {
+        transaction,
+      },
+    );
+
+    // ----------------------------------------------------------
+    // CREATE CUSTOMER
+    // ----------------------------------------------------------
+
+    const customer = await Customer.create(
+      {
+        name: normalizedName,
+        email: normalizedEmail,
+        phone: normalizedPhone,
+
+        address: address ? String(address).trim() : null,
+
+        city: city ? String(city).trim() : null,
+
+        shopId,
+        userId: user.id,
+      },
+      {
+        transaction,
+      },
+    );
+
+    // ----------------------------------------------------------
+    // COMMIT
+    // ----------------------------------------------------------
+
+    await transaction.commit();
+
+    // ----------------------------------------------------------
+    // TOKEN
+    // ----------------------------------------------------------
+
+    const token = generateToken(user, {
+      slug: shop.slug,
+    });
+
+    // ----------------------------------------------------------
+    // RESPONSE
+    // ----------------------------------------------------------
+
+    return res.status(201).json({
+      success: true,
+
+      message: "Account created successfully",
+
+      token,
+
+      user: safeUser(user),
+
+      customer: customer.toJSON ? customer.toJSON() : customer,
+
+      shop: {
+        id: shop.id,
+        shopCode: shop.shopCode,
+        slug: shop.slug,
+        name: shop.name,
+        ownerName: shop.ownerName,
+        email: shop.email,
+        phone: shop.phone,
+        address: shop.address,
+        city: shop.city,
+        state: shop.state,
+        country: shop.country,
+        logo: shop.logo,
+        favicon: shop.favicon,
+        primaryColor: shop.primaryColor,
+        secondaryColor: shop.secondaryColor,
+      },
+    });
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (rollbackError) {
+      console.error("Transaction rollback error:", rollbackError);
+    }
+
+    logAuthError("REGISTER", error);
+
+    if (error?.name === "SequelizeUniqueConstraintError") {
+      return res.status(409).json({
+        success: false,
+        message: "Email or phone number is already registered in this shop.",
+      });
+    }
+
+    if (error?.name === "SequelizeValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: error.errors?.[0]?.message || "Invalid registration data",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Registration failed",
+    });
+  }
+};
+
+// ============================================================
+// 4. FORGOT PASSWORD
+//
+// POST /api/auth/forgot-password
+//
+// Body:
+//
+// {
+//   email,
+//   slug
+// }
+//
+// slug is optional for admin.
+// slug is IMPORTANT for customer because the same email
+// can exist in multiple shops.
+// ============================================================
+
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email, slug } = req.body;
+
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedSlug = normalizeSlug(slug);
+
+    if (!normalizedEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    let user = null;
+
+    // ========================================================
+    // SHOP-SCOPED PASSWORD RESET
+    // ========================================================
+
+    if (normalizedSlug) {
+      const shop = await Shop.findOne({
+        where: {
+          slug: normalizedSlug,
+        },
+      });
+
+      if (!shop) {
+        return res.status(404).json({
+          success: false,
+          message: "Laundry shop not found",
+        });
+      }
+
+      user = await User.findOne({
+        where: {
+          email: normalizedEmail,
+          shopId: shop.id,
+        },
+      });
+    } else {
+      // ======================================================
+      // GLOBAL ADMIN / SUPER ADMIN
+      // ======================================================
+
+      user = await User.findOne({
+        where: {
+          email: normalizedEmail,
+          role: {
+            [Op.in]: ["admin", "super_admin"],
+          },
+        },
+      });
+    }
+
+    // ----------------------------------------------------------
+    // SECURITY:
+    // Don't expose whether email exists.
+    // ----------------------------------------------------------
+
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: "If an account exists with this email, an OTP has been sent.",
+      });
+    }
+
+    if (user.isDeleted === true) {
+      return res.status(200).json({
+        success: true,
+        message: "If an account exists with this email, an OTP has been sent.",
+      });
+    }
+
+    // ========================================================
+    // GENERATE OTP
+    // ========================================================
+
+    const otp = crypto.randomInt(100000, 1000000).toString();
+
+    const otpExpires = new Date(Date.now() + OTP_EXPIRES_MINUTES * 60 * 1000);
+
+    // ========================================================
+    // SAVE OTP
+    //
+    // Your User model should have:
+    //
+    // resetOtp
+    // resetOtpExpires
+    // ========================================================
+
+    user.resetOtp = otp;
+    user.resetOtpExpires = otpExpires;
+
+    await user.save();
+
+    // ========================================================
+    // DEVELOPMENT
+    //
+    // Replace console.log with email service later.
+    // ========================================================
+
+    console.log(`\nPASSWORD RESET OTP for ${normalizedEmail}: ${otp}\n`);
+
+    return res.status(200).json({
+      success: true,
+      message: "If an account exists with this email, an OTP has been sent.",
+
+      // DEVELOPMENT ONLY
+      // Remove this in production.
+      ...(process.env.NODE_ENV !== "production"
+        ? {
+            otp,
+          }
+        : {}),
+    });
+  } catch (error) {
+    logAuthError("FORGOT PASSWORD", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
+// ============================================================
+// 5. VERIFY RESET OTP
+//
+// POST /api/auth/verify-reset-otp
+//
+// Body:
+//
+// {
+//   email,
+//   otp,
+//   slug
+// }
+// ============================================================
+
+export const verifyResetOtp = async (req, res) => {
+  try {
+    const { email, otp, slug } = req.body;
+
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedSlug = normalizeSlug(slug);
+
+    if (!normalizedEmail || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and OTP are required",
+      });
+    }
+
+    let user = null;
+
+    // ========================================================
+    // SHOP
+    // ========================================================
+
+    if (normalizedSlug) {
+      const shop = await Shop.findOne({
+        where: {
+          slug: normalizedSlug,
+        },
+      });
+
+      if (!shop) {
+        return res.status(404).json({
+          success: false,
+          message: "Laundry shop not found",
+        });
+      }
+
+      user = await User.findOne({
+        where: {
+          email: normalizedEmail,
+          shopId: shop.id,
+        },
+      });
+    } else {
+      // ======================================================
+      // GLOBAL ADMIN
+      // ======================================================
+
+      user = await User.findOne({
+        where: {
+          email: normalizedEmail,
+          role: {
+            [Op.in]: ["admin", "super_admin"],
+          },
+        },
+      });
+    }
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // ========================================================
+    // OTP CHECK
+    // ========================================================
+
+    if (!user.resetOtp || String(user.resetOtp) !== String(otp)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // ========================================================
+    // EXPIRY
+    // ========================================================
+
+    if (
+      !user.resetOtpExpires ||
+      new Date(user.resetOtpExpires).getTime() < Date.now()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully",
+    });
+  } catch (error) {
+    logAuthError("VERIFY OTP", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
+// ============================================================
+// 6. RESET PASSWORD USING OTP
+//
+// POST /api/auth/reset-password
+//
+// Body:
+//
+// {
+//   email,
+//   otp,
+//   newPassword,
+//   confirmPassword,
+//   slug
+// }
+// ============================================================
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword, confirmPassword, slug } = req.body;
+
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedSlug = normalizeSlug(slug);
+
+    if (!normalizedEmail || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and OTP are required",
+      });
+    }
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password and confirm password are required",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
     if (newPassword !== confirmPassword) {
       return res.status(400).json({
         success: false,
-        message: "New password and confirm password do not match.",
+        message: "New password and confirm password do not match",
       });
     }
 
-    // Get logged-in user
-    const user = await User.findByPk(req.user.id);
+    let user = null;
+
+    // ========================================================
+    // SHOP USER
+    // ========================================================
+
+    if (normalizedSlug) {
+      const shop = await Shop.findOne({
+        where: {
+          slug: normalizedSlug,
+        },
+      });
+
+      if (!shop) {
+        return res.status(404).json({
+          success: false,
+          message: "Laundry shop not found",
+        });
+      }
+
+      user = await User.findOne({
+        where: {
+          email: normalizedEmail,
+          shopId: shop.id,
+        },
+      });
+    } else {
+      // ======================================================
+      // GLOBAL USER
+      // ======================================================
+
+      user = await User.findOne({
+        where: {
+          email: normalizedEmail,
+          role: {
+            [Op.in]: ["admin", "super_admin"],
+          },
+        },
+      });
+    }
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // ========================================================
+    // OTP
+    // ========================================================
+
+    if (!user.resetOtp || String(user.resetOtp) !== String(otp)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // ========================================================
+    // EXPIRY
+    // ========================================================
+
+    if (
+      !user.resetOtpExpires ||
+      new Date(user.resetOtpExpires).getTime() < Date.now()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired",
+      });
+    }
+
+    // ========================================================
+    // UPDATE PASSWORD
+    //
+    // Prefer model hook if User model hashes automatically.
+    // Otherwise bcrypt hash manually.
+    // ========================================================
+
+    user.password = newPassword;
+
+    user.resetOtp = null;
+    user.resetOtpExpires = null;
+
+    user.mustChangePassword = false;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully",
+    });
+  } catch (error) {
+    logAuthError("RESET PASSWORD", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
+// ============================================================
+// 7. CREATE / CHANGE PASSWORD
+//
+// POST /api/auth/create-password
+//
+// Protected route.
+//
+// Used when admin/employee/customer has:
+// mustChangePassword = true
+//
+// Body:
+//
+// {
+//   currentPassword,
+//   newPassword,
+//   confirmPassword
+// }
+// ============================================================
+
+export const createPassword = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+
+    // ========================================================
+    // AUTHENTICATION
+    // ========================================================
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    // ========================================================
+    // VALIDATION
+    // ========================================================
+
+    if (!currentPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password is required",
+      });
+    }
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password and confirm password are required",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password and confirm password do not match",
+      });
+    }
+
+    // ========================================================
+    // GET USER
+    // ========================================================
+
+    const user = await User.findByPk(userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found.",
+        message: "User not found",
       });
     }
 
-    // Verify current password
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    // ========================================================
+    // VERIFY CURRENT PASSWORD
+    // ========================================================
 
-    if (!isMatch) {
+    const currentPasswordMatch = await bcrypt.compare(
+      currentPassword,
+      user.password,
+    );
+
+    if (!currentPasswordMatch) {
       return res.status(400).json({
         success: false,
-        message: "Current password is incorrect.",
+        message: "Current password is incorrect",
       });
     }
 
-    // Prevent using same password again
-    const isSamePassword = await bcrypt.compare(newPassword, user.password);
+    // ========================================================
+    // PREVENT SAME PASSWORD
+    // ========================================================
 
-    if (isSamePassword) {
+    const samePassword = await bcrypt.compare(newPassword, user.password);
+
+    if (samePassword) {
       return res.status(400).json({
         success: false,
-        message: "New password cannot be the same as the current password.",
+        message: "New password cannot be the same as the current password",
       });
     }
 
-    // Hash new password
+    // ========================================================
+    // HASH NEW PASSWORD
+    // ========================================================
+
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update user
+    // ========================================================
+    // UPDATE USER
+    // ========================================================
+
     user.password = hashedPassword;
     user.mustChangePassword = false;
 
@@ -596,14 +1484,98 @@ export const createPassword = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Password created successfully.",
+      message: "Password updated successfully",
     });
   } catch (error) {
-    console.error("Create Password Error:", error);
+    logAuthError("CREATE PASSWORD", error);
 
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
     });
   }
+};
+
+// ============================================================
+// 8. GET CURRENT USER
+//
+// GET /api/auth/me
+//
+// Requires protect middleware.
+// ============================================================
+
+export const getMe = async (req, res) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    const user = await User.findByPk(req.user.id, {
+      include: [
+        {
+          model: Shop,
+          as: "shop",
+          required: false,
+        },
+      ],
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (user.isDeleted === true) {
+      return res.status(403).json({
+        success: false,
+        message: "Account has been deleted",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+
+      user: safeUser(user),
+
+      shop: user.shop
+        ? {
+            id: user.shop.id,
+            shopCode: user.shop.shopCode,
+            slug: user.shop.slug,
+            name: user.shop.name,
+            logo: user.shop.logo,
+            favicon: user.shop.favicon,
+            primaryColor: user.shop.primaryColor,
+            secondaryColor: user.shop.secondaryColor,
+          }
+        : null,
+    });
+  } catch (error) {
+    logAuthError("GET ME", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
+// ============================================================
+// 9. LOGOUT
+//
+// JWT is stateless, so frontend removes token.
+//
+// POST /api/auth/logout
+// ============================================================
+
+export const logout = async (req, res) => {
+  return res.status(200).json({
+    success: true,
+    message: "Logged out successfully",
+  });
 };

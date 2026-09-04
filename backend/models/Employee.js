@@ -46,7 +46,7 @@ const Employee = sequelize.define(
     },
     shop_id: {
       type: DataTypes.INTEGER,
-      allowNull: true,
+      allowNull: false,
     },
     status: {
       type: DataTypes.ENUM("active", "inactive"),
@@ -83,12 +83,17 @@ const Employee = sequelize.define(
     timestamps: true,
 
     indexes: [
-      {
-        unique: true,
-        fields: ["shop_id", "email"],
-        name: "unique_employee_email_per_shop",
-      },
-    ],
+  {
+    unique: true,
+    fields: ["shop_id", "email"],
+    name: "unique_shop_employee_email",
+  },
+  {
+    unique: true,
+    fields: ["shop_id", "phone"],
+    name: "unique_shop_employee_phone",
+  },
+],
 
     hooks: {
       beforeCreate: async (employee) => {

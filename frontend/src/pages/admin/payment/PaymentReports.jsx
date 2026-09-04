@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   CalendarDays,
@@ -15,45 +15,234 @@ import {
 } from "lucide-react";
 import { getPaymentReport } from "../../../api/paymentApi";
 
+const colors = {
+  bgDark: "#05282A",
+  panelDark: "#0B3B3E",
+  primaryTeal: "#028090",
+  seafoam: "#00A896",
+  mint: "#02C39A",
+  bgLight: "#FFFFFF",
+  cardTint: "#EEF7F6",
+  cardBorder: "#D8ECEA",
+  textDark: "#0F2C2E",
+  textMuted: "#51787C",
+  danger: "#E0645C",
+  amber: "#B8791F",
+};
+
+const INITIAL_FILTERS = {
+  search: "",
+  type: "ALL",
+  status: "ALL",
+  method: "ALL",
+  fromDate: "",
+  toDate: "",
+};
+
+const inputClass =
+  "pr-input w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition";
+
 const PaymentReports = () => {
-    const [report, setReport] = useState(null);
+  const [report, setReport] = useState(null);
   const [payments, setPayments] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [filters, setFilters] = useState({
-    search: "",
-    type: "ALL",
-    status: "ALL",
-    method: "ALL",
-    fromDate: "",
-    toDate: "",
-  });
+  const [filters, setFilters] = useState(INITIAL_FILTERS);
 
   // =====================================================
-  // FETCH PAYMENTS
+  // NORMALIZE PAYMENT DATA
   // =====================================================
 
-  const fetchReport = async () => {
+  const extractPayments = (response) => {
+    /*
+      Handles different possible API response structures:
+
+      1. {
+           success: true,
+           data: [...]
+         }
+
+      2. {
+           success: true,
+           data: {
+             payments: [...]
+           }
+         }
+
+      3. {
+           success: true,
+           data: {
+             data: [...]
+           }
+         }
+
+      4. {
+           success: true,
+           data: {
+             rows: [...]
+           }
+         }
+
+      5. {
+           success: true,
+           payments: [...]
+         }
+    */
+
+    if (!response) {
+      return [];
+    }
+
+    if (Array.isArray(response)) {
+      return response;
+    }
+
+    if (Array.isArray(response.payments)) {
+      return response.payments;
+    }
+
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+
+    if (response.data && Array.isArray(response.data.payments)) {
+      return response.data.payments;
+    }
+
+    if (response.data && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+
+    if (response.data && Array.isArray(response.data.rows)) {
+      return response.data.rows;
+    }
+
+    if (Array.isArray(response.rows)) {
+      return response.rows;
+    }
+
+    return [];
+  };
+
+  // =====================================================
+  // FETCH REPORT
+  // =====================================================
+
+  const fetchReport = useCallback(async () => {
     try {
       setLoading(true);
+      setError("");
 
       const response = await getPaymentReport(filters);
 
-      if (response.success) {
-        setReport(response.data);
-      }
-    } catch (error) {
-      console.error("Payment Reports Error:", error);
+      console.log("Payment Report API Response:", response);
 
-      setError(error.message || "Failed to load payment report.");
+      if (!response) {
+        throw new Error("No response received from server.");
+      }
+
+      if (response.success === false) {
+        throw new Error(response.message || "Failed to load payment report.");
+      }
+
+      // -----------------------------------------------
+      // SAVE COMPLETE REPORT
+      // -----------------------------------------------
+
+      setReport(response.data || response);
+
+      // -----------------------------------------------
+      // EXTRACT PAYMENTS
+      // -----------------------------------------------
+
+      const paymentList = extractPayments(response);
+
+      console.log("Extracted Payments:", paymentList);
+
+      setPayments(paymentList);
+    } catch (err) {
+      console.error("Payment Reports Error:", err);
+
+      setPayments([]);
+      setReport(null);
+
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to load payment report.",
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
+
+  // =====================================================
+  // INITIAL FETCH + FILTER FETCH
+  // =====================================================
 
   useEffect(() => {
     fetchReport();
+  }, [fetchReport]);
+
+  // =====================================================
+  // SAFE VALUE HELPERS
+  // =====================================================
+
+  const normalizeStatus = (status) => {
+    if (!status) return "";
+
+    return String(status).trim().toLowerCase();
+  };
+
+  const normalizeType = (type) => {
+    if (!type) return "";
+
+    return String(type).trim().toUpperCase();
+  };
+
+  const normalizeMethod = (method) => {
+    if (!method) return "";
+
+    return String(method).trim().toLowerCase();
+  };
+
+  // =====================================================
+  // GET PARTY NAME
+  // =====================================================
+
+  const getPartyName = useCallback((payment) => {
+    const type = normalizeType(payment.paymentType);
+
+    if (type === "CUSTOMER") {
+      return (
+        payment.customer?.name ||
+        payment.customer?.fullName ||
+        payment.customerName ||
+        `Customer #${payment.customerId || "-"}`
+      );
+    }
+
+    if (type === "SUPPLIER") {
+      return (
+        payment.supplier?.name ||
+        payment.supplier?.companyName ||
+        payment.supplierName ||
+        `Supplier #${payment.supplierId || "-"}`
+      );
+    }
+
+    if (type === "SALARY") {
+      return (
+        payment.employee?.name ||
+        payment.employee?.fullName ||
+        payment.employeeName ||
+        `Employee #${payment.employeeId || "-"}`
+      );
+    }
+
+    return "-";
   }, []);
 
   // =====================================================
@@ -62,40 +251,85 @@ const PaymentReports = () => {
 
   const filteredPayments = useMemo(() => {
     return payments.filter((payment) => {
-      const search = filters.search.toLowerCase();
+      const search = filters.search.trim().toLowerCase();
+
+      const partyName = getPartyName(payment);
 
       const searchableText = `
+        ${payment.id || ""}
         ${payment.paymentNumber || ""}
         ${payment.transactionId || ""}
         ${payment.referenceNumber || ""}
+        ${partyName}
         ${payment.description || ""}
+        ${payment.remarks || ""}
+        ${payment.orderId || ""}
+        ${payment.purchaseId || ""}
+        ${payment.payrollId || ""}
+        ${payment.customerId || ""}
+        ${payment.supplierId || ""}
+        ${payment.employeeId || ""}
       `.toLowerCase();
+
+      // -----------------------------------------------
+      // SEARCH
+      // -----------------------------------------------
 
       const matchesSearch = !search || searchableText.includes(search);
 
+      // -----------------------------------------------
+      // TYPE
+      // -----------------------------------------------
+
       const matchesType =
-        filters.type === "ALL" || payment.paymentType === filters.type;
+        filters.type === "ALL" ||
+        normalizeType(payment.paymentType) === normalizeType(filters.type);
+
+      // -----------------------------------------------
+      // STATUS
+      // -----------------------------------------------
 
       const matchesStatus =
-        filters.status === "ALL" || payment.status === filters.status;
+        filters.status === "ALL" ||
+        normalizeStatus(payment.status) === normalizeStatus(filters.status);
+
+      // -----------------------------------------------
+      // METHOD
+      // -----------------------------------------------
 
       const matchesMethod =
-        filters.method === "ALL" || payment.paymentMethod === filters.method;
+        filters.method === "ALL" ||
+        normalizeMethod(payment.paymentMethod) ===
+          normalizeMethod(filters.method);
 
-      const paymentDate = payment.paymentDate
-        ? new Date(payment.paymentDate)
-        : null;
+      // -----------------------------------------------
+      // PAYMENT DATE
+      // -----------------------------------------------
 
-      const fromDate = filters.fromDate ? new Date(filters.fromDate) : null;
+      let matchesFromDate = true;
+      let matchesToDate = true;
 
-      const toDate = filters.toDate
-        ? new Date(`${filters.toDate}T23:59:59`)
-        : null;
+      if (payment.paymentDate) {
+        const paymentDate = new Date(payment.paymentDate);
 
-      const matchesFromDate =
-        !fromDate || (paymentDate && paymentDate >= fromDate);
+        if (!Number.isNaN(paymentDate.getTime())) {
+          if (filters.fromDate) {
+            const fromDate = new Date(`${filters.fromDate}T00:00:00`);
 
-      const matchesToDate = !toDate || (paymentDate && paymentDate <= toDate);
+            matchesFromDate = paymentDate >= fromDate;
+          }
+
+          if (filters.toDate) {
+            const toDate = new Date(`${filters.toDate}T23:59:59.999`);
+
+            matchesToDate = paymentDate <= toDate;
+          }
+        }
+      } else {
+        if (filters.fromDate || filters.toDate) {
+          return false;
+        }
+      }
 
       return (
         matchesSearch &&
@@ -106,53 +340,97 @@ const PaymentReports = () => {
         matchesToDate
       );
     });
-  }, [payments, filters]);
+  }, [payments, filters, getPartyName]);
 
   // =====================================================
   // REPORT STATISTICS
   // =====================================================
 
   const stats = useMemo(() => {
-    const paid = filteredPayments.filter((p) => p.status === "Paid");
+    const paid = filteredPayments.filter(
+      (payment) => normalizeStatus(payment.status) === "paid",
+    );
 
-    const pending = filteredPayments.filter((p) => p.status === "Pending");
+    const pending = filteredPayments.filter(
+      (payment) => normalizeStatus(payment.status) === "pending",
+    );
 
-    const refunded = filteredPayments.filter((p) => p.status === "Refunded");
+    const refunded = filteredPayments.filter(
+      (payment) => normalizeStatus(payment.status) === "refunded",
+    );
 
-    const cancelled = filteredPayments.filter((p) => p.status === "Cancelled");
+    const cancelled = filteredPayments.filter(
+      (payment) => normalizeStatus(payment.status) === "cancelled",
+    );
 
-    const failed = filteredPayments.filter((p) => p.status === "Failed");
+    const failed = filteredPayments.filter(
+      (payment) => normalizeStatus(payment.status) === "failed",
+    );
 
-    const totalAmount = paid.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    // -----------------------------------------------
+    // TOTAL PAID
+    // -----------------------------------------------
+
+    const totalAmount = paid.reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
+      0,
+    );
+
+    // -----------------------------------------------
+    // PENDING
+    // -----------------------------------------------
 
     const pendingAmount = pending.reduce(
-      (sum, p) => sum + Number(p.amount || 0),
+      (sum, payment) => sum + Number(payment.amount || 0),
       0,
     );
+
+    // -----------------------------------------------
+    // REFUNDED
+    // -----------------------------------------------
 
     const refundAmount = refunded.reduce(
-      (sum, p) => sum + Number(p.refundAmount || p.amount || 0),
+      (sum, payment) =>
+        sum + Number(payment.refundAmount ?? payment.amount ?? 0),
       0,
     );
 
-    const customerPayments = paid.filter((p) => p.paymentType === "CUSTOMER");
+    // -----------------------------------------------
+    // CUSTOMER
+    // -----------------------------------------------
 
-    const supplierPayments = paid.filter((p) => p.paymentType === "SUPPLIER");
-
-    const salaryPayments = paid.filter((p) => p.paymentType === "SALARY");
+    const customerPayments = paid.filter(
+      (payment) => normalizeType(payment.paymentType) === "CUSTOMER",
+    );
 
     const customerAmount = customerPayments.reduce(
-      (sum, p) => sum + Number(p.amount || 0),
+      (sum, payment) => sum + Number(payment.amount || 0),
       0,
+    );
+
+    // -----------------------------------------------
+    // SUPPLIER
+    // -----------------------------------------------
+
+    const supplierPayments = paid.filter(
+      (payment) => normalizeType(payment.paymentType) === "SUPPLIER",
     );
 
     const supplierAmount = supplierPayments.reduce(
-      (sum, p) => sum + Number(p.amount || 0),
+      (sum, payment) => sum + Number(payment.amount || 0),
       0,
     );
 
+    // -----------------------------------------------
+    // SALARY
+    // -----------------------------------------------
+
+    const salaryPayments = paid.filter(
+      (payment) => normalizeType(payment.paymentType) === "SALARY",
+    );
+
     const salaryAmount = salaryPayments.reduce(
-      (sum, p) => sum + Number(p.amount || 0),
+      (sum, payment) => sum + Number(payment.amount || 0),
       0,
     );
 
@@ -199,7 +477,8 @@ const PaymentReports = () => {
     return methods.map((method) => {
       const methodPayments = filteredPayments.filter(
         (payment) =>
-          payment.paymentMethod === method && payment.status === "Paid",
+          normalizeMethod(payment.paymentMethod) === normalizeMethod(method) &&
+          normalizeStatus(payment.status) === "paid",
       );
 
       const amount = methodPayments.reduce(
@@ -245,14 +524,19 @@ const PaymentReports = () => {
   // =====================================================
 
   const clearFilters = () => {
-    setFilters({
-      search: "",
-      type: "ALL",
-      status: "ALL",
-      method: "ALL",
-      fromDate: "",
-      toDate: "",
-    });
+    setFilters(INITIAL_FILTERS);
+  };
+
+  // =====================================================
+  // CSV VALUE
+  // =====================================================
+
+  const csvValue = (value) => {
+    if (value === null || value === undefined) {
+      return "";
+    }
+
+    return `"${String(value).replace(/"/g, '""')}"`;
   };
 
   // =====================================================
@@ -261,38 +545,79 @@ const PaymentReports = () => {
 
   const exportCSV = () => {
     if (!filteredPayments.length) {
+      setError("There are no transactions available to export.");
       return;
     }
 
     const headers = [
       "Payment Number",
       "Payment Type",
+      "Party Name",
+      "Customer ID",
+      "Supplier ID",
+      "Employee ID",
+      "Order ID",
+      "Purchase ID",
+      "Payroll ID",
       "Amount",
       "Payment Method",
       "Status",
       "Transaction ID",
       "Reference Number",
       "Payment Date",
+      "Refund Amount",
+      "Description",
+      "Remarks",
     ];
 
     const rows = filteredPayments.map((payment) => [
-      payment.paymentNumber || "",
+      payment.paymentNumber || `PAY-${payment.id || ""}`,
+
       payment.paymentType || "",
+
+      getPartyName(payment),
+
+      payment.customerId || "",
+
+      payment.supplierId || "",
+
+      payment.employeeId || "",
+
+      payment.orderId || "",
+
+      payment.purchaseId || "",
+
+      payment.payrollId || "",
+
       payment.amount || 0,
-      payment.paymentMethod || "",
+
+      payment.paymentMethod
+        ? String(payment.paymentMethod).replace("_", " ")
+        : "",
+
       payment.status || "",
+
       payment.transactionId || "",
+
       payment.referenceNumber || "",
-      payment.paymentDate ? new Date(payment.paymentDate).toLocaleString() : "",
+
+      payment.paymentDate
+        ? new Date(payment.paymentDate).toLocaleString("en-IN")
+        : "",
+
+      payment.refundAmount || 0,
+
+      payment.description || "",
+
+      payment.remarks || "",
     ]);
 
     const csvContent = [headers, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
-      )
-      .join("\n");
+      .map((row) => row.map(csvValue).join(","))
+      .join("\r\n");
 
-    const blob = new Blob([csvContent], {
+    // BOM makes Hindi/₹ and other Unicode work correctly in Excel
+    const blob = new Blob(["\uFEFF" + csvContent], {
       type: "text/csv;charset=utf-8;",
     });
 
@@ -301,11 +626,16 @@ const PaymentReports = () => {
     const link = document.createElement("a");
 
     link.href = url;
+
     link.download = `payment-report-${new Date()
       .toISOString()
       .slice(0, 10)}.csv`;
 
+    document.body.appendChild(link);
+
     link.click();
+
+    document.body.removeChild(link);
 
     URL.revokeObjectURL(url);
   };
@@ -325,64 +655,119 @@ const PaymentReports = () => {
   // =====================================================
 
   const formatPaymentType = (type) => {
-    if (!type) return "-";
+    if (!type) {
+      return "-";
+    }
 
-    return type
+    return String(type)
       .toLowerCase()
-      .replace("_", " ")
+      .replace(/_/g, " ")
       .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  // =====================================================
+  // STATUS CLASS
+  // =====================================================
+
+  const getStatusStyle = (status) => {
+    switch (normalizeStatus(status)) {
+      case "paid":
+        return { backgroundColor: `${colors.mint}1F`, color: colors.primaryTeal };
+
+      case "pending":
+        return { backgroundColor: "#F2A93B1F", color: colors.amber };
+
+      case "refunded":
+        return { backgroundColor: `${colors.seafoam}1F`, color: colors.seafoam };
+
+      case "cancelled":
+        return { backgroundColor: `${colors.textMuted}1A`, color: colors.textMuted };
+
+      case "failed":
+        return { backgroundColor: `${colors.danger}1F`, color: colors.danger };
+
+      default:
+        return { backgroundColor: `${colors.textMuted}1A`, color: colors.textMuted };
+    }
   };
 
   // =====================================================
   // LOADING
   // =====================================================
 
-  if (loading) {
+  if (loading && payments.length === 0) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center bg-[#f5fbfb]">
+      <div
+        className="flex min-h-[70vh] items-center justify-center"
+        style={{ backgroundColor: colors.cardTint, fontFamily: "'Inter', sans-serif" }}
+      >
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap');
+        `}</style>
         <div className="text-center">
-          <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin text-teal-600" />
+          <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin" style={{ color: colors.primaryTeal }} />
 
-          <p className="text-gray-600">Loading payment reports...</p>
+          <p style={{ color: colors.textMuted }}>Loading payment reports...</p>
         </div>
       </div>
     );
   }
 
   // =====================================================
-  // UI
+  // PAGE
   // =====================================================
 
   return (
-    <div className="min-h-screen bg-[#f5fbfb] p-4 md:p-6 lg:p-8">
+    <div
+      className="min-h-screen p-4 md:p-6 lg:p-8"
+      style={{ backgroundColor: colors.cardTint, fontFamily: "'Inter', sans-serif" }}
+    >
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap');
+        .pr-input { border-color: ${colors.cardBorder}; background-color: ${colors.bgLight}; color: ${colors.textDark}; }
+        .pr-input:focus { border-color: ${colors.primaryTeal}; box-shadow: 0 0 0 3px ${colors.primaryTeal}26; }
+        .pr-refresh-btn:hover { background-color: ${colors.cardTint}; }
+        .pr-export-btn { background: linear-gradient(95deg, ${colors.primaryTeal}, ${colors.mint}); transition: filter 0.15s ease; }
+        .pr-export-btn:hover { filter: brightness(1.06); }
+        .pr-export-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pr-row:hover { background-color: ${colors.cardTint}; }
+      `}</style>
+
       {/* =================================================
           HEADER
       ================================================= */}
 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-[#123b3d] md:text-3xl">
+          <h1
+            className="text-2xl md:text-3xl"
+            style={{ color: colors.textDark, fontFamily: "'Libre Baskerville', serif" }}
+          >
             Payment Reports
           </h1>
 
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm" style={{ color: colors.textMuted }}>
             Analyze customer, supplier and salary payments.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
           <button
+            type="button"
             onClick={fetchReport}
-            className="inline-flex items-center gap-2 rounded-lg border border-teal-200 bg-white px-4 py-2.5 text-sm font-medium text-teal-700 transition hover:bg-teal-50"
+            disabled={loading}
+            className="pr-refresh-btn inline-flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+            style={{ borderColor: `${colors.primaryTeal}4D`, backgroundColor: colors.bgLight, color: colors.primaryTeal }}
           >
-            <RefreshCw size={17} />
+            <RefreshCw size={17} className={loading ? "animate-spin" : ""} />
             Refresh
           </button>
 
           <button
+            type="button"
             onClick={exportCSV}
             disabled={!filteredPayments.length}
-            className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="pr-export-btn inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-md sm:flex-none"
           >
             <Download size={17} />
             Export CSV
@@ -395,8 +780,20 @@ const PaymentReports = () => {
       ================================================= */}
 
       {error && (
-        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-600">
-          <p className="font-medium">{error}</p>
+        <div
+          className="mb-6 flex items-start justify-between rounded-xl border p-4 text-sm"
+          style={{ borderColor: `${colors.danger}4D`, backgroundColor: `${colors.danger}0D`, color: colors.danger }}
+        >
+          <p>{error}</p>
+
+          <button
+            type="button"
+            onClick={() => setError("")}
+            className="ml-4 transition hover:opacity-70"
+            style={{ color: colors.danger }}
+          >
+            <X size={17} />
+          </button>
         </div>
       )}
 
@@ -404,17 +801,19 @@ const PaymentReports = () => {
           FILTERS
       ================================================= */}
 
-      <div className="mb-6 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="mb-6 rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: colors.bgLight, borderColor: colors.cardBorder }}>
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="font-semibold text-[#123b3d]">Filters</h2>
+            <h2 className="font-semibold" style={{ color: colors.textDark }}>Filters</h2>
 
-            <p className="text-xs text-gray-500">Filter your payment report.</p>
+            <p className="text-xs" style={{ color: colors.textMuted }}>Filter your payment report.</p>
           </div>
 
           <button
+            type="button"
             onClick={clearFilters}
-            className="flex items-center gap-1 text-sm text-red-500 hover:text-red-600"
+            className="flex items-center gap-1 text-sm transition hover:opacity-80"
+            style={{ color: colors.danger }}
           >
             <X size={15} />
             Clear
@@ -427,7 +826,8 @@ const PaymentReports = () => {
           <div className="relative xl:col-span-2">
             <Search
               size={17}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: colors.textMuted }}
             />
 
             <input
@@ -435,12 +835,12 @@ const PaymentReports = () => {
               placeholder="Search payment..."
               value={filters.search}
               onChange={(e) =>
-                setFilters({
-                  ...filters,
+                setFilters((prev) => ({
+                  ...prev,
                   search: e.target.value,
-                })
+                }))
               }
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              className={`${inputClass} pl-10 pr-3`}
             />
           </div>
 
@@ -449,12 +849,12 @@ const PaymentReports = () => {
           <select
             value={filters.type}
             onChange={(e) =>
-              setFilters({
-                ...filters,
+              setFilters((prev) => ({
+                ...prev,
                 type: e.target.value,
-              })
+              }))
             }
-            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-teal-500"
+            className={inputClass}
           >
             <option value="ALL">All Types</option>
 
@@ -470,12 +870,12 @@ const PaymentReports = () => {
           <select
             value={filters.status}
             onChange={(e) =>
-              setFilters({
-                ...filters,
+              setFilters((prev) => ({
+                ...prev,
                 status: e.target.value,
-              })
+              }))
             }
-            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-teal-500"
+            className={inputClass}
           >
             <option value="ALL">All Status</option>
 
@@ -495,12 +895,12 @@ const PaymentReports = () => {
           <select
             value={filters.method}
             onChange={(e) =>
-              setFilters({
-                ...filters,
+              setFilters((prev) => ({
+                ...prev,
                 method: e.target.value,
-              })
+              }))
             }
-            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-teal-500"
+            className={inputClass}
           >
             <option value="ALL">All Methods</option>
 
@@ -520,19 +920,20 @@ const PaymentReports = () => {
           <div className="relative">
             <CalendarDays
               size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: colors.textMuted }}
             />
 
             <input
               type="date"
               value={filters.fromDate}
               onChange={(e) =>
-                setFilters({
-                  ...filters,
+                setFilters((prev) => ({
+                  ...prev,
                   fromDate: e.target.value,
-                })
+                }))
               }
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-2 text-sm outline-none focus:border-teal-500"
+              className={`${inputClass} pl-9 pr-2`}
             />
           </div>
 
@@ -541,19 +942,20 @@ const PaymentReports = () => {
           <div className="relative">
             <CalendarDays
               size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: colors.textMuted }}
             />
 
             <input
               type="date"
               value={filters.toDate}
               onChange={(e) =>
-                setFilters({
-                  ...filters,
+                setFilters((prev) => ({
+                  ...prev,
                   toDate: e.target.value,
-                })
+                }))
               }
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-2 text-sm outline-none focus:border-teal-500"
+              className={`${inputClass} pl-9 pr-2`}
             />
           </div>
         </div>
@@ -566,17 +968,17 @@ const PaymentReports = () => {
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {/* Total */}
 
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.bgLight, borderColor: colors.cardBorder }}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Total Transactions</p>
+              <p className="text-sm" style={{ color: colors.textMuted }}>Total Transactions</p>
 
-              <h3 className="mt-2 text-2xl font-semibold text-[#123b3d]">
+              <h3 className="mt-2 text-2xl" style={{ color: colors.textDark, fontFamily: "'Libre Baskerville', serif" }}>
                 {stats.totalTransactions}
               </h3>
             </div>
 
-            <div className="rounded-xl bg-teal-50 p-3 text-teal-600">
+            <div className="rounded-xl p-3" style={{ backgroundColor: `${colors.primaryTeal}1A`, color: colors.primaryTeal }}>
               <CreditCard size={23} />
             </div>
           </div>
@@ -584,66 +986,66 @@ const PaymentReports = () => {
 
         {/* Paid */}
 
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.bgLight, borderColor: colors.cardBorder }}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Total Received / Paid</p>
+              <p className="text-sm" style={{ color: colors.textMuted }}>Total Received / Paid</p>
 
-              <h3 className="mt-2 text-2xl font-semibold text-green-600">
+              <h3 className="mt-2 text-2xl" style={{ color: colors.primaryTeal, fontFamily: "'Libre Baskerville', serif" }}>
                 {formatCurrency(stats.totalAmount)}
               </h3>
             </div>
 
-            <div className="rounded-xl bg-green-50 p-3 text-green-600">
+            <div className="rounded-xl p-3" style={{ backgroundColor: `${colors.mint}1F`, color: colors.primaryTeal }}>
               <TrendingUp size={23} />
             </div>
           </div>
 
-          <p className="mt-2 text-xs text-gray-400">
+          <p className="mt-2 text-xs" style={{ color: colors.textMuted }}>
             {stats.paidCount} paid transactions
           </p>
         </div>
 
         {/* Pending */}
 
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.bgLight, borderColor: colors.cardBorder }}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Pending Amount</p>
+              <p className="text-sm" style={{ color: colors.textMuted }}>Pending Amount</p>
 
-              <h3 className="mt-2 text-2xl font-semibold text-orange-500">
+              <h3 className="mt-2 text-2xl" style={{ color: colors.amber, fontFamily: "'Libre Baskerville', serif" }}>
                 {formatCurrency(stats.pendingAmount)}
               </h3>
             </div>
 
-            <div className="rounded-xl bg-orange-50 p-3 text-orange-500">
+            <div className="rounded-xl p-3" style={{ backgroundColor: "#F2A93B1F", color: colors.amber }}>
               <Wallet size={23} />
             </div>
           </div>
 
-          <p className="mt-2 text-xs text-gray-400">
+          <p className="mt-2 text-xs" style={{ color: colors.textMuted }}>
             {stats.pendingCount} pending transactions
           </p>
         </div>
 
         {/* Refund */}
 
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.bgLight, borderColor: colors.cardBorder }}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Refunded Amount</p>
+              <p className="text-sm" style={{ color: colors.textMuted }}>Refunded Amount</p>
 
-              <h3 className="mt-2 text-2xl font-semibold text-red-500">
+              <h3 className="mt-2 text-2xl" style={{ color: colors.seafoam, fontFamily: "'Libre Baskerville', serif" }}>
                 {formatCurrency(stats.refundAmount)}
               </h3>
             </div>
 
-            <div className="rounded-xl bg-red-50 p-3 text-red-500">
+            <div className="rounded-xl p-3" style={{ backgroundColor: `${colors.seafoam}1F`, color: colors.seafoam }}>
               <TrendingDown size={23} />
             </div>
           </div>
 
-          <p className="mt-2 text-xs text-gray-400">
+          <p className="mt-2 text-xs" style={{ color: colors.textMuted }}>
             {stats.refundedCount} refunded transactions
           </p>
         </div>
@@ -656,32 +1058,32 @@ const PaymentReports = () => {
       <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
         {/* Payment Type */}
 
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.bgLight, borderColor: colors.cardBorder }}>
           <div className="mb-5 flex items-center gap-3">
-            <div className="rounded-xl bg-teal-50 p-2.5 text-teal-600">
+            <div className="rounded-xl p-2.5" style={{ backgroundColor: `${colors.primaryTeal}1A`, color: colors.primaryTeal }}>
               <Users size={20} />
             </div>
 
             <div>
-              <h2 className="font-semibold text-[#123b3d]">Payment By Type</h2>
+              <h2 className="font-semibold" style={{ color: colors.textDark }}>Payment By Type</h2>
 
-              <p className="text-xs text-gray-500">Distribution of payments</p>
+              <p className="text-xs" style={{ color: colors.textMuted }}>Distribution of payments</p>
             </div>
           </div>
 
           <div className="space-y-4">
             {typeStats.map((item) => (
-              <div key={item.type} className="rounded-xl bg-gray-50 p-4">
+              <div key={item.type} className="rounded-xl p-4" style={{ backgroundColor: colors.cardTint }}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-gray-700">{item.label}</p>
+                    <p className="font-medium" style={{ color: colors.textDark }}>{item.label}</p>
 
-                    <p className="mt-1 text-xs text-gray-400">
+                    <p className="mt-1 text-xs" style={{ color: colors.textMuted }}>
                       {item.count} transactions
                     </p>
                   </div>
 
-                  <p className="font-semibold text-[#123b3d]">
+                  <p className="font-semibold" style={{ color: colors.textDark }}>
                     {formatCurrency(item.amount)}
                   </p>
                 </div>
@@ -692,18 +1094,18 @@ const PaymentReports = () => {
 
         {/* Payment Method */}
 
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.bgLight, borderColor: colors.cardBorder }}>
           <div className="mb-5 flex items-center gap-3">
-            <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
+            <div className="rounded-xl p-2.5" style={{ backgroundColor: `${colors.seafoam}1A`, color: colors.seafoam }}>
               <BarChart3 size={20} />
             </div>
 
             <div>
-              <h2 className="font-semibold text-[#123b3d]">
+              <h2 className="font-semibold" style={{ color: colors.textDark }}>
                 Payment By Method
               </h2>
 
-              <p className="text-xs text-gray-500">
+              <p className="text-xs" style={{ color: colors.textMuted }}>
                 Paid amount by payment method
               </p>
             </div>
@@ -719,25 +1121,26 @@ const PaymentReports = () => {
               return (
                 <div key={item.method}>
                   <div className="mb-1 flex items-center justify-between text-sm">
-                    <span className="text-gray-600">
+                    <span style={{ color: colors.textMuted }}>
                       {item.method.replace("_", " ")}
                     </span>
 
-                    <span className="font-medium text-gray-800">
+                    <span className="font-medium" style={{ color: colors.textDark }}>
                       {formatCurrency(item.amount)}
                     </span>
                   </div>
 
-                  <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                  <div className="h-2 overflow-hidden rounded-full" style={{ backgroundColor: colors.cardTint }}>
                     <div
-                      className="h-full rounded-full bg-teal-500"
+                      className="h-full rounded-full transition-all"
                       style={{
                         width: `${Math.min(percentage, 100)}%`,
+                        backgroundColor: colors.primaryTeal,
                       }}
                     />
                   </div>
 
-                  <p className="mt-1 text-xs text-gray-400">
+                  <p className="mt-1 text-xs" style={{ color: colors.textMuted }}>
                     {item.count} transactions
                   </p>
                 </div>
@@ -751,58 +1154,58 @@ const PaymentReports = () => {
           STATUS SUMMARY
       ================================================= */}
 
-      <div className="mb-6 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="mb-6 rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.bgLight, borderColor: colors.cardBorder }}>
         <div className="mb-5 flex items-center gap-3">
-          <div className="rounded-xl bg-purple-50 p-2.5 text-purple-600">
+          <div className="rounded-xl p-2.5" style={{ backgroundColor: `${colors.mint}1A`, color: colors.mint }}>
             <IndianRupee size={20} />
           </div>
 
           <div>
-            <h2 className="font-semibold text-[#123b3d]">
+            <h2 className="font-semibold" style={{ color: colors.textDark }}>
               Payment Status Summary
             </h2>
 
-            <p className="text-xs text-gray-500">Current transaction status</p>
+            <p className="text-xs" style={{ color: colors.textMuted }}>Current transaction status</p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          <div className="rounded-xl bg-green-50 p-4">
-            <p className="text-xs text-green-600">Paid</p>
+          <div className="rounded-xl p-4" style={{ backgroundColor: `${colors.mint}1F` }}>
+            <p className="text-xs" style={{ color: colors.primaryTeal }}>Paid</p>
 
-            <p className="mt-1 text-xl font-semibold text-green-700">
+            <p className="mt-1 text-xl font-semibold" style={{ color: colors.primaryTeal }}>
               {stats.paidCount}
             </p>
           </div>
 
-          <div className="rounded-xl bg-orange-50 p-4">
-            <p className="text-xs text-orange-600">Pending</p>
+          <div className="rounded-xl p-4" style={{ backgroundColor: "#F2A93B1F" }}>
+            <p className="text-xs" style={{ color: colors.amber }}>Pending</p>
 
-            <p className="mt-1 text-xl font-semibold text-orange-700">
+            <p className="mt-1 text-xl font-semibold" style={{ color: colors.amber }}>
               {stats.pendingCount}
             </p>
           </div>
 
-          <div className="rounded-xl bg-red-50 p-4">
-            <p className="text-xs text-red-600">Failed</p>
+          <div className="rounded-xl p-4" style={{ backgroundColor: `${colors.danger}1A` }}>
+            <p className="text-xs" style={{ color: colors.danger }}>Failed</p>
 
-            <p className="mt-1 text-xl font-semibold text-red-700">
+            <p className="mt-1 text-xl font-semibold" style={{ color: colors.danger }}>
               {stats.failedCount}
             </p>
           </div>
 
-          <div className="rounded-xl bg-gray-100 p-4">
-            <p className="text-xs text-gray-600">Cancelled</p>
+          <div className="rounded-xl p-4" style={{ backgroundColor: `${colors.textMuted}1A` }}>
+            <p className="text-xs" style={{ color: colors.textMuted }}>Cancelled</p>
 
-            <p className="mt-1 text-xl font-semibold text-gray-700">
+            <p className="mt-1 text-xl font-semibold" style={{ color: colors.textMuted }}>
               {stats.cancelledCount}
             </p>
           </div>
 
-          <div className="rounded-xl bg-purple-50 p-4">
-            <p className="text-xs text-purple-600">Refunded</p>
+          <div className="rounded-xl p-4" style={{ backgroundColor: `${colors.seafoam}1F` }}>
+            <p className="text-xs" style={{ color: colors.seafoam }}>Refunded</p>
 
-            <p className="mt-1 text-xl font-semibold text-purple-700">
+            <p className="mt-1 text-xl font-semibold" style={{ color: colors.seafoam }}>
               {stats.refundedCount}
             </p>
           </div>
@@ -810,42 +1213,48 @@ const PaymentReports = () => {
       </div>
 
       {/* =================================================
-          RECENT TRANSACTIONS
+          TRANSACTIONS
       ================================================= */}
 
-      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
-        <div className="border-b border-gray-100 p-5">
+      <div className="rounded-2xl border shadow-sm" style={{ backgroundColor: colors.bgLight, borderColor: colors.cardBorder }}>
+        <div className="border-b p-5" style={{ borderColor: colors.cardBorder }}>
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-semibold text-[#123b3d]">
+              <h2 className="font-semibold" style={{ color: colors.textDark }}>
                 Payment Transactions
               </h2>
 
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs" style={{ color: colors.textMuted }}>
                 {filteredPayments.length} transactions found
               </p>
             </div>
+
+            {loading && (
+              <RefreshCw size={18} className="animate-spin" style={{ color: colors.primaryTeal }} />
+            )}
           </div>
         </div>
 
         {filteredPayments.length === 0 ? (
           <div className="p-12 text-center">
-            <CreditCard size={42} className="mx-auto mb-3 text-gray-300" />
+            <CreditCard size={42} className="mx-auto mb-3" style={{ color: colors.cardBorder }} />
 
-            <p className="font-medium text-gray-600">No payments found</p>
+            <p className="font-medium" style={{ color: colors.textDark }}>No payments found</p>
 
-            <p className="mt-1 text-sm text-gray-400">
+            <p className="mt-1 text-sm" style={{ color: colors.textMuted }}>
               Try changing your filters.
             </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[900px] w-full">
-              <thead className="bg-[#f5fbfb]">
-                <tr className="text-left text-xs uppercase text-gray-500">
+            <table className="min-w-[1000px] w-full">
+              <thead style={{ backgroundColor: colors.cardTint }}>
+                <tr className="text-left text-xs uppercase" style={{ color: colors.textMuted }}>
                   <th className="px-5 py-3">Payment</th>
 
                   <th className="px-5 py-3">Type</th>
+
+                  <th className="px-5 py-3">Party</th>
 
                   <th className="px-5 py-3">Amount</th>
 
@@ -857,50 +1266,68 @@ const PaymentReports = () => {
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-gray-100">
-                {filteredPayments.slice(0, 20).map((payment) => (
-                  <tr key={payment.id} className="text-sm hover:bg-gray-50">
+              <tbody className="divide-y" style={{ borderColor: colors.cardBorder }}>
+                {filteredPayments.slice(0, 50).map((payment) => (
+                  <tr key={payment.id} className="pr-row text-sm transition-colors" style={{ borderColor: colors.cardBorder }}>
+                    {/* Payment */}
+
                     <td className="px-5 py-4">
-                      <p className="font-medium text-gray-800">
-                        {payment.paymentNumber || `#${payment.id}`}
+                      <p className="font-medium" style={{ color: colors.textDark }}>
+                        {payment.paymentNumber || `PAY-${payment.id || "-"}`}
                       </p>
 
-                      <p className="mt-1 text-xs text-gray-400">
+                      <p className="mt-1 text-xs" style={{ color: colors.textMuted }}>
                         {payment.transactionId || "No transaction ID"}
                       </p>
                     </td>
 
-                    <td className="px-5 py-4 text-gray-600">
-                      {formatPaymentType(payment.paymentType)}
-                    </td>
-
-                    <td className="px-5 py-4 font-semibold text-[#123b3d]">
-                      {formatCurrency(payment.amount)}
-                    </td>
-
-                    <td className="px-5 py-4 text-gray-600">
-                      {payment.paymentMethod?.replace("_", " ") || "-"}
-                    </td>
+                    {/* Type */}
 
                     <td className="px-5 py-4">
                       <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
-                          payment.status === "Paid"
-                            ? "bg-green-100 text-green-700"
-                            : payment.status === "Pending"
-                              ? "bg-orange-100 text-orange-700"
-                              : payment.status === "Refunded"
-                                ? "bg-purple-100 text-purple-700"
-                                : payment.status === "Cancelled"
-                                  ? "bg-gray-100 text-gray-700"
-                                  : "bg-red-100 text-red-700"
-                        }`}
+                        className="rounded-full px-2.5 py-1 text-xs font-medium"
+                        style={{ backgroundColor: `${colors.primaryTeal}1A`, color: colors.primaryTeal }}
                       >
-                        {payment.status}
+                        {formatPaymentType(payment.paymentType)}
                       </span>
                     </td>
 
-                    <td className="px-5 py-4 text-gray-500">
+                    {/* Party */}
+
+                    <td className="px-5 py-4">
+                      <p className="font-medium" style={{ color: colors.textDark }}>
+                        {getPartyName(payment)}
+                      </p>
+                    </td>
+
+                    {/* Amount */}
+
+                    <td className="px-5 py-4 font-semibold" style={{ color: colors.textDark }}>
+                      {formatCurrency(payment.amount)}
+                    </td>
+
+                    {/* Method */}
+
+                    <td className="px-5 py-4" style={{ color: colors.textMuted }}>
+                      {payment.paymentMethod
+                        ? String(payment.paymentMethod).replace("_", " ")
+                        : "-"}
+                    </td>
+
+                    {/* Status */}
+
+                    <td className="px-5 py-4">
+                      <span
+                        className="inline-flex rounded-full px-2.5 py-1 text-xs font-medium"
+                        style={getStatusStyle(payment.status)}
+                      >
+                        {payment.status || "-"}
+                      </span>
+                    </td>
+
+                    {/* Date */}
+
+                    <td className="px-5 py-4" style={{ color: colors.textMuted }}>
                       {payment.paymentDate
                         ? new Date(payment.paymentDate).toLocaleDateString(
                             "en-IN",

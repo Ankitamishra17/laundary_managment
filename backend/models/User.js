@@ -1,63 +1,104 @@
-import { DataTypes, Sequelize } from "sequelize";
+import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
 
-const User = sequelize.define("User", {
-  id: {
-    type: DataTypes.INTEGER,
-    autoIncrement: true,
-    primaryKey: true,
-  },
-  shopId: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-  },
-  name: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  email: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true,
-    validate: {
-      isEmail: true,
+const User = sequelize.define(
+  "User",
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+
+    // Tenant / Shop ID
+    // NULL is allowed only for super_admin
+    shopId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    name: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+
+    // Email
+    // IMPORTANT:
+    // Do NOT use unique: true here.
+    // Email uniqueness is handled per shop
+    // through the composite index below.
+    email: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        isEmail: true,
+      },
+      set(value) {
+        this.setDataValue("email", value.trim().toLowerCase());
+      },
+    },
+
+    // Phone
+    // Do NOT use unique: true here.
+    // Same phone can exist in different shops.
+    phone: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+
+    password: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+
+    // Shop admin must change temporary password
+    mustChangePassword: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
+
+    role: {
+      type: DataTypes.ENUM("super_admin", "admin", "employee", "customer"),
+      allowNull: false,
+      defaultValue: "customer",
+    },
+
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
+
+    // Profile image URL
+    avatar: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
   },
-  phone: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true,
-  },
-  password: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  //force to admin create new password
-  mustChangePassword: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
-},
-  role: {
-    type: DataTypes.ENUM("super_admin", "admin", "employee", "customer"),
-    allowNull: false,
-    defaultValue: "customer",
-  },
-  isActive:{
-    type:DataTypes.BOOLEAN,
-    defaultValue: true,
-  },
-  // Profile image URL (e.g. "/uploads/avatars/avatar-1-123.jpg") — used by
-  // the navbar/dropdown avatars and the customer profile page.
-  avatar: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  }
-},
-{
-    tableName:"users",
-    timestamps:true
-}
 
+  {
+    tableName: "users",
+    timestamps: true,
+
+    indexes: [
+      // ==========================================
+      // EMAIL UNIQUE PER SHOP
+      // ==========================================
+      {
+        unique: true,
+        fields: ["shopId", "email"],
+        name: "unique_shop_user_email",
+      },
+
+      // ==========================================
+      // PHONE UNIQUE PER SHOP
+      // ==========================================
+      {
+        unique: true,
+        fields: ["shopId", "phone"],
+        name: "unique_shop_user_phone",
+      },
+    ],
+  },
 );
 
-export default User
+export default User;

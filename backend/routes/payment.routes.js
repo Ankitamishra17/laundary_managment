@@ -3,9 +3,10 @@ import express from "express";
 import {
   createPayment,
   createSupplierPayment,
-    createEmployeePayment,
+  createEmployeePayment,
   getPayments,
   getPaymentById,
+  getAllCustomerPayments,
   getCustomerPayments,
   getSupplierPayments,
   getEmployeePayments,
@@ -14,6 +15,7 @@ import {
   updatePayment,
   cancelPayment,
   getPaymentReport,
+  refundPayment,
 } from "../controllers/payment.controller.js";
 
 import protect from "../middleware/authMiddleware.js";
@@ -72,7 +74,17 @@ router.post(
 // CUSTOMER PAYMENTS
 // GET /api/payments/customer/:customerId
 // =====================================================
+// =====================================================
+// ALL CUSTOMER PAYMENTS
+// GET /api/payments/customers
+// =====================================================
 
+router.get(
+  "/customers",
+  protect,
+  allowRoles("admin", "super_admin"),
+  getAllCustomerPayments,
+);
 router.get(
   "/customer/:customerId",
   protect,
@@ -173,4 +185,10 @@ router.put("/:id", protect, allowRoles("admin", "super_admin"), updatePayment);
 
 router.get("/:id", protect, allowRoles("admin", "super_admin"), getPaymentById);
 
+router.post(
+  "/:id/refund",
+  protect,
+  allowRoles("admin", "super_admin"),
+  refundPayment,
+);
 export default router;

@@ -1,96 +1,362 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   X,
-  CreditCard,
-  User,
-  Building2,
-  Briefcase,
+  WalletCards,
+  UserRound,
   IndianRupee,
-  CalendarDays,
   Hash,
   FileText,
-  Save,
+  CalendarDays,
+  CheckCircle2,
   Loader2,
+  AlertCircle,
+  CreditCard,
 } from "lucide-react";
 
-const initialForm = {
-  paymentType: "CUSTOMER",
-  customerId: "",
-  supplierId: "",
-  employeeId: "",
-  orderId: "",
-  purchaseId: "",
-  payrollId: "",
-  amount: "",
-  paymentMethod: "Cash",
-  status: "Paid",
-  transactionId: "",
-  referenceNumber: "",
-  paymentDate: "",
-  description: "",
-  remarks: "",
+import { getEmployees } from "../../api/employeeApi";
+import { getEmployeePayrolls } from "../../api/payrollApi";
+import { createEmployeePayment } from "../../api/paymentApi";
+
+// =====================================================
+// HELPERS
+// =====================================================
+
+const formatCurrency = (value) => {
+  const number = Number(value || 0);
+
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(number);
 };
 
-const PaymentForm = ({
-  onSubmit,
-  onClose,
-  customers = [],
-  suppliers = [],
-  employees = [],
-  loading = false,
-  initialData = null,
-}) => {
-  const [form, setForm] = useState(initialForm);
-  const [errors, setErrors] = useState({});
+const formatDate = (date) => {
+  if (!date) return "";
 
-  // =====================================================
-  // INITIAL DATA
-  // =====================================================
+  const d = new Date(date);
 
-  useEffect(() => {
-    if (initialData) {
-      setForm({
-        paymentType: initialData.paymentType || "CUSTOMER",
-        customerId: initialData.customerId || "",
-        supplierId: initialData.supplierId || "",
-        employeeId: initialData.employeeId || "",
-        orderId: initialData.orderId || "",
-        purchaseId: initialData.purchaseId || "",
-        payrollId: initialData.payrollId || "",
-        amount: initialData.amount || "",
-        paymentMethod: initialData.paymentMethod || "Cash",
-        status: initialData.status || "Paid",
-        transactionId: initialData.transactionId || "",
-        referenceNumber: initialData.referenceNumber || "",
-        paymentDate: initialData.paymentDate
-          ? new Date(initialData.paymentDate).toISOString().slice(0, 16)
-          : getCurrentDateTime(),
-        description: initialData.description || "",
-        remarks: initialData.remarks || "",
-      });
-    } else {
-      setForm({
-        ...initialForm,
-        paymentDate: getCurrentDateTime(),
-      });
-    }
-  }, [initialData]);
+  if (Number.isNaN(d.getTime())) return "";
 
-  // =====================================================
-  // CURRENT DATE/TIME
-  // =====================================================
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
 
-  function getCurrentDateTime() {
-    const now = new Date();
+const getToday = () => {
+  const date = new Date();
 
-    const offset = now.getTimezoneOffset() * 60000;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
 
-    return new Date(now.getTime() - offset).toISOString().slice(0, 16);
+  return `${year}-${month}-${day}`;
+};
+
+const getEmployeeName = (employee) => {
+  if (!employee) return "";
+
+  return (
+    employee.name ||
+    employee.fullName ||
+    employee.employeeName ||
+    `${employee.firstName || ""} ${employee.lastName || ""}`.trim() ||
+    employee.user?.name ||
+    employee.user?.fullName ||
+    employee.email ||
+    `Employee #${employee.id}`
+  );
+};
+
+const getEmployeeEmail = (employee) => {
+  if (!employee) return "";
+
+  return employee.email || employee.user?.email || employee.emailAddress || "";
+};
+
+const getPayrollLabel = (payroll) => {
+  if (!payroll) return "";
+
+  if (payroll.salaryPeriod) {
+    return payroll.salaryPeriod;
   }
 
-  // =====================================================
-  // HANDLE CHANGE
-  // =====================================================
+  if (payroll.period) {
+    return payroll.period;
+  }
+
+  const start =
+    payroll.startDate || payroll.periodStart || payroll.salaryStartDate;
+
+  const end = payroll.endDate || payroll.periodEnd || payroll.salaryEndDate;
+
+  if (start && end) {
+    return `${formatDate(start)} - ${formatDate(end)}`;
+  }
+
+  if (start) {
+    return formatDate(start);
+  }
+
+  if (payroll.month && payroll.year) {
+    return `${payroll.month} ${payroll.year}`;
+  }
+
+  return `Payroll #${payroll.id}`;
+};
+
+// =====================================================
+// COMPONENT
+// =====================================================
+
+const PaymentForm = ({ isOpen, onClose, onSuccess }) => {
+  // ===================================================
+  // STATE
+  // ===================================================
+
+  const [employees, setEmployees] = useState([]);
+  const [payrolls, setPayrolls] = useState([]);
+
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [loadingPayrolls, setLoadingPayrolls] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const [form, setForm] = useState({
+    employeeId: "",
+    payrollId: "",
+    amount: "",
+    paymentMethod: "Cash",
+    paymentDate: getToday(),
+    transactionId: "",
+    referenceNumber: "",
+    description: "",
+    remarks: "",
+  });
+
+  const [errors, setErrors] = useState({});
+
+  // ===================================================
+  // RESET FORM
+  // ===================================================
+
+  const resetForm = () => {
+    setForm({
+      employeeId: "",
+      payrollId: "",
+      amount: "",
+      paymentMethod: "Cash",
+      paymentDate: getToday(),
+      transactionId: "",
+      referenceNumber: "",
+      description: "",
+      remarks: "",
+    });
+
+    setPayrolls([]);
+    setErrors({});
+    setError("");
+    setSuccessMessage("");
+  };
+
+  // ===================================================
+  // LOAD EMPLOYEES
+  // ===================================================
+
+  const loadEmployees = async () => {
+    try {
+      setLoadingEmployees(true);
+      setError("");
+
+      const response = await getEmployees();
+
+      console.log("Employees response:", response);
+
+      let employeeData = [];
+
+      if (Array.isArray(response)) {
+        employeeData = response;
+      } else if (Array.isArray(response?.data)) {
+        employeeData = response.data;
+      } else if (Array.isArray(response?.employees)) {
+        employeeData = response.employees;
+      } else if (Array.isArray(response?.data?.employees)) {
+        employeeData = response.data.employees;
+      }
+
+      setEmployees(employeeData);
+    } catch (err) {
+      console.error("Load employees error:", err);
+
+      setEmployees([]);
+
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Unable to load employees.",
+      );
+    } finally {
+      setLoadingEmployees(false);
+    }
+  };
+
+  // ===================================================
+  // OPEN FORM
+  // ===================================================
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    resetForm();
+    loadEmployees();
+  }, [isOpen]);
+
+  // ===================================================
+  // SELECTED EMPLOYEE
+  // ===================================================
+
+  const selectedEmployee = useMemo(() => {
+    return employees.find(
+      (employee) => String(employee.id) === String(form.employeeId),
+    );
+  }, [employees, form.employeeId]);
+
+  // ===================================================
+  // SELECTED PAYROLL
+  // ===================================================
+
+  const selectedPayroll = useMemo(() => {
+    return payrolls.find(
+      (payroll) => String(payroll.id) === String(form.payrollId),
+    );
+  }, [payrolls, form.payrollId]);
+
+  // ===================================================
+  // LOAD PAYROLLS
+  // ===================================================
+
+  const loadEmployeePayrolls = async (employeeId) => {
+    try {
+      setLoadingPayrolls(true);
+      setError("");
+
+      setPayrolls([]);
+
+      console.log("Fetching payrolls for employee:", employeeId);
+
+      const response = await getEmployeePayrolls(employeeId);
+
+      console.log("Employee payroll response:", response);
+
+      let payrollData = [];
+
+      if (Array.isArray(response)) {
+        payrollData = response;
+      } else if (Array.isArray(response?.data)) {
+        payrollData = response.data;
+      } else if (Array.isArray(response?.payrolls)) {
+        payrollData = response.payrolls;
+      } else if (Array.isArray(response?.data?.payrolls)) {
+        payrollData = response.data.payrolls;
+      }
+
+      const unpaidPayrolls = payrollData.filter((payroll) => {
+        const status = String(payroll.status || "").toUpperCase();
+
+        const dueAmount = Number(payroll.dueAmount || 0);
+
+        return status !== "PAID" && status !== "CANCELLED" && dueAmount > 0;
+      });
+
+      setPayrolls(unpaidPayrolls);
+
+      if (unpaidPayrolls.length === 0) {
+        setErrors((prev) => ({
+          ...prev,
+          payrollId: "No unpaid payroll found for this employee.",
+        }));
+      }
+    } catch (err) {
+      console.error("Load employee payrolls error:", err);
+
+      setPayrolls([]);
+
+      setErrors((prev) => ({
+        ...prev,
+        payrollId:
+          err?.response?.data?.message ||
+          err?.message ||
+          "Unable to load employee payrolls.",
+      }));
+    } finally {
+      setLoadingPayrolls(false);
+    }
+  };
+
+  // ===================================================
+  // EMPLOYEE CHANGE
+  // ===================================================
+
+  const handleEmployeeChange = async (e) => {
+    const employeeId = e.target.value;
+
+    setForm((prev) => ({
+      ...prev,
+      employeeId,
+      payrollId: "",
+      amount: "",
+    }));
+
+    setPayrolls([]);
+
+    setErrors({});
+
+    setError("");
+    setSuccessMessage("");
+
+    if (!employeeId) {
+      return;
+    }
+
+    await loadEmployeePayrolls(employeeId);
+  };
+
+  // ===================================================
+  // PAYROLL CHANGE
+  // ===================================================
+
+  const handlePayrollChange = (e) => {
+    const payrollId = e.target.value;
+
+    const payroll = payrolls.find(
+      (item) => String(item.id) === String(payrollId),
+    );
+
+    const dueAmount = payroll ? Number(payroll.dueAmount || 0) : "";
+
+    setForm((prev) => ({
+      ...prev,
+      payrollId,
+      amount: dueAmount,
+    }));
+
+    setErrors((prev) => ({
+      ...prev,
+      payrollId: "",
+      amount: "",
+    }));
+
+    setError("");
+  };
+
+  // ===================================================
+  // NORMAL CHANGE
+  // ===================================================
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -104,49 +370,41 @@ const PaymentForm = ({
       ...prev,
       [name]: "",
     }));
+
+    setError("");
   };
 
-  // =====================================================
-  // PAYMENT TYPE CHANGE
-  // =====================================================
-
-  const handlePaymentTypeChange = (e) => {
-    const paymentType = e.target.value;
-
-    setForm((prev) => ({
-      ...prev,
-      paymentType,
-
-      customerId: "",
-      supplierId: "",
-      employeeId: "",
-
-      orderId: "",
-      purchaseId: "",
-      payrollId: "",
-
-      transactionId: "",
-      referenceNumber: "",
-    }));
-
-    setErrors({});
-  };
-
-  // =====================================================
-  // VALIDATION
-  // =====================================================
+  // ===================================================
+  // VALIDATE
+  // ===================================================
 
   const validate = () => {
     const newErrors = {};
 
-    if (!form.paymentType) {
-      newErrors.paymentType = "Payment type is required.";
+    if (!form.employeeId) {
+      newErrors.employeeId = "Employee is required.";
     }
 
-    if (!form.amount) {
-      newErrors.amount = "Amount is required.";
-    } else if (Number(form.amount) <= 0) {
-      newErrors.amount = "Amount must be greater than 0.";
+    if (!form.payrollId) {
+      newErrors.payrollId = "Payroll is required.";
+    }
+
+    const amount = Number(form.amount);
+
+    if (!form.amount || !Number.isFinite(amount) || amount <= 0) {
+      newErrors.amount = "Enter a valid payment amount.";
+    }
+
+    if (selectedPayroll) {
+      const dueAmount = Number(selectedPayroll.dueAmount || 0);
+
+      if (dueAmount <= 0) {
+        newErrors.amount = "This payroll has no amount due.";
+      } else if (amount > dueAmount) {
+        newErrors.amount = `Payment cannot exceed due amount ${formatCurrency(
+          dueAmount,
+        )}.`;
+      }
     }
 
     if (!form.paymentMethod) {
@@ -157,483 +415,636 @@ const PaymentForm = ({
       newErrors.paymentDate = "Payment date is required.";
     }
 
-    if (form.paymentType === "CUSTOMER" && !form.customerId) {
-      newErrors.customerId = "Please select a customer.";
-    }
-
-    if (form.paymentType === "SUPPLIER" && !form.supplierId) {
-      newErrors.supplierId = "Please select a supplier.";
-    }
-
-    if (form.paymentType === "SALARY" && !form.employeeId) {
-      newErrors.employeeId = "Please select an employee.";
-    }
-
     setErrors(newErrors);
 
     return Object.keys(newErrors).length === 0;
   };
 
-  // =====================================================
+  // ===================================================
   // SUBMIT
-  // =====================================================
+  // ===================================================
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    console.log("========== SALARY PAYMENT SUBMIT ==========");
+
+    setError("");
+    setSuccessMessage("");
+
     if (!validate()) {
+      console.log("Validation failed.");
       return;
     }
 
-    const payload = {
-      ...form,
+    try {
+      setSubmitting(true);
 
-      customerId: form.customerId || null,
+      const payload = {
+        employeeId: Number(form.employeeId),
+        payrollId: Number(form.payrollId),
+        amount: Number(Number(form.amount).toFixed(2)),
+        paymentMethod: form.paymentMethod,
+        paymentDate: form.paymentDate,
 
-      supplierId: form.supplierId || null,
+        transactionId: form.transactionId?.trim() || null,
 
-      employeeId: form.employeeId || null,
+        referenceNumber: form.referenceNumber?.trim() || null,
 
-      orderId: form.orderId || null,
+        description: form.description?.trim() || null,
 
-      purchaseId: form.purchaseId || null,
+        remarks: form.remarks?.trim() || null,
+      };
 
-      payrollId: form.payrollId || null,
+      console.log("Salary payment payload:", payload);
 
-      amount: Number(form.amount),
+      const response = await createEmployeePayment(payload);
 
-      transactionId: form.transactionId || null,
+      console.log("Salary payment response:", response);
 
-      referenceNumber: form.referenceNumber || null,
+      if (!response?.success) {
+        throw new Error(response?.message || "Failed to save salary payment.");
+      }
 
-      description: form.description || null,
+      setSuccessMessage(
+        response.message || "Salary payment recorded successfully.",
+      );
 
-      remarks: form.remarks || null,
-    };
+      // Important:
+      // Parent refreshes the salary-payment table.
+      if (onSuccess) {
+        await onSuccess(response);
+      }
 
-    await onSubmit(payload);
-  };
+      // Close + reset
+      resetForm();
 
-  // =====================================================
-  // PAYMENT TYPE INFORMATION
-  // =====================================================
+      if (onClose) {
+        onClose();
+      }
+    } catch (err) {
+      console.error("Create salary payment error:", err);
 
-  const getTypeInfo = () => {
-    switch (form.paymentType) {
-      case "CUSTOMER":
-        return {
-          icon: User,
-          title: "Customer Payment",
-          description: "Record payment received from a customer.",
-        };
+      console.error("Server response:", err?.response?.data);
 
-      case "SUPPLIER":
-        return {
-          icon: Building2,
-          title: "Supplier Payment",
-          description: "Record payment made to a supplier.",
-        };
-
-      case "SALARY":
-        return {
-          icon: Briefcase,
-          title: "Salary Payment",
-          description: "Record salary payment to an employee.",
-        };
-
-      default:
-        return {
-          icon: CreditCard,
-          title: "Payment",
-          description: "Record a payment transaction.",
-        };
+      setError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          "Unable to save salary payment.",
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const typeInfo = getTypeInfo();
-  const TypeIcon = typeInfo.icon;
+  // ===================================================
+  // CLOSE
+  // ===================================================
 
-  // =====================================================
-  // RENDER
-  // =====================================================
+  const handleClose = () => {
+    if (submitting) return;
+
+    resetForm();
+
+    if (onClose) {
+      onClose();
+    }
+  };
+
+  // ===================================================
+  // DON'T RENDER
+  // ===================================================
+
+  if (!isOpen) {
+    return null;
+  }
+
+  // ===================================================
+  // JSX
+  // ===================================================
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* =================================================
-            HEADER
-        ================================================= */}
-
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-              <TypeIcon size={21} />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+      <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        {/* HEADER */}
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-7 py-5">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-100">
+              <WalletCards size={25} className="text-purple-600" />
             </div>
 
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
-                {initialData ? "Edit Payment" : "Record Payment"}
+              <h2 className="text-xl font-bold text-gray-900">
+                Record Salary Payment
               </h2>
 
-              <p className="text-xs text-gray-500">{typeInfo.description}</p>
+              <p className="mt-1 text-sm text-gray-500">
+                Record an employee payroll payment.
+              </p>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+            onClick={handleClose}
+            disabled={submitting}
+            className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <X size={20} />
+            <X size={23} />
           </button>
         </div>
 
-        {/* =================================================
-            FORM
-        ================================================= */}
-
+        {/* FORM */}
         <form onSubmit={handleSubmit} className="overflow-y-auto">
-          <div className="space-y-6 p-5 sm:p-6">
-            {/* =================================================
-                PAYMENT TYPE
-            ================================================= */}
+          <div className="space-y-8 px-7 py-6">
+            {/* ERROR */}
+            {error && (
+              <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-red-700">
+                <AlertCircle size={20} className="mt-0.5 shrink-0" />
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                Payment Type
-                <span className="ml-1 text-red-500">*</span>
-              </label>
+                <div>
+                  <p className="font-semibold">Something went wrong</p>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <PaymentTypeButton
-                  value="CUSTOMER"
-                  selected={form.paymentType === "CUSTOMER"}
-                  icon={<User size={18} />}
-                  title="Customer"
-                  onClick={() =>
-                    handlePaymentTypeChange({
-                      target: {
-                        value: "CUSTOMER",
-                      },
-                    })
-                  }
-                />
-
-                <PaymentTypeButton
-                  value="SUPPLIER"
-                  selected={form.paymentType === "SUPPLIER"}
-                  icon={<Building2 size={18} />}
-                  title="Supplier"
-                  onClick={() =>
-                    handlePaymentTypeChange({
-                      target: {
-                        value: "SUPPLIER",
-                      },
-                    })
-                  }
-                />
-
-                <PaymentTypeButton
-                  value="SALARY"
-                  selected={form.paymentType === "SALARY"}
-                  icon={<Briefcase size={18} />}
-                  title="Salary"
-                  onClick={() =>
-                    handlePaymentTypeChange({
-                      target: {
-                        value: "SALARY",
-                      },
-                    })
-                  }
-                />
+                  <p className="mt-1 text-sm">{error}</p>
+                </div>
               </div>
+            )}
 
-              {errors.paymentType && (
-                <ErrorMessage message={errors.paymentType} />
-              )}
-            </div>
+            {/* SUCCESS */}
+            {successMessage && (
+              <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-4 text-green-700">
+                <CheckCircle2 size={20} />
 
-            {/* =================================================
-                PARTY INFORMATION
-            ================================================= */}
+                <p className="font-medium">{successMessage}</p>
+              </div>
+            )}
 
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <div className="mb-4 flex items-center gap-2">
-                <TypeIcon size={17} className="text-indigo-600" />
+            {/* EMPLOYEE & PAYROLL */}
+            <section>
+              <div className="mb-5 flex items-center gap-3">
+                <UserRound size={21} className="text-purple-600" />
 
-                <h3 className="text-sm font-semibold text-gray-900">
-                  {form.paymentType === "CUSTOMER" && "Customer Information"}
-
-                  {form.paymentType === "SUPPLIER" && "Supplier Information"}
-
-                  {form.paymentType === "SALARY" && "Employee Information"}
+                <h3 className="text-lg font-bold text-gray-900">
+                  Employee & Payroll
                 </h3>
               </div>
 
-              {/* CUSTOMER */}
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                {/* EMPLOYEE */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Employee <span className="text-red-500">*</span>
+                  </label>
 
-              {form.paymentType === "CUSTOMER" && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <SelectField
-                    label="Customer"
-                    name="customerId"
-                    value={form.customerId}
-                    onChange={handleChange}
-                    options={customers}
-                    placeholder="Select customer"
-                    required
-                    error={errors.customerId}
-                  />
-
-                  <InputField
-                    label="Order ID"
-                    name="orderId"
-                    value={form.orderId}
-                    onChange={handleChange}
-                    placeholder="Enter order ID"
-                  />
-                </div>
-              )}
-
-              {/* SUPPLIER */}
-
-              {form.paymentType === "SUPPLIER" && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <SelectField
-                    label="Supplier"
-                    name="supplierId"
-                    value={form.supplierId}
-                    onChange={handleChange}
-                    options={suppliers}
-                    placeholder="Select supplier"
-                    required
-                    error={errors.supplierId}
-                  />
-
-                  <InputField
-                    label="Purchase ID"
-                    name="purchaseId"
-                    value={form.purchaseId}
-                    onChange={handleChange}
-                    placeholder="Enter purchase ID"
-                  />
-                </div>
-              )}
-
-              {/* SALARY */}
-
-              {form.paymentType === "SALARY" && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <SelectField
-                    label="Employee"
-                    name="employeeId"
+                  <select
                     value={form.employeeId}
-                    onChange={handleChange}
-                    options={employees}
-                    placeholder="Select employee"
-                    required
-                    error={errors.employeeId}
-                  />
+                    onChange={handleEmployeeChange}
+                    disabled={loadingEmployees || submitting}
+                    className={`w-full rounded-xl border bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100 ${
+                      errors.employeeId ? "border-red-400" : "border-gray-300"
+                    }`}
+                  >
+                    <option value="">
+                      {loadingEmployees
+                        ? "Loading employees..."
+                        : "Select employee"}
+                    </option>
 
-                  <InputField
-                    label="Payroll ID"
-                    name="payrollId"
+                    {employees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {getEmployeeName(employee)}
+                      </option>
+                    ))}
+                  </select>
+
+                  {errors.employeeId && (
+                    <p className="mt-1.5 text-xs text-red-600">
+                      {errors.employeeId}
+                    </p>
+                  )}
+                </div>
+
+                {/* PAYROLL */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Payroll <span className="text-red-500">*</span>
+                  </label>
+
+                  <select
                     value={form.payrollId}
-                    onChange={handleChange}
-                    placeholder="Enter payroll ID"
-                  />
+                    onChange={handlePayrollChange}
+                    disabled={!form.employeeId || loadingPayrolls || submitting}
+                    className={`w-full rounded-xl border bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100 ${
+                      errors.payrollId ? "border-red-400" : "border-gray-300"
+                    }`}
+                  >
+                    <option value="">
+                      {!form.employeeId
+                        ? "Select employee first"
+                        : loadingPayrolls
+                          ? "Loading payroll..."
+                          : payrolls.length === 0
+                            ? "No unpaid payroll found"
+                            : "Select payroll"}
+                    </option>
+
+                    {payrolls.map((payroll) => (
+                      <option key={payroll.id} value={payroll.id}>
+                        {getPayrollLabel(payroll)} — Due{" "}
+                        {formatCurrency(payroll.dueAmount)}
+                      </option>
+                    ))}
+                  </select>
+
+                  {errors.payrollId && (
+                    <p className="mt-1.5 text-xs text-red-600">
+                      {errors.payrollId}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* EMPLOYEE INFO */}
+              {selectedEmployee && (
+                <div className="mt-5 rounded-xl border border-purple-100 bg-purple-50/50 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-purple-600">
+                    Employee
+                  </p>
+
+                  <p className="mt-1 text-lg font-bold text-gray-900">
+                    {getEmployeeName(selectedEmployee)}
+                  </p>
+
+                  {getEmployeeEmail(selectedEmployee) && (
+                    <p className="mt-1 text-sm text-gray-500">
+                      {getEmployeeEmail(selectedEmployee)}
+                    </p>
+                  )}
                 </div>
               )}
-            </div>
 
-            {/* =================================================
-                PAYMENT DETAILS
-            ================================================= */}
+              {/* PAYROLL INFO */}
+              {selectedPayroll && (
+                <div className="mt-4 grid grid-cols-1 gap-4 rounded-xl border border-gray-200 bg-gray-50 p-5 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs text-gray-500">Salary Period</p>
 
-            <div>
-              <SectionTitle
-                icon={<CreditCard size={17} />}
-                title="Payment Details"
-              />
+                    <p className="mt-1 font-semibold text-gray-900">
+                      {getPayrollLabel(selectedPayroll)}
+                    </p>
+                  </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-gray-500">Net Salary</p>
+
+                    <p className="mt-1 font-semibold text-gray-900">
+                      {formatCurrency(selectedPayroll.netSalary)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-gray-500">Remaining Due</p>
+
+                    <p className="mt-1 font-bold text-orange-600">
+                      {formatCurrency(selectedPayroll.dueAmount)}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* PAYMENT DETAILS */}
+            <section>
+              <div className="mb-5 flex items-center gap-3">
+                <IndianRupee size={21} className="text-purple-600" />
+
+                <h3 className="text-lg font-bold text-gray-900">
+                  Payment Details
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                 {/* AMOUNT */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Amount <span className="text-red-500">*</span>
+                  </label>
 
-                <InputField
-                  label="Amount"
-                  name="amount"
-                  type="number"
-                  value={form.amount}
-                  onChange={handleChange}
-                  placeholder="Enter amount"
-                  icon={<IndianRupee size={16} />}
-                  required
-                  min="0"
-                  step="0.01"
-                  error={errors.amount}
-                />
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
+                      ₹
+                    </span>
 
-                {/* METHOD */}
+                    <input
+                      type="number"
+                      name="amount"
+                      min="0.01"
+                      step="0.01"
+                      value={form.amount}
+                      onChange={handleChange}
+                      disabled={!selectedPayroll || submitting}
+                      placeholder="0.00"
+                      className={`w-full rounded-xl border bg-white py-3 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100 ${
+                        errors.amount ? "border-red-400" : "border-gray-300"
+                      }`}
+                    />
+                  </div>
 
-                <SelectField
-                  label="Payment Method"
-                  name="paymentMethod"
-                  value={form.paymentMethod}
-                  onChange={handleChange}
-                  options={[
-                    {
-                      id: "Cash",
-                      name: "Cash",
-                    },
-                    {
-                      id: "UPI",
-                      name: "UPI",
-                    },
-                    {
-                      id: "Card",
-                      name: "Card",
-                    },
-                    {
-                      id: "Bank_Transfer",
-                      name: "Bank Transfer",
-                    },
-                    {
-                      id: "Cheque",
-                      name: "Cheque",
-                    },
-                  ]}
-                  placeholder="Select payment method"
-                  required
-                  error={errors.paymentMethod}
-                />
+                  {selectedPayroll && (
+                    <p className="mt-1.5 text-xs text-gray-500">
+                      Maximum payment:{" "}
+                      <span className="font-semibold">
+                        {formatCurrency(selectedPayroll.dueAmount)}
+                      </span>
+                    </p>
+                  )}
 
-                {/* PAYMENT DATE */}
+                  {errors.amount && (
+                    <p className="mt-1.5 text-xs text-red-600">
+                      {errors.amount}
+                    </p>
+                  )}
+                </div>
 
-                <InputField
-                  label="Payment Date & Time"
-                  name="paymentDate"
-                  type="datetime-local"
-                  value={form.paymentDate}
-                  onChange={handleChange}
-                  icon={<CalendarDays size={16} />}
-                  required
-                  error={errors.paymentDate}
-                />
+                {/* PAYMENT METHOD */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Payment Method <span className="text-red-500">*</span>
+                  </label>
+
+                  <div className="relative">
+                    <CreditCard
+                      size={18}
+                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+
+                    <select
+                      name="paymentMethod"
+                      value={form.paymentMethod}
+                      onChange={handleChange}
+                      disabled={submitting}
+                      className={`w-full rounded-xl border bg-white py-3 pl-11 pr-4 text-sm text-gray-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100 ${
+                        errors.paymentMethod
+                          ? "border-red-400"
+                          : "border-gray-300"
+                      }`}
+                    >
+                      <option value="Cash">Cash</option>
+                      <option value="UPI">UPI</option>
+                      <option value="Card">Card</option>
+                      <option value="Bank_Transfer">Bank Transfer</option>
+                      <option value="Cheque">Cheque</option>
+                    </select>
+                  </div>
+
+                  {errors.paymentMethod && (
+                    <p className="mt-1.5 text-xs text-red-600">
+                      {errors.paymentMethod}
+                    </p>
+                  )}
+                </div>
+
+                {/* DATE */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Payment Date <span className="text-red-500">*</span>
+                  </label>
+
+                  <div className="relative">
+                    <CalendarDays
+                      size={18}
+                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+
+                    <input
+                      type="date"
+                      name="paymentDate"
+                      value={form.paymentDate}
+                      onChange={handleChange}
+                      disabled={submitting}
+                      className={`w-full rounded-xl border bg-white py-3 pl-11 pr-4 text-sm text-gray-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100 ${
+                        errors.paymentDate
+                          ? "border-red-400"
+                          : "border-gray-300"
+                      }`}
+                    />
+                  </div>
+
+                  {errors.paymentDate && (
+                    <p className="mt-1.5 text-xs text-red-600">
+                      {errors.paymentDate}
+                    </p>
+                  )}
+                </div>
 
                 {/* STATUS */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Status
+                  </label>
 
-                <SelectField
-                  label="Payment Status"
-                  name="status"
-                  value={form.status}
-                  onChange={handleChange}
-                  options={[
-                    {
-                      id: "Paid",
-                      name: "Paid",
-                    },
-                    {
-                      id: "Pending",
-                      name: "Pending",
-                    },
-                    {
-                      id: "Failed",
-                      name: "Failed",
-                    },
-                    {
-                      id: "Cancelled",
-                      name: "Cancelled",
-                    },
-                    {
-                      id: "Refunded",
-                      name: "Refunded",
-                    },
-                  ]}
-                />
+                  <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100">
+                      <CheckCircle2 size={18} className="text-green-600" />
+                    </div>
 
-                {/* TRANSACTION ID */}
+                    <div>
+                      <p className="font-semibold text-green-700">Paid</p>
 
-                <InputField
-                  label="Transaction ID"
-                  name="transactionId"
-                  value={form.transactionId}
-                  onChange={handleChange}
-                  placeholder="UPI / bank transaction ID"
-                  icon={<Hash size={16} />}
-                />
-
-                {/* REFERENCE NUMBER */}
-
-                <InputField
-                  label="Reference Number"
-                  name="referenceNumber"
-                  value={form.referenceNumber}
-                  onChange={handleChange}
-                  placeholder="Enter reference number"
-                  icon={<Hash size={16} />}
-                />
+                      <p className="text-xs text-green-600">
+                        New payments are recorded as paid.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            </section>
 
-            {/* =================================================
-                NOTES
-            ================================================= */}
+            {/* TRANSACTION */}
+            <section>
+              <div className="mb-5 flex items-center gap-3">
+                <Hash size={21} className="text-purple-600" />
 
-            <div>
-              <SectionTitle
-                icon={<FileText size={17} />}
-                title="Additional Information"
-              />
-
-              <div className="space-y-4">
-                <TextareaField
-                  label="Description"
-                  name="description"
-                  value={form.description}
-                  onChange={handleChange}
-                  placeholder="Enter payment description..."
-                />
-
-                <TextareaField
-                  label="Remarks"
-                  name="remarks"
-                  value={form.remarks}
-                  onChange={handleChange}
-                  placeholder="Add any additional remarks..."
-                />
+                <h3 className="text-lg font-bold text-gray-900">
+                  Transaction Information
+                </h3>
               </div>
-            </div>
+
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Transaction ID
+                  </label>
+
+                  <input
+                    type="text"
+                    name="transactionId"
+                    value={form.transactionId}
+                    onChange={handleChange}
+                    disabled={submitting}
+                    placeholder="e.g. UPI transaction ID"
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                  />
+
+                  <p className="mt-1.5 text-xs text-gray-500">Optional</p>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Reference Number
+                  </label>
+
+                  <input
+                    type="text"
+                    name="referenceNumber"
+                    value={form.referenceNumber}
+                    onChange={handleChange}
+                    disabled={submitting}
+                    placeholder="Cheque / bank reference"
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                  />
+
+                  <p className="mt-1.5 text-xs text-gray-500">Optional</p>
+                </div>
+              </div>
+            </section>
+
+            {/* DESCRIPTION */}
+            <section>
+              <div className="mb-5 flex items-center gap-3">
+                <FileText size={21} className="text-purple-600" />
+
+                <h3 className="text-lg font-bold text-gray-900">
+                  Additional Information
+                </h3>
+              </div>
+
+              <div className="space-y-5">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Description
+                  </label>
+
+                  <textarea
+                    name="description"
+                    value={form.description}
+                    onChange={handleChange}
+                    disabled={submitting}
+                    rows={3}
+                    placeholder="Payment description..."
+                    className="w-full resize-none rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Remarks
+                  </label>
+
+                  <textarea
+                    name="remarks"
+                    value={form.remarks}
+                    onChange={handleChange}
+                    disabled={submitting}
+                    rows={3}
+                    placeholder="Additional remarks..."
+                    className="w-full resize-none rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* SUMMARY */}
+            {selectedPayroll && (
+              <section className="rounded-2xl border border-purple-200 bg-purple-50 p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <WalletCards size={19} className="text-purple-600" />
+
+                  <h3 className="font-bold text-gray-900">Payment Summary</h3>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs text-gray-500">Payroll Net Salary</p>
+
+                    <p className="mt-1 text-lg font-bold text-gray-900">
+                      {formatCurrency(selectedPayroll.netSalary)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-gray-500">Current Due</p>
+
+                    <p className="mt-1 text-lg font-bold text-orange-600">
+                      {formatCurrency(selectedPayroll.dueAmount)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-gray-500">This Payment</p>
+
+                    <p className="mt-1 text-lg font-bold text-purple-600">
+                      {formatCurrency(form.amount)}
+                    </p>
+                  </div>
+                </div>
+
+                {Number(form.amount) > 0 && (
+                  <div className="mt-5 border-t border-purple-200 pt-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">
+                        Remaining after payment
+                      </span>
+
+                      <span className="text-lg font-bold text-gray-900">
+                        {formatCurrency(
+                          Math.max(
+                            Number(selectedPayroll.dueAmount || 0) -
+                              Number(form.amount || 0),
+                            0,
+                          ),
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
 
-          {/* =================================================
-              FOOTER
-          ================================================= */}
-
-          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 bg-gray-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+          {/* FOOTER */}
+          <div className="sticky bottom-0 flex shrink-0 items-center justify-end gap-3 border-t border-gray-200 bg-white px-7 py-5">
             <button
               type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={handleClose}
+              disabled={submitting}
+              className="rounded-xl border border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Cancel
             </button>
 
             <button
               type="submit"
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={
+                submitting ||
+                loadingEmployees ||
+                loadingPayrolls ||
+                !form.employeeId ||
+                !form.payrollId ||
+                !form.amount
+              }
+              className="flex min-w-[190px] items-center justify-center gap-2 rounded-xl bg-purple-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? (
+              {submitting ? (
                 <>
-                  <Loader2 size={17} className="animate-spin" />
+                  <Loader2 size={18} className="animate-spin" />
                   Saving...
                 </>
               ) : (
                 <>
-                  <Save size={17} />
-
-                  {initialData ? "Update Payment" : "Record Payment"}
+                  <CheckCircle2 size={18} />
+                  Record Salary Payment
                 </>
               )}
             </button>
@@ -642,182 +1053,6 @@ const PaymentForm = ({
       </div>
     </div>
   );
-};
-
-// =====================================================
-// PAYMENT TYPE BUTTON
-// =====================================================
-
-const PaymentTypeButton = ({ selected, icon, title, onClick }) => {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${
-        selected
-          ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-100"
-          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
-      }`}
-    >
-      <span
-        className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-          selected
-            ? "bg-indigo-100 text-indigo-600"
-            : "bg-gray-100 text-gray-500"
-        }`}
-      >
-        {icon}
-      </span>
-
-      <span className="text-sm font-medium">{title}</span>
-    </button>
-  );
-};
-
-// =====================================================
-// SECTION TITLE
-// =====================================================
-
-const SectionTitle = ({ icon, title }) => {
-  return (
-    <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
-      <span className="text-indigo-600">{icon}</span>
-
-      <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-    </div>
-  );
-};
-
-// =====================================================
-// INPUT FIELD
-// =====================================================
-
-const InputField = ({
-  label,
-  name,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  icon,
-  required = false,
-  error,
-  min,
-  step,
-}) => {
-  return (
-    <div>
-      <label className="mb-1.5 block text-xs font-medium text-gray-700">
-        {label}
-
-        {required && <span className="ml-1 text-red-500">*</span>}
-      </label>
-
-      <div className="relative">
-        {icon && (
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-            {icon}
-          </span>
-        )}
-
-        <input
-          type={type}
-          name={name}
-          value={value}
-          onChange={onChange}
-          placeholder={placeholder}
-          min={min}
-          step={step}
-          className={`h-10 w-full rounded-lg border bg-white text-sm outline-none transition ${
-            icon ? "pl-9" : "px-3"
-          } ${
-            error
-              ? "border-red-400 focus:ring-2 focus:ring-red-100"
-              : "border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-          }`}
-        />
-      </div>
-
-      {error && <ErrorMessage message={error} />}
-    </div>
-  );
-};
-
-// =====================================================
-// SELECT FIELD
-// =====================================================
-
-const SelectField = ({
-  label,
-  name,
-  value,
-  onChange,
-  options = [],
-  placeholder,
-  required = false,
-  error,
-}) => {
-  return (
-    <div>
-      <label className="mb-1.5 block text-xs font-medium text-gray-700">
-        {label}
-
-        {required && <span className="ml-1 text-red-500">*</span>}
-      </label>
-
-      <select
-        name={name}
-        value={value}
-        onChange={onChange}
-        className={`h-10 w-full rounded-lg border bg-white px-3 text-sm outline-none transition ${
-          error
-            ? "border-red-400 focus:ring-2 focus:ring-red-100"
-            : "border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-        }`}
-      >
-        <option value="">{placeholder || "Select"}</option>
-
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.name}
-          </option>
-        ))}
-      </select>
-
-      {error && <ErrorMessage message={error} />}
-    </div>
-  );
-};
-
-// =====================================================
-// TEXTAREA
-// =====================================================
-
-const TextareaField = ({ label, name, value, onChange, placeholder }) => {
-  return (
-    <div>
-      <label className="mb-1.5 block text-xs font-medium text-gray-700">
-        {label}
-      </label>
-
-      <textarea
-        name={name}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        rows={3}
-        className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-      />
-    </div>
-  );
-};
-
-// =====================================================
-// ERROR
-// =====================================================
-
-const ErrorMessage = ({ message }) => {
-  return <p className="mt-1 text-xs text-red-500">{message}</p>;
 };
 
 export default PaymentForm;

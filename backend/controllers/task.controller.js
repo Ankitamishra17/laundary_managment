@@ -1,6 +1,20 @@
 import { Op, literal } from "sequelize";
-import { Task, Employee, Order, Customer } from "../models/index.js";
-import { createNotification, notifyShopAdmins, notifyCustomer } from "./notification.controller.js";
+
+import Task from "../models/Tasks.js";
+import Employee from "../models/Employee.js";
+import Order from "../models/Order.js";
+import Customer from "../models/Customer.js";
+import Shop from "../models/Shop.js";
+
+import {
+  createNotification,
+  notifyShopAdmins,
+  notifyCustomer,
+} from "./notification.controller.js";
+
+/* ============================================================
+   CONSTANTS
+============================================================ */
 
 const TASK_TYPES = ["pickup", "wash", "dry", "iron", "pack", "delivery"];
 
@@ -13,9 +27,16 @@ const TASK_TYPE_LABELS = {
   delivery: "Delivery",
 };
 
-// Canonical sequence — determines which tasks must be completed before
-// others can start.  The position in the array IS the sequence number.
 const TASK_SEQUENCE = ["pickup", "wash", "dry", "iron", "pack", "delivery"];
+
+const TASK_SEQUENCE_MAP = {
+  pickup: 1,
+  wash: 2,
+  dry: 3,
+  iron: 4,
+  pack: 5,
+  delivery: 6,
+};
 
 const ORDER_STATUS_LABELS = {
   pending: "Pending",
@@ -27,8 +48,6 @@ const ORDER_STATUS_LABELS = {
   cancelled: "Cancelled",
 };
 
-// Order statuses ranked so task progress can only move an order forward,
-// never backwards (e.g. a late "wash" task can't reset a delivered order).
 const ORDER_STATUS_RANK = {
   pending: 0,
   picked_up: 1,
@@ -39,209 +58,700 @@ const ORDER_STATUS_RANK = {
   cancelled: 6,
 };
 
-// The order status implied by a task's type + status. Returns null when
-// the change shouldn't touch the order (e.g. a task reset to pending).
-// Maps to the project's existing order statuses:
-//   pickup started     → picked_up
-//   pickup completed   → processing  (washing stage)
-//   wash/iron completed → ready_for_delivery
-//   delivery started   → out_for_delivery
-//   delivery completed → delivered
-function impliedOrderStatus(taskType, taskStatus) {
-  if (taskStatus === "pending") return null;
-  switch (taskType) {
-    case "pickup":
-      return taskStatus === "completed" ? "processing" : "picked_up";
-    case "wash":
-    case "dry":
-    case "iron":
-    case "pack":
-      return taskStatus === "completed" ? "ready_for_delivery" : "processing";
-    case "delivery":
-      return taskStatus === "completed" ? "delivered" : "out_for_delivery";
-    default:
-      return null;
+/* ============================================================
+   AUTH / TENANT HELPERS
+============================================================ */
+
+const getShopId = (req) => {
+  const shopId = req.user?.shopId;
+
+  if (!shopId) {
+    return null;
   }
-}
 
-// Find all tasks for an order so we can validate that previous tasks
-// are completed before the current one can advance.
-async function getOrderTasksSorted(orderId) {
-  return Task.findAll({ where: { order_id: orderId } });
-}
+  return Number(shopId);
+};
 
-// When an order has multiple tasks of the same type (e.g. after a
-// re-delivery), we only care about the LATEST one for sequence
-// validation.  This map returns { taskType → latestTask }.
-function latestTasksByType(allOrderTasks) {
+const getEmployeeId = (req) => {
+  if (req.user?.role !== "employee") {
+    return null;
+  }
+
+  return Number(req.user.id);
+};
+
+const requireShop = (req, res) => {
+  const shopId = getShopId(req);
+
+  if (!shopId) {
+    res.status(403).json({
+      success: false,
+      message: "Shop context is required.",
+    });
+
+    return null;
+  }
+
+  return shopId;
+};
+
+const requireEmployeeContext = (req, res) => {
+  const shopId = getShopId(req);
+  const employeeId = getEmployeeId(req);
+
+  if (!shopId || !employeeId) {
+    res.status(403).json({
+      success: false,
+      message: "Employee shop context is missing.",
+    });
+
+    return null;
+  }
+
+  return {
+    shopId,
+    employeeId,
+  };
+};
+
+/* ============================================================
+   VALIDATION HELPERS
+============================================================ */
+
+const isValidTaskType = (taskType) => {
+  return TASK_TYPES.includes(taskType);
+};
+
+const getTaskSequence = (taskType) => {
+  return TASK_SEQUENCE_MAP[taskType] || null;
+};
+
+const getTaskLabel = (taskType) => {
+  return TASK_TYPE_LABELS[taskType] || taskType;
+};
+
+const getStatusLabel = (status) => {
+  return ORDER_STATUS_LABELS[status] || status;
+};
+
+/* ============================================================
+   TASK QUERY HELPERS
+============================================================ */
+
+/**
+ * Get all tasks belonging to one order and one shop.
+ *
+ * IMPORTANT:
+ * Always use shop_id together with order_id.
+ */
+const getOrderTasksSorted = async (orderId, shopId) => {
+  return Task.findAll({
+    where: {
+      order_id: Number(orderId),
+      shop_id: Number(shopId),
+    },
+
+    order: [
+      ["sequence", "ASC"],
+      ["id", "ASC"],
+    ],
+  });
+};
+
+/**
+ * Get latest task of each task type.
+ *
+ * Normally there should be only one task type per order,
+ * but this helper also safely handles old duplicate data.
+ */
+const latestTasksByType = (tasks) => {
   const map = {};
-  for (const t of allOrderTasks) {
-    if (!map[t.task_type] || t.id > map[t.task_type].id) {
-      map[t.task_type] = t;
+
+  for (const task of tasks) {
+    if (
+      !map[task.task_type] ||
+      Number(task.id) > Number(map[task.task_type].id)
+    ) {
+      map[task.task_type] = task;
     }
   }
+
   return map;
-}
+};
 
-// Check whether every task type BEFORE `taskType` in the sequence
-// has its latest instance completed.  If a type has no tasks at all
-// it is considered "clear" (the admin simply hasn't created it yet).
-function previousTasksCompleted(taskType, allOrderTasks) {
-  const idx = TASK_SEQUENCE.indexOf(taskType);
-  const latest = latestTasksByType(allOrderTasks);
-  return TASK_SEQUENCE
-    .slice(0, idx)
-    .every((type) => !latest[type] || latest[type].status === "completed");
-}
+/**
+ * Check whether all PREVIOUS EXISTING workflow tasks
+ * are completed.
+ *
+ * Missing task types are ignored.
+ *
+ * Example:
+ *
+ * pickup = completed
+ * wash   = completed
+ * dry    = pending
+ * iron   = missing
+ * pack   = missing
+ *
+ * dry is allowed to start.
+ */
+const previousTasksCompleted = (taskType, tasks) => {
+  const currentSequence = getTaskSequence(taskType);
 
-// Find the next task type in sequence whose latest instance hasn't
-// been completed yet.
-function findNextTask(currentType, allOrderTasks) {
-  const idx = TASK_SEQUENCE.indexOf(currentType);
-  const latest = latestTasksByType(allOrderTasks);
-  for (const type of TASK_SEQUENCE.slice(idx + 1)) {
+  if (!currentSequence) {
+    return false;
+  }
+
+  const latest = latestTasksByType(tasks);
+
+  return TASK_SEQUENCE.every((type) => {
+    const sequence = getTaskSequence(type);
+
+    if (sequence >= currentSequence) {
+      return true;
+    }
+
+    const previousTask = latest[type];
+
+    // Task type was not assigned.
+    if (!previousTask) {
+      return true;
+    }
+
+    return previousTask.status === "completed";
+  });
+};
+
+/**
+ * Find next existing task after current task.
+ */
+const findNextTask = (taskType, tasks) => {
+  const currentSequence = getTaskSequence(taskType);
+
+  if (!currentSequence) {
+    return null;
+  }
+
+  const latest = latestTasksByType(tasks);
+
+  for (const type of TASK_SEQUENCE) {
+    const sequence = getTaskSequence(type);
+
+    if (sequence <= currentSequence) {
+      continue;
+    }
+
+    const nextTask = latest[type];
+
+    if (nextTask && nextTask.status !== "completed") {
+      return nextTask;
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Find the first existing task in the order workflow.
+ */
+const findFirstTask = (tasks) => {
+  const latest = latestTasksByType(tasks);
+
+  for (const type of TASK_SEQUENCE) {
     if (latest[type] && latest[type].status !== "completed") {
       return latest[type];
     }
   }
+
   return null;
-}
+};
 
-// ============================================================
-// Admin side
-// ============================================================
+/**
+ * Determine whether a task is ready to start.
+ *
+ * This does NOT change database status.
+ *
+ * pending + isReady=true
+ * means employee can start it.
+ */
+const isTaskReady = (task, tasks) => {
+  if (!task) {
+    return false;
+  }
 
-// GET /api/tasks?employee_id=&status=&task_type= — Admin lists all tasks
+  if (task.status === "completed") {
+    return false;
+  }
+
+  if (task.status === "in_progress") {
+    return true;
+  }
+
+  return previousTasksCompleted(task.task_type, tasks);
+};
+
+/* ============================================================
+   ORDER STATUS
+============================================================ */
+
+/**
+ * Calculate order status from the complete task workflow.
+ *
+ * Correct workflow:
+ *
+ * Pickup started/completed
+ *      ↓
+ * Processing
+ *      ↓
+ * Pack completed
+ *      ↓
+ * Ready for delivery
+ *      ↓
+ * Delivery started
+ *      ↓
+ * Delivered
+ */
+const calculateOrderStatus = (tasks, currentOrderStatus) => {
+  if (!tasks || tasks.length === 0) {
+    return currentOrderStatus;
+  }
+
+  const latest = latestTasksByType(tasks);
+
+  // Delivery completed
+  if (latest.delivery?.status === "completed") {
+    return "delivered";
+  }
+
+  // Delivery started
+  if (latest.delivery?.status === "in_progress") {
+    return "out_for_delivery";
+  }
+
+  // Packing completed
+  if (latest.pack?.status === "completed") {
+    return "ready_for_delivery";
+  }
+
+  // Any processing task started/completed
+  const processingTypes = ["wash", "dry", "iron"];
+
+  const processingStarted = processingTypes.some((type) => {
+    return (
+      latest[type] && ["in_progress", "completed"].includes(latest[type].status)
+    );
+  });
+
+  if (processingStarted) {
+    return "processing";
+  }
+
+  // Pickup completed or started
+  if (
+    latest.pickup &&
+    ["in_progress", "completed"].includes(latest.pickup.status)
+  ) {
+    return "picked_up";
+  }
+
+  return currentOrderStatus || "pending";
+};
+
+/* ============================================================
+   ADMIN WHERE
+============================================================ */
+
+const buildTaskWhereForAdmin = (req, extra = {}) => {
+  const where = {
+    ...extra,
+  };
+
+  const shopId = getShopId(req);
+
+  /*
+   * Super admin:
+   * shopId can be null, therefore cross-shop access is allowed.
+   *
+   * Shop admin:
+   * shopId is present, therefore strictly scoped.
+   */
+  if (shopId) {
+    where.shop_id = shopId;
+  }
+
+  return where;
+};
+
+/* ============================================================
+   EMPLOYEE WHERE
+============================================================ */
+
+const buildTaskWhereForEmployee = (req, extra = {}) => {
+  const shopId = getShopId(req);
+  const employeeId = getEmployeeId(req);
+
+  return {
+    ...extra,
+    shop_id: shopId,
+    employee_id: employeeId,
+  };
+};
+
+/* ============================================================
+   ADMIN — GET ALL TASKS
+   GET /api/tasks
+============================================================ */
+
 export const getAllTasks = async (req, res) => {
   try {
-    const { employee_id, status, task_type } = req.query;
+    const { employee_id, status, task_type, order_id } = req.query;
 
-    const where = {};
-    if (employee_id) where.employee_id = employee_id;
-    if (status) where.status = status;
-    if (task_type) where.task_type = task_type;
+    const where = buildTaskWhereForAdmin(req);
 
-    // Scope to the admin's shop: only tasks assigned to employees of this
-    // shop. Legacy employees without a shop are included too so old data
-    // stays visible. Super admins see everything.
-    if (req.user.shopId) {
-      where["$employee.shop_id$"] = {
-        [Op.or]: [req.user.shopId, null],
-      };
+    if (employee_id) {
+      where.employee_id = Number(employee_id);
+    }
+
+    if (order_id) {
+      where.order_id = Number(order_id);
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (task_type) {
+      if (!isValidTaskType(task_type)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid task_type.",
+        });
+      }
+
+      where.task_type = task_type;
     }
 
     const tasks = await Task.findAll({
       where,
+
       include: [
         {
           model: Employee,
           as: "employee",
+
           attributes: ["id", "name", "email", "designation", "shop_id"],
+
+          required: false,
         },
+
         {
           model: Order,
           as: "order",
-          attributes: ["id", "status", "total_amount", "pickup_address", "delivery_address"],
+
+          attributes: [
+            "id",
+            "status",
+            "total_amount",
+            "pickup_address",
+            "delivery_address",
+            "shop_id",
+          ],
+
           required: false,
         },
       ],
-      order: [["createdAt", "DESC"]],
+
+      order: [
+        ["sequence", "ASC"],
+        ["createdAt", "DESC"],
+      ],
     });
 
-    return res.status(200).json({ success: true, data: tasks });
+    return res.status(200).json({
+      success: true,
+      data: tasks,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Get All Tasks Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// POST /api/tasks — Admin assigns tasks to an employee
-// Body: { order_id?, employee_id, customer_name?, customer_phone?,
-//         customer_address?, task_type?, task_types?: string[],
-//         scheduled_time, priority?, notes? }
-// task_types is an array — one task is created per selected type.
-// When order_id is given and task_types is omitted, defaults to all types.
-// When order_id is not given and task_types is omitted, uses task_type.
+/* ============================================================
+   ADMIN — ASSIGN TASKS
+   POST /api/tasks
+
+   NEW BODY:
+
+   {
+     "order_id": 101,
+     "assignments": [
+       {
+         "employee_id": 5,
+         "task_types": ["pickup", "delivery"]
+       },
+       {
+         "employee_id": 7,
+         "task_types": ["wash", "dry"]
+       },
+       {
+         "employee_id": 8,
+         "task_types": ["iron", "pack"]
+       }
+     ],
+     "scheduled_time": "2026-09-03T10:00:00",
+     "priority": "normal",
+     "notes": "Handle carefully"
+   }
+
+============================================================ */
+
 export const assignTask = async (req, res) => {
   try {
-    const {
-      order_id,
-      employee_id,
-      customer_name,
-      customer_phone,
-      customer_address,
-      task_type,
-      task_types,
-      scheduled_time,
-      priority,
-      notes,
-    } = req.body;
+    const adminShopId = getShopId(req);
 
-    if (!employee_id || !scheduled_time) {
-      return res.status(400).json({
+    if (!adminShopId) {
+      return res.status(403).json({
         success: false,
-        message: "employee_id and scheduled_time are required",
+        message: "A shop context is required to assign tasks.",
       });
     }
 
-    // Reject past scheduled times
-    if (new Date(scheduled_time) < new Date()) {
+    const shop = await Shop.findByPk(adminShopId, {
+      attributes: ["id", "slug"],
+    });
+
+    if (!shop?.slug) {
+      return res.status(403).json({
+        success: false,
+        message: "Shop slug is missing.",
+      });
+    }
+
+    const shopSlug = shop.slug;
+
+    if (!adminShopId) {
+      return res.status(403).json({
+        success: false,
+        message: "A shop context is required to assign tasks.",
+      });
+    }
+
+    const {
+      order_id,
+      assignments,
+      customer_name,
+      customer_phone,
+      customer_address,
+      scheduled_time,
+      priority,
+      notes,
+
+      // Backward compatibility
+      employee_id,
+      task_type,
+      task_types,
+    } = req.body;
+
+    /* --------------------------------------------------------
+       SCHEDULED TIME
+    -------------------------------------------------------- */
+
+    if (!scheduled_time) {
+      return res.status(400).json({
+        success: false,
+        message: "scheduled_time is required.",
+      });
+    }
+
+    const scheduledDate = new Date(scheduled_time);
+
+    if (Number.isNaN(scheduledDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid scheduled_time.",
+      });
+    }
+
+    if (scheduledDate < new Date()) {
       return res.status(400).json({
         success: false,
         message: "Scheduled time cannot be in the past.",
       });
     }
 
-    // Build the list of task types to create.
-    // Priority: task_types array > task_type string > auto from order.
-    let typesToCreate = [];
-    if (Array.isArray(task_types) && task_types.length > 0) {
-      // Validate each provided type
-      for (const t of task_types) {
-        if (!TASK_TYPES.includes(t)) {
-          return res.status(400).json({ success: false, message: `Invalid task_type: ${t}` });
-        }
+    /* --------------------------------------------------------
+       BUILD ASSIGNMENTS
+    -------------------------------------------------------- */
+
+    let normalizedAssignments = [];
+
+    /*
+     * NEW FORMAT
+     */
+    if (Array.isArray(assignments) && assignments.length > 0) {
+      normalizedAssignments = assignments;
+    } else if (employee_id) {
+      /*
+       * OLD FORMAT SUPPORT
+       *
+       * This prevents your old frontend/API from immediately breaking.
+       *
+       * Old:
+       *
+       * employee_id: 5
+       * task_types: ["pickup", "wash"]
+       */
+      let oldTypes = [];
+
+      if (Array.isArray(task_types) && task_types.length > 0) {
+        oldTypes = task_types;
+      } else if (task_type) {
+        oldTypes = [task_type];
       }
-      typesToCreate = [...new Set(task_types)]; // deduplicate
-    } else if (task_type) {
-      if (!TASK_TYPES.includes(task_type)) {
-        return res.status(400).json({ success: false, message: "Invalid task_type" });
+
+      if (oldTypes.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Provide assignments[] or task_type/task_types.",
+        });
       }
-      typesToCreate = [task_type];
+
+      normalizedAssignments = [
+        {
+          employee_id: Number(employee_id),
+          task_types: oldTypes,
+        },
+      ];
     } else {
       return res.status(400).json({
         success: false,
-        message: "Provide task_type (single) or task_types (array).",
+        message:
+          "assignments is required. Example: [{ employee_id, task_types }].",
       });
     }
 
-    const employee = await Employee.findByPk(employee_id);
-    if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
+    /* --------------------------------------------------------
+       NORMALIZE + VALIDATE ASSIGNMENTS
+    -------------------------------------------------------- */
+
+    const assignmentMap = new Map();
+
+    for (const assignment of normalizedAssignments) {
+      const assignedEmployeeId = Number(assignment?.employee_id);
+
+      if (!assignedEmployeeId) {
+        return res.status(400).json({
+          success: false,
+          message: "Each assignment requires employee_id.",
+        });
+      }
+
+      let types = assignment?.task_types;
+
+      if (!Array.isArray(types)) {
+        types = assignment?.task_type ? [assignment.task_type] : [];
+      }
+
+      if (types.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: `No task types provided for employee ${assignedEmployeeId}.`,
+        });
+      }
+
+      for (const type of types) {
+        if (!isValidTaskType(type)) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid task_type: ${type}`,
+          });
+        }
+
+        /*
+         * Same task type cannot be assigned to two employees
+         * in the same request.
+         */
+        if (assignmentMap.has(type)) {
+          return res.status(400).json({
+            success: false,
+            message: `${getTaskLabel(type)} is assigned to more than one employee.`,
+          });
+        }
+
+        assignmentMap.set(type, assignedEmployeeId);
+      }
     }
 
-    // The employee must belong to the admin's own shop — unless it's a
-    // legacy employee record that was never linked to a shop.
-    if (req.user.shopId && employee.shop_id && employee.shop_id !== req.user.shopId) {
-      return res.status(403).json({
+    /*
+     * Sort by actual workflow sequence.
+     */
+    const typesToCreate = [...assignmentMap.keys()].sort(
+      (a, b) => getTaskSequence(a) - getTaskSequence(b),
+    );
+
+    if (typesToCreate.length === 0) {
+      return res.status(400).json({
         success: false,
-        message: "You can only assign tasks to employees of your shop.",
+        message: "At least one task is required.",
       });
     }
 
-    // Resolve order context when the admin assigns from an order.
+    /* --------------------------------------------------------
+       VALIDATE PRIORITY
+    -------------------------------------------------------- */
+
+    const validPriorities = ["normal", "urgent"];
+
+    const resolvedPriority = priority || "normal";
+
+    if (!validPriorities.includes(resolvedPriority)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid priority.",
+      });
+    }
+
+    /* --------------------------------------------------------
+       FIND ORDER — STRICT TENANT
+    -------------------------------------------------------- */
+
     let resolvedOrderId = order_id ? Number(order_id) : null;
+
+    let order = null;
+
     let resolvedName = String(customer_name || "").trim();
+
     let resolvedPhone = String(customer_phone || "").trim() || null;
+
     let resolvedAddress = String(customer_address || "").trim() || null;
 
     if (resolvedOrderId) {
-      const order = await Order.findOne({
-        where: { id: resolvedOrderId, shop_id: req.user.shopId || undefined },
+      order = await Order.findOne({
+        where: {
+          id: resolvedOrderId,
+          shop_id: adminShopId,
+        },
+
         include: [
           {
             model: Customer,
             as: "customer",
-            attributes: ["name", "phone", "address", "city"],
+
+            attributes: [
+              "id",
+              "userId",
+              "name",
+              "phone",
+              "address",
+              "city",
+              "shopId",
+            ],
+
             required: false,
           },
         ],
@@ -254,7 +764,6 @@ export const assignTask = async (req, res) => {
         });
       }
 
-      // Cannot assign tasks to a delivered or cancelled order
       if (order.status === "delivered" || order.status === "cancelled") {
         return res.status(400).json({
           success: false,
@@ -262,50 +771,96 @@ export const assignTask = async (req, res) => {
         });
       }
 
-      resolvedOrderId = order.id;
-
-      // Check for duplicate task assignments.
-      // Business rule: Same Order + Same Task + Same Employee = BLOCKED
-      // But: Same Order + Different Task + Different Employee = ALLOWED
-      if (typesToCreate.length > 0) {
-        const existingTasks = await Task.findAll({
-          where: { order_id: resolvedOrderId },
-          attributes: ["task_type", "employee_id"],
+      /*
+       * Tenant consistency check.
+       */
+      if (
+        order.customer?.shopId &&
+        Number(order.customer.shopId) !== adminShopId
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "Customer does not belong to this shop.",
         });
-
-        // Check if this specific employee already has any of the requested task types
-        const empDuplicates = typesToCreate.filter((t) =>
-          existingTasks.some(
-            (et) => et.task_type === t && et.employee_id === Number(employee_id)
-          )
-        );
-        if (empDuplicates.length > 0) {
-          return res.status(400).json({
-            success: false,
-            message: `This task is already assigned to this employee: ${empDuplicates.map((t) => TASK_TYPE_LABELS[t] || t).join(", ")}. Assign a different task type or a different employee.`,
-          });
-        }
       }
 
-      // Record the assigned employee on the order only when no employee
-      // is set yet — different employees may handle different tasks for
-      // the same order (e.g. one picks up, another delivers).
-      if (!order.employee_id) {
-        order.employee_id = Number(employee_id);
+      /*
+       * Existing tasks.
+       */
+      const existingTasks = await Task.findAll({
+        where: {
+          shop_id: adminShopId,
+          order_id: resolvedOrderId,
+        },
+
+        attributes: ["id", "task_type", "employee_id", "status", "sequence"],
+      });
+
+      /*
+       * IMPORTANT:
+       *
+       * One task type = one task for one order.
+       *
+       * If wash already exists, do NOT create another wash
+       * for another employee.
+       *
+       * Use REASSIGN endpoint to change employee.
+       */
+      const existingTypes = new Set(
+        existingTasks.map((task) => task.task_type),
+      );
+
+      const duplicateTypes = typesToCreate.filter((type) =>
+        existingTypes.has(type),
+      );
+
+      if (duplicateTypes.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message:
+            `These tasks are already assigned for this order: ` +
+            duplicateTypes.map(getTaskLabel).join(", ") +
+            `. Use reassign instead.`,
+        });
+      }
+
+      /*
+       * Legacy order.employee_id.
+       *
+       * Keep this only for compatibility with your existing Order model.
+       */
+      if (!order.employee_id && typesToCreate.length > 0) {
+        const firstEmployeeId = assignmentMap.get(typesToCreate[0]);
+
+        order.employee_id = Number(firstEmployeeId);
+
         await order.save();
       }
 
-      // Auto-fill customer details from the order when not supplied manually.
+      /* ------------------------------------------------------
+         AUTO CUSTOMER DATA
+      ------------------------------------------------------ */
+
       if (!resolvedName) {
         resolvedName =
           order.customer?.name ||
           String(order.pickup_address || "").trim() ||
           `Order #${order.id}`;
       }
-      if (!resolvedPhone) resolvedPhone = order.customer?.phone || null;
+
+      if (!resolvedPhone) {
+        resolvedPhone = order.customer?.phone || null;
+      }
+
       if (!resolvedAddress) {
         resolvedAddress =
-          String(order.customer ? [order.customer.address, order.customer.city].filter(Boolean).join(", ") : "").trim() ||
+          String(
+            order.customer
+              ? [order.customer.address, order.customer.city]
+                  .filter(Boolean)
+                  .join(", ")
+              : "",
+          ).trim() ||
           order.pickup_address ||
           null;
       }
@@ -314,611 +869,1560 @@ export const assignTask = async (req, res) => {
     if (!resolvedName) {
       return res.status(400).json({
         success: false,
-        message: "customer_name is required (or link the task to an order).",
+        message: "customer_name is required when order_id is not provided.",
       });
     }
 
-    // Create one task per selected type. Each type is spaced 30 min
-    // apart so the employee progresses through the workflow sequentially.
-    const baseTime = new Date(scheduled_time);
+    /* --------------------------------------------------------
+       VALIDATE ALL EMPLOYEES
+    -------------------------------------------------------- */
+
+    const employeeIds = [...new Set([...assignmentMap.values()].map(Number))];
+
+    const employees = await Employee.findAll({
+      where: {
+        id: {
+          [Op.in]: employeeIds,
+        },
+
+        shop_id: adminShopId,
+
+        status: "active",
+      },
+    });
+
+    if (employees.length !== employeeIds.length) {
+      const foundIds = new Set(
+        employees.map((employee) => Number(employee.id)),
+      );
+
+      const invalidEmployeeIds = employeeIds.filter((id) => !foundIds.has(id));
+
+      return res.status(404).json({
+        success: false,
+        message:
+          `Employee(s) not found in your shop or inactive: ` +
+          invalidEmployeeIds.join(", "),
+      });
+    }
+
+    /* --------------------------------------------------------
+       CREATE TASKS
+    -------------------------------------------------------- */
+
     const createdTasks = [];
 
-    for (let i = 0; i < typesToCreate.length; i++) {
-      const tType = typesToCreate[i];
-      const spacedTime = new Date(baseTime.getTime() + i * 30 * 60 * 1000);
+    /*
+     * First task starts immediately.
+     *
+     * Example:
+     *
+     * pickup -> in_progress
+     * wash   -> pending
+     * dry    -> pending
+     * iron   -> pending
+     * pack   -> pending
+     * delivery -> pending
+     */
+    const firstTaskType = typesToCreate[0];
+
+    for (let index = 0; index < typesToCreate.length; index++) {
+      const type = typesToCreate[index];
+
+      const employeeId = Number(assignmentMap.get(type));
+
+      /*
+       * Scheduled time follows workflow sequence,
+       * not assignment array order.
+       */
+      const spacedTime = new Date(
+        scheduledDate.getTime() + index * 30 * 60 * 1000,
+      );
+
+      const isFirstTask = type === firstTaskType;
 
       const task = await Task.create({
+        shop_id: adminShopId,
+
+        employee_id: employeeId,
+
         order_id: resolvedOrderId,
-        employee_id,
+
         customer_name: resolvedName,
+
         customer_phone: resolvedPhone,
+
         customer_address: resolvedAddress,
-        task_type: tType,
-        scheduled_time: typesToCreate.length > 1 ? spacedTime : baseTime,
-        priority: priority || "normal",
-        status: "pending",
+
+        task_type: type,
+
+        sequence: getTaskSequence(type),
+
+        scheduled_time: spacedTime,
+
+        priority: resolvedPriority,
+
+        status: isFirstTask ? "in_progress" : "pending",
+
+        activated_at: isFirstTask ? new Date() : null,
+
+        started_at: isFirstTask ? new Date() : null,
+
+        completed_at: null,
+
         notes: notes || null,
       });
 
-      const created = await Task.findByPk(task.id, {
-        include: [
-          {
-            model: Employee,
-            as: "employee",
-            attributes: ["id", "name", "email", "designation"],
-          },
-          {
-            model: Order,
-            as: "order",
-            attributes: ["id", "status", "total_amount"],
-            required: false,
-          },
-        ],
-      });
-      createdTasks.push(created);
+      createdTasks.push(task);
     }
 
-    // Notify the employee about the full task chain.
-    const scheduledLabel = scheduled_time
-      ? new Date(scheduled_time).toLocaleString([], {
-          day: "2-digit",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "";
-    const taskSummary = typesToCreate.length > 1
-      ? `Tasks (${typesToCreate.map((t) => TASK_TYPE_LABELS[t] || t).join(", ")}) for ${resolvedName}${resolvedOrderId ? ` (order #${resolvedOrderId})` : ""}`
-      : `${TASK_TYPE_LABELS[typesToCreate[0]] || typesToCreate[0]} task for ${resolvedName}${resolvedOrderId ? ` (order #${resolvedOrderId})` : ""}`;
-    await createNotification({
-      employeeId: Number(employee_id),
-      orderId: resolvedOrderId,
-      title: typesToCreate.length > 1 ? "Multiple tasks assigned" : "New task assigned",
-      message: `${taskSummary} starting ${scheduledLabel}.`,
-      type: "task",
-      link: "/employee/mytask",
-    });
+    /* --------------------------------------------------------
+       UPDATE ORDER STATUS
+    -------------------------------------------------------- */
 
-    // Notify the customer about the task assignment on their order.
+    if (order) {
+      const allTasks = await getOrderTasksSorted(resolvedOrderId, adminShopId);
+
+      const newOrderStatus = calculateOrderStatus(allTasks, order.status);
+
+      if (
+        newOrderStatus &&
+        newOrderStatus !== order.status &&
+        newOrderStatus !== "cancelled"
+      ) {
+        const currentRank = ORDER_STATUS_RANK[order.status] ?? 0;
+
+        const newRank = ORDER_STATUS_RANK[newOrderStatus] ?? 0;
+
+        if (newRank >= currentRank) {
+          order.status = newOrderStatus;
+
+          await order.save();
+        }
+      }
+    }
+
+    /* --------------------------------------------------------
+       EMPLOYEE NOTIFICATIONS
+    -------------------------------------------------------- */
+
+    for (const task of createdTasks) {
+      const employeeId = Number(task.employee_id);
+
+      const employee = employees.find((item) => Number(item.id) === employeeId);
+
+      const taskLabel = getTaskLabel(task.task_type);
+
+      const scheduledLabel = new Date(task.scheduled_time).toLocaleString([], {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      const readyText =
+        task.status === "in_progress"
+          ? "It is ready to start now."
+          : "It will become ready after the previous task is completed.";
+
+      try {
+        await createNotification({
+          employeeId,
+
+          orderId: resolvedOrderId,
+
+          taskId: task.id,
+
+          title:
+            task.status === "in_progress"
+              ? "New task ready"
+              : "New task assigned",
+
+          message:
+            `${taskLabel} task for ${resolvedName}` +
+            `${
+              resolvedOrderId ? ` (Order #${resolvedOrderId})` : ""
+            } is scheduled for ${scheduledLabel}. ` +
+            readyText,
+
+          type: "task",
+
+          link: `/${shopSlug}/employee/mytask`,
+        });
+      } catch (notificationError) {
+        console.error(
+          "Employee notification error:",
+          notificationError.message,
+        );
+      }
+    }
+
+    /* --------------------------------------------------------
+       ADMIN NOTIFICATION
+    -------------------------------------------------------- */
+
+    try {
+      await notifyShopAdmins(adminShopId, {
+        title: "Tasks assigned",
+
+        message: `${createdTasks.length} task${
+          createdTasks.length > 1 ? "s" : ""
+        } assigned for ${
+          resolvedOrderId ? `Order #${resolvedOrderId}` : resolvedName
+        }.`,
+
+        type: "task",
+
+        link: "/admin/tasks",
+      });
+    } catch (notificationError) {
+      console.error("Admin notification error:", notificationError.message);
+    }
+
+    /* --------------------------------------------------------
+       CUSTOMER NOTIFICATION
+    -------------------------------------------------------- */
+
     if (resolvedOrderId) {
       try {
-        const orderWithCustomer = await Order.findByPk(resolvedOrderId, {
+        const orderWithCustomer = await Order.findOne({
+          where: {
+            id: resolvedOrderId,
+            shop_id: adminShopId,
+          },
+
           include: [
             {
               model: Customer,
               as: "customer",
-              attributes: ["id", "userId", "name"],
+
+              attributes: ["id", "userId", "name", "shopId"],
+
               required: false,
             },
           ],
         });
+
         if (orderWithCustomer?.customer) {
           await notifyCustomer(orderWithCustomer.customer, {
-            title: "Task assigned to your order",
-            message: `A ${typesToCreate.length > 1 ? typesToCreate.map((t) => TASK_TYPE_LABELS[t] || t).join(", ") : TASK_TYPE_LABELS[typesToCreate[0]] || typesToCreate[0]} task has been assigned for your order #${resolvedOrderId}.`,
+            title: "Order task updated",
+
+            message: `Tasks have been assigned for your order #${resolvedOrderId}.`,
+
             type: "task",
+
             orderId: resolvedOrderId,
+
             link: `/customer/orders/${resolvedOrderId}`,
           });
         }
-      } catch (notifErr) {
-        // Non-critical — don't fail the request if customer notification fails
-        console.error("Customer notification error:", notifErr.message);
+      } catch (notificationError) {
+        console.error(
+          "Customer notification error:",
+          notificationError.message,
+        );
       }
     }
 
+    /* --------------------------------------------------------
+       RETURN FULL CREATED TASKS
+    -------------------------------------------------------- */
+
+    const responseTasks = await Task.findAll({
+      where: {
+        id: {
+          [Op.in]: createdTasks.map((task) => task.id),
+        },
+
+        shop_id: adminShopId,
+      },
+
+      include: [
+        {
+          model: Employee,
+          as: "employee",
+
+          attributes: ["id", "name", "email", "designation", "shop_id"],
+        },
+
+        {
+          model: Order,
+          as: "order",
+
+          attributes: ["id", "status", "total_amount", "shop_id"],
+
+          required: false,
+        },
+      ],
+
+      order: [["sequence", "ASC"]],
+    });
+
     return res.status(201).json({
       success: true,
-      message: createdTasks.length > 1
-        ? `${createdTasks.length} tasks created successfully`
-        : "Task assigned successfully",
-      data: createdTasks.length === 1 ? createdTasks[0] : createdTasks,
+
+      message: `${responseTasks.length} task${
+        responseTasks.length > 1 ? "s" : ""
+      } created successfully.`,
+
+      data: responseTasks.length === 1 ? responseTasks[0] : responseTasks,
     });
   } catch (error) {
+    console.error("Assign Task Error:", error);
+
     if (error.name === "SequelizeValidationError") {
-      return res.status(400).json({ success: false, message: error.errors?.[0]?.message || error.message });
+      return res.status(400).json({
+        success: false,
+        message: error.errors?.[0]?.message || error.message,
+      });
     }
-    return res.status(500).json({ success: false, message: error.message });
+
+    if (error.name === "SequelizeUniqueConstraintError") {
+      return res.status(409).json({
+        success: false,
+        message: "This task is already assigned for this order.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// ============================================================
-// Employee side — always scoped to the logged-in employee
-// ============================================================
+/* ============================================================
+   EMPLOYEE — MY TASKS
+   GET /api/tasks/my-tasks
+============================================================ */
 
-// GET /api/tasks/my-tasks?status=pending&type=pickup&date=2026-05-24
-// Tasks are sorted so that urgent tasks always appear before normal ones,
-// and within each priority group tasks are ordered by scheduled time.
 export const getMyTasks = async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const context = requireEmployeeContext(req, res);
+
+    if (!context) return;
+
+    const { shopId, employeeId } = context;
+
     const { status, type, date } = req.query;
 
-    const where = { employee_id: employeeId };
-    if (status) where.status = status;
-    if (type) where.task_type = type;
+    const where = {
+      shop_id: shopId,
+      employee_id: employeeId,
+    };
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (type) {
+      if (!isValidTaskType(type)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid task type.",
+        });
+      }
+
+      where.task_type = type;
+    }
 
     if (date) {
       const start = new Date(`${date}T00:00:00`);
+
       const end = new Date(`${date}T23:59:59`);
-      where.scheduled_time = { [Op.between]: [start, end] };
+
+      where.scheduled_time = {
+        [Op.between]: [start, end],
+      };
     }
 
     const tasks = await Task.findAll({
       where,
+
       include: [
         {
           model: Order,
           as: "order",
-          attributes: ["id", "status", "total_amount", "pickup_address", "delivery_address"],
+
+          attributes: [
+            "id",
+            "status",
+            "total_amount",
+            "pickup_address",
+            "delivery_address",
+            "shop_id",
+          ],
+
           required: false,
         },
       ],
-      // Priority sort: urgent tasks first, then by newest first.
-      // Sequelize literal sorts urgent=1 before normal=0.
+
       order: [
         [literal("CASE WHEN priority = 'urgent' THEN 0 ELSE 1 END"), "ASC"],
+
+        ["sequence", "ASC"],
+
+        ["scheduled_time", "ASC"],
+
         ["createdAt", "DESC"],
       ],
     });
 
-    return res.status(200).json({ success: true, data: tasks });
+    /*
+     * Calculate isReady for each task.
+     */
+    const orderCache = new Map();
+
+    const response = [];
+
+    for (const task of tasks) {
+      let orderTasks = [];
+
+      if (task.order_id) {
+        const cacheKey = `${shopId}-${task.order_id}`;
+
+        if (!orderCache.has(cacheKey)) {
+          const allTasks = await getOrderTasksSorted(task.order_id, shopId);
+
+          orderCache.set(cacheKey, allTasks);
+        }
+
+        orderTasks = orderCache.get(cacheKey);
+      }
+
+      const data = task.toJSON();
+
+      data.isReady = isTaskReady(task, orderTasks);
+
+      response.push(data);
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Get My Tasks Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// GET /api/tasks/my-tasks/stats?date=2026-05-24
+/* ============================================================
+   EMPLOYEE — MY TASK STATS
+   GET /api/tasks/my-tasks/stats
+============================================================ */
+
 export const getMyTaskStats = async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const context = requireEmployeeContext(req, res);
+
+    if (!context) return;
+
+    const { shopId, employeeId } = context;
+
     const { date } = req.query;
 
-    const where = { employee_id: employeeId };
+    const where = {
+      shop_id: shopId,
+      employee_id: employeeId,
+    };
+
     if (date) {
       const start = new Date(`${date}T00:00:00`);
+
       const end = new Date(`${date}T23:59:59`);
-      where.scheduled_time = { [Op.between]: [start, end] };
+
+      where.scheduled_time = {
+        [Op.between]: [start, end],
+      };
     }
 
     const [total, pending, inProgress, completed] = await Promise.all([
       Task.count({ where }),
-      Task.count({ where: { ...where, status: "pending" } }),
-      Task.count({ where: { ...where, status: "in_progress" } }),
-      Task.count({ where: { ...where, status: "completed" } }),
+
+      Task.count({
+        where: {
+          ...where,
+          status: "pending",
+        },
+      }),
+
+      Task.count({
+        where: {
+          ...where,
+          status: "in_progress",
+        },
+      }),
+
+      Task.count({
+        where: {
+          ...where,
+          status: "completed",
+        },
+      }),
     ]);
 
     return res.status(200).json({
       success: true,
-      data: { total, pending, inProgress, completed },
+
+      data: {
+        total,
+        pending,
+        inProgress,
+        completed,
+      },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Get My Task Stats Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// GET /api/tasks/:id
+/* ============================================================
+   EMPLOYEE — GET SINGLE TASK
+   GET /api/tasks/:id
+============================================================ */
+
 export const getTaskById = async (req, res) => {
   try {
-    const task = await Task.findOne({
-      where: { id: req.params.id, employee_id: req.user.id },
-      include: [
-        {
-          model: Order,
-          as: "order",
-          attributes: ["id", "status", "total_amount", "pickup_address", "delivery_address", "pickup_date", "pickup_time", "delivery_date", "delivery_note"],
-          required: false,
-          include: [
-            {
-              model: Customer,
-              as: "customer",
-              attributes: ["id", "userId", "name", "email", "phone", "address", "city"],
-              required: false,
-            },
-          ],
-        },
-      ],
-    });
-    if (!task) return res.status(404).json({ success: false, message: "Task not found" });
-    return res.status(200).json({ success: true, data: task });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-};
+    const context = requireEmployeeContext(req, res);
 
-// PATCH /api/tasks/:id/status   { "status": "in_progress" | "completed" }
-// Enforces sequential task completion per order and auto-activates the
-// next task when the current one is completed (for the same employee).
-export const updateTaskStatus = async (req, res) => {
-  try {
-    const { status } = req.body;
-    const allowed = ["pending", "in_progress", "completed"];
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ success: false, message: "Invalid status value" });
+    if (!context) return;
+
+    const { shopId, employeeId } = context;
+
+    const taskId = Number(req.params.id);
+
+    if (!taskId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID.",
+      });
     }
 
     const task = await Task.findOne({
-      where: { id: req.params.id, employee_id: req.user.id },
+      where: {
+        id: taskId,
+        shop_id: shopId,
+        employee_id: employeeId,
+      },
+
       include: [
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "name", "shop_id"],
+
+          attributes: ["id", "name", "email", "designation", "shop_id"],
+
+          required: false,
         },
+
         {
           model: Order,
           as: "order",
-          attributes: ["id", "status", "shop_id", "delivery_time", "customer_id"],
+
+          attributes: [
+            "id",
+            "status",
+            "total_amount",
+            "shop_id",
+            "pickup_address",
+            "delivery_address",
+            "pickup_date",
+            "pickup_time",
+            "delivery_date",
+            "delivery_note",
+          ],
+
           required: false,
+
           include: [
             {
               model: Customer,
               as: "customer",
-              attributes: ["id", "userId", "name"],
+
+              attributes: [
+                "id",
+                "userId",
+                "name",
+                "email",
+                "phone",
+                "address",
+                "city",
+                "shopId",
+              ],
+
               required: false,
             },
           ],
         },
       ],
     });
-    if (!task) return res.status(404).json({ success: false, message: "Task not found" });
 
-    // --- SEQUENCE VALIDATION -------------------------------------------
-    // For tasks linked to an order, enforce that all previous tasks in the
-    // sequence are completed before this one can advance (start or complete).
-    let allOrderTasks = null;
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    /*
+     * Extra tenant verification.
+     */
+    if (task.employee && Number(task.employee.shop_id) !== shopId) {
+      return res.status(403).json({
+        success: false,
+        message: "Task employee does not belong to this shop.",
+      });
+    }
+
+    if (task.order && Number(task.order.shop_id) !== shopId) {
+      return res.status(403).json({
+        success: false,
+        message: "Task order does not belong to this shop.",
+      });
+    }
+
+    let isReady = false;
+
+    if (task.order_id) {
+      const allTasks = await getOrderTasksSorted(task.order_id, shopId);
+
+      isReady = isTaskReady(task, allTasks);
+    }
+
+    const data = task.toJSON();
+
+    data.isReady = isReady;
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error("Get Task By ID Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/* ============================================================
+   EMPLOYEE — UPDATE TASK STATUS
+   PATCH /api/tasks/:id/status
+
+   BODY:
+
+   {
+     "status": "in_progress"
+   }
+
+   OR
+
+   {
+     "status": "completed"
+   }
+
+============================================================ */
+
+export const updateTaskStatus = async (req, res) => {
+  try {
+    const context = requireEmployeeContext(req, res);
+
+    if (!context) return;
+
+    const { shopId, employeeId } = context;
+    const shop = await Shop.findByPk(shopId, {
+      attributes: ["id", "slug"],
+    });
+
+    if (!shop?.slug) {
+      return res.status(403).json({
+        success: false,
+        message: "Shop slug is missing.",
+      });
+    }
+
+    const shopSlug = shop.slug;
+
+    const taskId = Number(req.params.id);
+
+    const { status } = req.body;
+
+    const allowedStatuses = ["pending", "in_progress", "completed"];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value.",
+      });
+    }
+
+    const task = await Task.findOne({
+      where: {
+        id: taskId,
+        shop_id: shopId,
+        employee_id: employeeId,
+      },
+
+      include: [
+        {
+          model: Employee,
+          as: "employee",
+
+          attributes: ["id", "name", "shop_id"],
+
+          required: false,
+        },
+
+        {
+          model: Order,
+          as: "order",
+
+          attributes: [
+            "id",
+            "status",
+            "shop_id",
+            "delivery_time",
+            "customer_id",
+          ],
+
+          required: false,
+
+          include: [
+            {
+              model: Customer,
+              as: "customer",
+
+              attributes: ["id", "userId", "name", "shopId"],
+
+              required: false,
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    /* --------------------------------------------------------
+       TENANT VALIDATION
+    -------------------------------------------------------- */
+
+    if (task.employee && Number(task.employee.shop_id) !== shopId) {
+      return res.status(403).json({
+        success: false,
+        message: "Task employee does not belong to this shop.",
+      });
+    }
+
+    if (task.order && Number(task.order.shop_id) !== shopId) {
+      return res.status(403).json({
+        success: false,
+        message: "Task order does not belong to this shop.",
+      });
+    }
+
+    /* --------------------------------------------------------
+       INVALID TRANSITIONS
+    -------------------------------------------------------- */
+
+    if (task.status === "completed") {
+      return res.status(400).json({
+        success: false,
+        message: "Completed task cannot be changed.",
+      });
+    }
+
+    if (task.status === status) {
+      return res.status(200).json({
+        success: true,
+        message: "Task already has this status.",
+        data: task,
+      });
+    }
+
+    /* --------------------------------------------------------
+       GET ORDER TASKS
+    -------------------------------------------------------- */
+
+    let allOrderTasks = [];
+
+    if (task.order_id) {
+      allOrderTasks = await getOrderTasksSorted(task.order_id, shopId);
+    }
+
+    /* --------------------------------------------------------
+       SEQUENCE VALIDATION
+    -------------------------------------------------------- */
+
     if (task.order_id && (status === "in_progress" || status === "completed")) {
-      allOrderTasks = await getOrderTasksSorted(task.order_id);
+      const canStart = previousTasksCompleted(task.task_type, allOrderTasks);
 
-      if (!previousTasksCompleted(task.task_type, allOrderTasks)) {
-        const blocking = allOrderTasks
-          .filter((t) => TASK_SEQUENCE.indexOf(t.task_type) < TASK_SEQUENCE.indexOf(task.task_type) && t.status !== "completed")
-          .map((t) => TASK_TYPE_LABELS[t.task_type] || t.task_type);
+      if (!canStart) {
+        const blockingTasks = allOrderTasks
+          .filter((item) => {
+            const itemSequence = getTaskSequence(item.task_type);
+
+            const currentSequence = getTaskSequence(task.task_type);
+
+            return (
+              itemSequence < currentSequence && item.status !== "completed"
+            );
+          })
+          .map((item) => getTaskLabel(item.task_type));
+
         return res.status(400).json({
           success: false,
-          message: `Cannot start this task yet. Complete these first: ${blocking.join(", ")}.`,
+          message:
+            `Cannot start this task yet. ` +
+            `Complete these first: ` +
+            blockingTasks.join(", "),
         });
       }
     }
 
-    // --- ONE ACTIVE TASK RULE ----------------------------------------
-    // An employee can have only ONE in_progress task at a time.  If the
-    // employee is starting a new task, any existing in_progress task is
-    // auto-paused back to "pending" (preserving started_at so it can be
-    // resumed later).  Urgent tasks always take priority — if the
-    // currently-active task is normal, it will be paused automatically.
+    /* --------------------------------------------------------
+       ONE ACTIVE TASK PER EMPLOYEE
+    -------------------------------------------------------- */
+
     if (status === "in_progress") {
       const existingActive = await Task.findOne({
         where: {
-          employee_id: req.user.id,
+          shop_id: shopId,
+
+          employee_id: employeeId,
+
           status: "in_progress",
-          id: { [Op.ne]: task.id },
+
+          id: {
+            [Op.ne]: task.id,
+          },
         },
       });
+
       if (existingActive) {
+        /*
+         * Pause current active task.
+         */
         existingActive.status = "pending";
+
         await existingActive.save();
-        // Notify the employee that their task was paused
-        const pausedLabel = TASK_TYPE_LABELS[existingActive.task_type] || existingActive.task_type;
-        const newLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
-        await createNotification({
-          employeeId: req.user.id,
-          taskId: existingActive.id,
-          orderId: existingActive.order_id,
-          title: `Task paused: ${pausedLabel}`,
-          message: `Your ${pausedLabel} task has been paused so you can work on the ${newLabel} task. You can resume it later.`,
-          type: "task",
-          link: "/employee/mytask",
-        });
+
+        try {
+          await createNotification({
+            employeeId,
+
+            taskId: existingActive.id,
+
+            orderId: existingActive.order_id,
+
+            title: "Task paused",
+
+            message: `Your ${getTaskLabel(
+              existingActive.task_type,
+            )} task has been paused because another task was started.`,
+
+            type: "task",
+
+            link: `/${shopSlug}/employee/mytask`,
+          });
+        } catch (notificationError) {
+          console.error("Pause notification error:", notificationError.message);
+        }
       }
     }
 
-    // Track lifecycle timestamps
-    if (status === "in_progress" && !task.started_at) {
-      task.started_at = new Date();
+    /* --------------------------------------------------------
+       LIFECYCLE TIMESTAMPS
+    -------------------------------------------------------- */
+
+    if (status === "in_progress") {
+      if (!task.started_at) {
+        task.started_at = new Date();
+      }
+
+      if (!task.activated_at) {
+        task.activated_at = new Date();
+      }
     }
-    if (status === "completed" && !task.completed_at) {
-      task.completed_at = new Date();
+
+    if (status === "completed") {
+      if (!task.started_at) {
+        task.started_at = new Date();
+      }
+
+      if (!task.activated_at) {
+        task.activated_at = new Date();
+      }
+
+      if (!task.completed_at) {
+        task.completed_at = new Date();
+      }
     }
 
     task.status = status;
+
     await task.save();
 
-    // --- AUTO-ACTIVATE NEXT TASK ---------------------------------------
-    // When a task is completed, automatically start the next task in the
-    // sequence IF it is assigned to the same employee.  If it belongs to
-    // a different employee, leave it pending — they will start it on their
-    // own dashboard.
-    if (status === "completed" && task.order_id) {
-      if (!allOrderTasks) allOrderTasks = await getOrderTasksSorted(task.order_id);
-      const next = findNextTask(task.task_type, allOrderTasks);
-      if (next && next.employee_id === task.employee_id && next.status === "pending") {
-        next.status = "in_progress";
-        await next.save();
-      }
+    /* --------------------------------------------------------
+       REFRESH ORDER TASKS
+    -------------------------------------------------------- */
+
+    if (task.order_id) {
+      allOrderTasks = await getOrderTasksSorted(task.order_id, shopId);
     }
 
-    // --- ORDER STATUS UPDATE -------------------------------------------
-    // Propagate the progress to the linked order so the admin's order list
-    // and the customer's tracking view stay in sync with the employee's work.
-    // Reload the order fresh to avoid stale Sequelize include issues.
+    /* --------------------------------------------------------
+       FIND NEXT TASK
+    -------------------------------------------------------- */
+
+    let nextTask = null;
+
+    if (status === "completed" && task.order_id) {
+      nextTask = findNextTask(task.task_type, allOrderTasks);
+    }
+
+    /* --------------------------------------------------------
+       DO NOT AUTOMATICALLY START DIFFERENT EMPLOYEE
+       TASK.
+    -------------------------------------------------------- */
+
+    /*
+     * Important:
+     *
+     * If Employee A completes pickup
+     * and Employee B owns wash,
+     *
+     * wash remains pending.
+     *
+     * But API returns isReady=true.
+     *
+     * Employee B can now click Start.
+     */
+
+    let nextTaskReady = false;
+
+    if (nextTask) {
+      nextTaskReady = isTaskReady(nextTask, allOrderTasks);
+    }
+
+    /* --------------------------------------------------------
+       ORDER STATUS UPDATE
+    -------------------------------------------------------- */
+
     let freshOrder = null;
+
     if (task.order_id) {
-      freshOrder = await Order.findByPk(task.order_id, {
+      freshOrder = await Order.findOne({
+        where: {
+          id: task.order_id,
+          shop_id: shopId,
+        },
+
         include: [
           {
             model: Customer,
             as: "customer",
+
             attributes: ["id", "userId", "name", "shopId"],
+
             required: false,
           },
         ],
       });
     }
-    const previousOrderStatus = freshOrder?.status || task.order?.status;
+
+    const previousOrderStatus =
+      freshOrder?.status || task.order?.status || null;
 
     if (freshOrder && freshOrder.status !== "cancelled") {
-      const implied = impliedOrderStatus(task.task_type, status);
-      const currentRank = ORDER_STATUS_RANK[freshOrder.status] ?? -1;
-      if (implied && (ORDER_STATUS_RANK[implied] ?? 0) > currentRank) {
-        freshOrder.status = implied;
-        if (implied === "delivered") freshOrder.delivery_time = new Date().toISOString();
+      const calculatedStatus = calculateOrderStatus(
+        allOrderTasks,
+        freshOrder.status,
+      );
+
+      const currentRank = ORDER_STATUS_RANK[freshOrder.status] ?? 0;
+
+      const calculatedRank = ORDER_STATUS_RANK[calculatedStatus] ?? 0;
+
+      if (calculatedStatus && calculatedRank > currentRank) {
+        freshOrder.status = calculatedStatus;
+
+        if (calculatedStatus === "delivered") {
+          freshOrder.delivery_time = new Date();
+        }
+
         await freshOrder.save();
       }
     }
 
-    // --- NOTIFICATIONS ------------------------------------------------
-    // 1) The shop admin
-    const shopIdForAdmin = task.employee?.shop_id || freshOrder?.shop_id || task.order?.shop_id;
-    const orderRef = task.order ? ` for order #${task.order.id}` : "";
-    const doneWord = status === "completed" ? "completed" : status === "in_progress" ? "started" : "updated";
-    const typeLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
-    await notifyShopAdmins(shopIdForAdmin, {
-      title: "Task update from employee",
-      message: `${task.employee?.name || "An employee"} ${doneWord} the ${typeLabel} task${orderRef}.${
-        status === "completed" && task.task_type !== "delivery" && task.task_type !== "pickup"
-          ? " Order is ready for delivery — assign a delivery employee."
-          : ""
-      }`,
-      type: "task",
-      link: "/admin/tasks",
-    });
+    /* --------------------------------------------------------
+       ADMIN NOTIFICATION
+    -------------------------------------------------------- */
 
-    // 2) The next assigned employee — so they know their task is ready
-    if (status === "completed" && task.order_id) {
-      if (!allOrderTasks) allOrderTasks = await getOrderTasksSorted(task.order_id);
-      const next = findNextTask(task.task_type, allOrderTasks);
-      if (next && next.employee_id && next.employee_id !== task.employee_id) {
-        const completedLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
-        const nextLabel = TASK_TYPE_LABELS[next.task_type] || next.task_type;
-        const employeeName = task.employee?.name || "An employee";
-        const orderId = task.order?.id || task.order_id;
-        const customerName = task.customer_name || task.order?.customer?.name || "the customer";
+    const taskLabel = getTaskLabel(task.task_type);
+
+    const employeeName = task.employee?.name || "An employee";
+
+    const actionWord =
+      status === "completed"
+        ? "completed"
+        : status === "in_progress"
+          ? "started"
+          : "updated";
+
+    const orderReference = task.order_id ? ` for order #${task.order_id}` : "";
+
+    try {
+      await notifyShopAdmins(shopId, {
+        title: "Task update from employee",
+
+        message:
+          `${employeeName} ${actionWord} ` +
+          `the ${taskLabel} task${orderReference}.`,
+
+        type: "task",
+
+        link: "/admin/tasks",
+      });
+    } catch (notificationError) {
+      console.error(
+        "Admin task notification error:",
+        notificationError.message,
+      );
+    }
+
+    /* --------------------------------------------------------
+       NEXT EMPLOYEE NOTIFICATION
+    -------------------------------------------------------- */
+
+    if (
+      status === "completed" &&
+      nextTask &&
+      nextTask.employee_id &&
+      Number(nextTask.employee_id) !== employeeId
+    ) {
+      const completedLabel = getTaskLabel(task.task_type);
+
+      const nextLabel = getTaskLabel(nextTask.task_type);
+
+      const customerName =
+        task.customer_name || task.order?.customer?.name || "the customer";
+
+      try {
         await createNotification({
-          employeeId: next.employee_id,
-          taskId: next.id,
-          orderId: orderId,
-          title: `${completedLabel} Completed — Your ${nextLabel} is ready`,
-          message: `${completedLabel} completed by ${employeeName} for ${customerName}'s Order #${orderId}. Your ${nextLabel} task is ready to start.`,
+          employeeId: Number(nextTask.employee_id),
+
+          taskId: nextTask.id,
+
+          orderId: task.order_id,
+
+          title: `${completedLabel} completed — ${nextLabel} is ready`,
+
+          message:
+            `${completedLabel} completed by ` +
+            `${employeeName} for ${customerName}'s ` +
+            `Order #${task.order_id}. ` +
+            `Your ${nextLabel} task is now ready to start.`,
+
           type: "task",
-          link: "/employee/mytask",
+
+          link: `/${shopSlug}/employee/mytask`,
         });
-      }
-      // Same employee — they got auto-activated, but still notify so the
-      // bell badge updates and they see "your next task is ready".
-      if (next && next.employee_id === task.employee_id && next.status === "in_progress") {
-        const completedLabel = TASK_TYPE_LABELS[task.task_type] || task.task_type;
-        const nextLabel = TASK_TYPE_LABELS[next.task_type] || next.task_type;
-        const orderId = task.order?.id || task.order_id;
-        const customerName = task.customer_name || task.order?.customer?.name || "the customer";
-        await createNotification({
-          employeeId: next.employee_id,
-          taskId: next.id,
-          orderId: orderId,
-          title: `${completedLabel} Done — Next: ${nextLabel}`,
-          message: `Your ${completedLabel.toLowerCase()} task for ${customerName}'s Order #${orderId} is completed. Your next task is ${nextLabel} — it's ready to go.`,
-          type: "task",
-          link: "/employee/mytask",
-        });
+      } catch (notificationError) {
+        console.error(
+          "Next employee notification error:",
+          notificationError.message,
+        );
       }
     }
 
-    // 3) The customer
+    /* --------------------------------------------------------
+       CUSTOMER NOTIFICATION
+    -------------------------------------------------------- */
+
     const effectiveOrder = freshOrder || task.order;
-    if (effectiveOrder) {
-      const orderStatus = effectiveOrder.status;
-      const orderId = effectiveOrder.id;
-      const customerObj = effectiveOrder.customer || null;
 
-      // When delivery task is completed, always send the review prompt
-      // notification so the customer knows they can review.
-      if (task.task_type === "delivery" && status === "completed") {
-        await notifyCustomer(customerObj, {
-          title: "Order delivered — Review us!",
-          message: `Your order #${orderId} has been delivered! We'd love your feedback — write a review to share your experience.`,
-          type: "order",
-          orderId: orderId,
-          link: "/customer/reviews",
-        });
-      } else if (previousOrderStatus !== orderStatus) {
-        await notifyCustomer(customerObj, {
-          title: "Order updated",
-          message: `Your order #${orderId} is now ${ORDER_STATUS_LABELS[orderStatus] || orderStatus}.`,
-          type: "order",
-          orderId: orderId,
-          link: `/customer/orders/${orderId}`,
-        });
+    if (effectiveOrder && effectiveOrder.customer) {
+      const currentOrderStatus = effectiveOrder.status;
+
+      const orderId = effectiveOrder.id;
+
+      try {
+        /*
+         * Delivery completed
+         */
+        if (task.task_type === "delivery" && status === "completed") {
+          await notifyCustomer(effectiveOrder.customer, {
+            title: "Order delivered",
+
+            message: `Your order #${orderId} has been delivered successfully.`,
+
+            type: "order",
+
+            orderId,
+
+            link: "/customer/reviews",
+          });
+        } else if (previousOrderStatus !== currentOrderStatus) {
+          /*
+           * Order status changed
+           */
+          await notifyCustomer(effectiveOrder.customer, {
+            title: "Order updated",
+
+            message:
+              `Your order #${orderId} is now ` +
+              `${getStatusLabel(currentOrderStatus)}.`,
+
+            type: "order",
+
+            orderId,
+
+            link: `/customer/orders/${orderId}`,
+          });
+        }
+      } catch (notificationError) {
+        console.error(
+          "Customer task notification error:",
+          notificationError.message,
+        );
       }
     }
 
-    return res.status(200).json({ success: true, data: task });
+    /* --------------------------------------------------------
+       RESPONSE
+    -------------------------------------------------------- */
+
+    const responseTask = task.toJSON();
+
+    responseTask.isReady = isTaskReady(task, allOrderTasks);
+
+    if (nextTask) {
+      responseTask.nextTask = {
+        id: nextTask.id,
+
+        task_type: nextTask.task_type,
+
+        task_label: getTaskLabel(nextTask.task_type),
+
+        employee_id: nextTask.employee_id,
+
+        status: nextTask.status,
+
+        isReady: nextTaskReady,
+      };
+    } else {
+      responseTask.nextTask = null;
+    }
+
+    return res.status(200).json({
+      success: true,
+
+      message: "Task status updated successfully.",
+
+      data: responseTask,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Update Task Status Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// PATCH /api/tasks/:id/notes   { "notes": "..." }
+/* ============================================================
+   EMPLOYEE — UPDATE NOTES
+   PATCH /api/tasks/:id/notes
+============================================================ */
+
 export const updateTaskNotes = async (req, res) => {
   try {
+    const context = requireEmployeeContext(req, res);
+
+    if (!context) return;
+
+    const { shopId, employeeId } = context;
+
     const task = await Task.findOne({
-      where: { id: req.params.id, employee_id: req.user.id },
+      where: {
+        id: Number(req.params.id),
+        shop_id: shopId,
+        employee_id: employeeId,
+      },
     });
-    if (!task) return res.status(404).json({ success: false, message: "Task not found" });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
 
     task.notes = req.body.notes ?? task.notes;
+
     await task.save();
 
-    return res.status(200).json({ success: true, data: task });
+    return res.status(200).json({
+      success: true,
+      data: task,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Update Task Notes Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// ============================================================
-// Admin — task assignment helpers
-// ============================================================
+/* ============================================================
+   ADMIN — GET ORDER TASKS
+   GET /api/tasks/order/:orderId
+============================================================ */
 
-// GET /api/tasks/order/:orderId — Admin gets all tasks for an order
 export const getOrderTasks = async (req, res) => {
   try {
+    const shopId = requireShop(req, res);
+
+    if (!shopId) return;
+
     const orderId = Number(req.params.orderId);
+
     if (!orderId) {
-      return res.status(400).json({ success: false, message: "Invalid order ID" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order ID.",
+      });
     }
 
-    // Scope: if admin has a shopId, the order must belong to that shop
-    const orderWhere = { id: orderId };
-    if (req.user.shopId) orderWhere.shop_id = req.user.shopId;
+    /*
+     * STRICT ORDER TENANT CHECK
+     */
+    const order = await Order.findOne({
+      where: {
+        id: orderId,
+        shop_id: shopId,
+      },
+    });
 
-    const order = await Order.findOne({ where: orderWhere });
     if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Order not found.",
+      });
     }
 
     const tasks = await Task.findAll({
-      where: { order_id: orderId },
+      where: {
+        order_id: orderId,
+        shop_id: shopId,
+      },
+
       include: [
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "name", "email", "designation"],
+
+          attributes: ["id", "name", "email", "designation", "shop_id"],
         },
       ],
-      order: [["createdAt", "DESC"]],
+
+      order: [
+        ["sequence", "ASC"],
+        ["id", "ASC"],
+      ],
     });
 
-    return res.status(200).json({ success: true, data: tasks });
+    const response = tasks.map((task) => {
+      const data = task.toJSON();
+
+      data.isReady = isTaskReady(task, tasks);
+
+      return data;
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Get Order Tasks Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// PATCH /api/tasks/:id/reassign — Admin reassigns a task to another employee
-// Body: { employee_id }
-// Moves the task to the new employee without creating duplicates.
+/* ============================================================
+   ADMIN — REASSIGN TASK
+   PATCH /api/tasks/:id/reassign
+
+   BODY:
+
+   {
+     "employee_id": 8
+   }
+
+============================================================ */
+
 export const reassignTask = async (req, res) => {
   try {
-    const { employee_id } = req.body;
-    if (!employee_id) {
-      return res.status(400).json({ success: false, message: "employee_id is required" });
+    const shopId = requireShop(req, res);
+
+    if (!shopId) return;
+
+    const shop = await Shop.findByPk(shopId, {
+      attributes: ["id", "slug"],
+    });
+
+    if (!shop?.slug) {
+      return res.status(403).json({
+        success: false,
+        message: "Shop slug is missing.",
+      });
+    }
+
+    const shopSlug = shop.slug;
+
+    if (!shopId) return;
+
+    const newEmployeeId = Number(req.body.employee_id);
+
+    if (!newEmployeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "employee_id is required.",
+      });
     }
 
     const taskId = Number(req.params.id);
 
-    // Find the task — scoped to admin's shop
-    const taskWhere = { id: taskId };
-    const task = await Task.findByPk(taskId, {
+    if (!taskId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID.",
+      });
+    }
+
+    /* --------------------------------------------------------
+       TASK — STRICT SHOP
+    -------------------------------------------------------- */
+
+    const task = await Task.findOne({
+      where: {
+        id: taskId,
+        shop_id: shopId,
+      },
+
       include: [
         {
           model: Employee,
           as: "employee",
+
           attributes: ["id", "name", "shop_id"],
+
+          required: false,
         },
+
         {
           model: Order,
           as: "order",
+
           attributes: ["id", "shop_id"],
+
           required: false,
         },
       ],
     });
 
     if (!task) {
-      return res.status(404).json({ success: false, message: "Task not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
     }
 
-    // Verify admin can access this task (shop scoping)
-    const taskShopId = task.employee?.shop_id || task.order?.shop_id;
-    if (req.user.shopId && taskShopId && taskShopId !== req.user.shopId) {
-      return res.status(403).json({ success: false, message: "Cannot reassign tasks from another shop." });
-    }
+    /* --------------------------------------------------------
+       COMPLETED TASK
+    -------------------------------------------------------- */
 
-    // Cannot reassign a completed task
     if (task.status === "completed") {
       return res.status(400).json({
         success: false,
-        message: "Cannot reassign a completed task. Only pending or in-progress tasks can be reassigned.",
+        message: "Cannot reassign a completed task.",
       });
     }
 
-    // Find the new employee
-    const newEmployee = await Employee.findByPk(employee_id);
+    /* --------------------------------------------------------
+       NEW EMPLOYEE — STRICT SHOP
+    -------------------------------------------------------- */
+
+    const newEmployee = await Employee.findOne({
+      where: {
+        id: newEmployeeId,
+
+        shop_id: shopId,
+
+        status: "active",
+      },
+    });
+
     if (!newEmployee) {
-      return res.status(404).json({ success: false, message: "Employee not found" });
-    }
-
-    // New employee must belong to the same shop (unless legacy/no shop)
-    if (req.user.shopId && newEmployee.shop_id && newEmployee.shop_id !== req.user.shopId) {
-      return res.status(403).json({
+      return res.status(404).json({
         success: false,
-        message: "Cannot assign to an employee from a different shop.",
+        message: "Employee not found in your shop or employee is inactive.",
       });
     }
 
-    // Prevent duplicate: check if this order already has the same task_type
-    // assigned to someone else (which would mean a duplicate exists)
+    /* --------------------------------------------------------
+       ALREADY SAME EMPLOYEE
+    -------------------------------------------------------- */
+
+    if (Number(task.employee_id) === newEmployeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Task is already assigned to this employee.",
+      });
+    }
+
+    /* --------------------------------------------------------
+       DUPLICATE TASK TYPE
+    -------------------------------------------------------- */
+
     if (task.order_id) {
       const duplicate = await Task.findOne({
         where: {
+          shop_id: shopId,
+
           order_id: task.order_id,
+
           task_type: task.task_type,
-          id: { [Op.ne]: taskId },
+
+          employee_id: newEmployeeId,
+
+          id: {
+            [Op.ne]: taskId,
+          },
         },
       });
+
       if (duplicate) {
-        return res.status(400).json({
+        return res.status(409).json({
           success: false,
-          message: `A ${TASK_TYPE_LABELS[task.task_type]} task already exists for this order. Delete it first or update it.`,
+          message: `This ${getTaskLabel(
+            task.task_type,
+          )} task is already assigned to this employee.`,
         });
       }
     }
 
-    // If task is in_progress or completed, warn but allow reassignment
     const oldEmployeeName = task.employee?.name || "Unassigned";
-    task.employee_id = Number(employee_id);
+
+    task.employee_id = newEmployeeId;
+
+    /*
+     * If a task was pending because previous task
+     * wasn't completed, keep it pending.
+     *
+     * If task is already in_progress, it stays in_progress.
+     */
     await task.save();
 
-    // Notify the new employee
-    await createNotification({
-      employeeId: Number(employee_id),
-      title: "Task reassigned to you",
-      message: `${TASK_TYPE_LABELS[task.task_type] || task.task_type} task${task.order_id ? ` for order #${task.order_id}` : ""} has been reassigned to you from ${oldEmployeeName}.`,
-      type: "task",
-      link: "/employee/mytask",
-    });
+    /* --------------------------------------------------------
+       NEW EMPLOYEE NOTIFICATION
+    -------------------------------------------------------- */
 
-    // Reload with the new employee info
-    const updated = await Task.findByPk(taskId, {
+    try {
+      await createNotification({
+        employeeId: newEmployeeId,
+
+        taskId: task.id,
+
+        orderId: task.order_id,
+
+        title: "Task reassigned to you",
+
+        message: `${getTaskLabel(task.task_type)} task${
+          task.order_id ? ` for order #${task.order_id}` : ""
+        } has been reassigned to you from ${oldEmployeeName}.`,
+
+        type: "task",
+
+        link: `/${shopSlug}/employee/mytask`,
+      });
+    } catch (notificationError) {
+      console.error("Reassign notification error:", notificationError.message);
+    }
+
+    /* --------------------------------------------------------
+       ADMIN NOTIFICATION
+    -------------------------------------------------------- */
+
+    try {
+      await notifyShopAdmins(shopId, {
+        title: "Task reassigned",
+
+        message: `${getTaskLabel(task.task_type)} task${
+          task.order_id ? ` for order #${task.order_id}` : ""
+        } reassigned from ${oldEmployeeName} to ${newEmployee.name}.`,
+
+        type: "task",
+
+        link: "/admin/tasks",
+      });
+    } catch (notificationError) {
+      console.error(
+        "Admin reassign notification error:",
+        notificationError.message,
+      );
+    }
+
+    /* --------------------------------------------------------
+       RETURN UPDATED TASK
+    -------------------------------------------------------- */
+
+    const updated = await Task.findOne({
+      where: {
+        id: taskId,
+        shop_id: shopId,
+      },
+
       include: [
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "name", "email", "designation"],
+
+          attributes: ["id", "name", "email", "designation", "shop_id"],
         },
+
         {
           model: Order,
           as: "order",
-          attributes: ["id", "status"],
+
+          attributes: ["id", "status", "shop_id"],
+
           required: false,
         },
       ],
@@ -926,22 +2430,34 @@ export const reassignTask = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `${TASK_TYPE_LABELS[task.task_type] || task.task_type} reassigned to ${newEmployee.name}`,
+
+      message: `${getTaskLabel(
+        task.task_type,
+      )} reassigned to ${newEmployee.name}.`,
+
       data: updated,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Reassign Task Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// ============================================================
-// Admin — Task History
-// ============================================================
+/* ============================================================
+   ADMIN — TASK HISTORY
+   GET /api/tasks/history
+============================================================ */
 
-// GET /api/tasks/history?employee_id=&customer=&order_id=&task_type=&status=&startDate=&endDate=
-// Returns complete task activity for the admin to review.
 export const getAdminTaskHistory = async (req, res) => {
   try {
+    const shopId = requireShop(req, res);
+
+    if (!shopId) return;
+
     const {
       employee_id,
       customer,
@@ -952,179 +2468,295 @@ export const getAdminTaskHistory = async (req, res) => {
       endDate,
     } = req.query;
 
-    const where = {};
+    const where = {
+      shop_id: shopId,
+    };
 
-    // Scope to admin's shop
-    if (req.user.shopId) {
-      where["$employee.shop_id$"] = {
-        [Op.or]: [req.user.shopId, null],
+    if (employee_id) {
+      where.employee_id = Number(employee_id);
+    }
+
+    if (order_id) {
+      where.order_id = Number(order_id);
+    }
+
+    if (task_type) {
+      if (!isValidTaskType(task_type)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid task_type.",
+        });
+      }
+
+      where.task_type = task_type;
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (customer && String(customer).trim()) {
+      where.customer_name = {
+        [Op.like]: `%${String(customer).trim()}%`,
       };
     }
 
-    if (employee_id) where.employee_id = employee_id;
-    if (order_id) where.order_id = order_id;
-    if (task_type) where.task_type = task_type;
-    if (status) where.status = status;
-
-    // Customer name search
-    if (customer && String(customer).trim()) {
-      where.customer_name = { [Op.like]: `%${String(customer).trim()}%` };
-    }
-
-    // Date range filter on scheduled_time
     if (startDate && endDate) {
       where.scheduled_time = {
         [Op.between]: [
           new Date(`${startDate}T00:00:00`),
+
           new Date(`${endDate}T23:59:59`),
         ],
       };
     } else if (startDate) {
-      where.scheduled_time = { [Op.gte]: new Date(`${startDate}T00:00:00`) };
+      where.scheduled_time = {
+        [Op.gte]: new Date(`${startDate}T00:00:00`),
+      };
     } else if (endDate) {
-      where.scheduled_time = { [Op.lte]: new Date(`${endDate}T23:59:59`) };
+      where.scheduled_time = {
+        [Op.lte]: new Date(`${endDate}T23:59:59`),
+      };
     }
 
     const tasks = await Task.findAll({
       where,
+
       include: [
         {
           model: Employee,
           as: "employee",
+
           attributes: ["id", "name", "email", "designation", "shop_id"],
         },
+
         {
           model: Order,
           as: "order",
-          attributes: ["id", "status", "total_amount"],
+
+          attributes: ["id", "status", "total_amount", "shop_id"],
+
           required: false,
+
           include: [
             {
               model: Customer,
               as: "customer",
-              attributes: ["id", "name", "phone"],
+
+              attributes: ["id", "name", "phone", "shopId"],
+
               required: false,
             },
           ],
         },
       ],
-      order: [["createdAt", "DESC"]],
+
+      order: [
+        ["sequence", "ASC"],
+        ["createdAt", "DESC"],
+      ],
     });
 
-    return res.status(200).json({ success: true, data: tasks });
+    return res.status(200).json({
+      success: true,
+      data: tasks,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Get Admin Task History Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// ============================================================
-// Employee — Task History
-// ============================================================
+/* ============================================================
+   EMPLOYEE — TASK HISTORY
+   GET /api/tasks/my-history
+============================================================ */
 
-// GET /api/tasks/my-history?status=&task_type=&startDate=&endDate=
-// Returns all tasks (including completed) for the logged-in employee.
 export const getEmployeeTaskHistory = async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const context = requireEmployeeContext(req, res);
+
+    if (!context) return;
+
+    const { shopId, employeeId } = context;
+
     const { status, task_type, startDate, endDate } = req.query;
 
-    const where = { employee_id: employeeId };
+    const where = {
+      shop_id: shopId,
+      employee_id: employeeId,
+    };
 
-    if (status) where.status = status;
-    if (task_type) where.task_type = task_type;
+    if (status) {
+      where.status = status;
+    }
+
+    if (task_type) {
+      if (!isValidTaskType(task_type)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid task_type.",
+        });
+      }
+
+      where.task_type = task_type;
+    }
 
     if (startDate && endDate) {
       where.scheduled_time = {
         [Op.between]: [
           new Date(`${startDate}T00:00:00`),
+
           new Date(`${endDate}T23:59:59`),
         ],
       };
     } else if (startDate) {
-      where.scheduled_time = { [Op.gte]: new Date(`${startDate}T00:00:00`) };
+      where.scheduled_time = {
+        [Op.gte]: new Date(`${startDate}T00:00:00`),
+      };
     } else if (endDate) {
-      where.scheduled_time = { [Op.lte]: new Date(`${endDate}T23:59:59`) };
+      where.scheduled_time = {
+        [Op.lte]: new Date(`${endDate}T23:59:59`),
+      };
     }
 
     const tasks = await Task.findAll({
       where,
+
       include: [
         {
           model: Order,
           as: "order",
-          attributes: ["id", "status", "total_amount", "pickup_address", "delivery_address"],
+
+          attributes: [
+            "id",
+            "status",
+            "total_amount",
+            "shop_id",
+            "pickup_address",
+            "delivery_address",
+          ],
+
           required: false,
+
           include: [
             {
               model: Customer,
               as: "customer",
-              attributes: ["id", "name", "phone", "address", "city"],
+
+              attributes: ["id", "name", "phone", "address", "city", "shopId"],
+
               required: false,
             },
           ],
         },
       ],
-      order: [["createdAt", "DESC"]],
+
+      order: [
+        ["sequence", "ASC"],
+        ["createdAt", "DESC"],
+      ],
     });
 
-    return res.status(200).json({ success: true, data: tasks });
+    return res.status(200).json({
+      success: true,
+      data: tasks,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Get Employee Task History Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// ============================================================
-// Employee — Customer Tasks (for the Customers section)
-// ============================================================
+/* ============================================================
+   EMPLOYEE — CUSTOMER TASKS
+   GET /api/tasks/my-customer-tasks
+============================================================ */
 
-// GET /api/tasks/my-customer-tasks
-// Returns every task belonging to the logged-in employee, grouped by
-// customer_name. Each group includes the customer's tasks with order
-// references so the employee can see which tasks they performed for
-// which customer and order.
 export const getMyCustomerTasks = async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const context = requireEmployeeContext(req, res);
+
+    if (!context) return;
+
+    const { shopId, employeeId } = context;
 
     const tasks = await Task.findAll({
-      where: { employee_id: employeeId },
+      where: {
+        shop_id: shopId,
+        employee_id: employeeId,
+      },
+
       include: [
         {
           model: Order,
           as: "order",
-          attributes: ["id", "status", "total_amount"],
+
+          attributes: ["id", "status", "total_amount", "shop_id"],
+
           required: false,
+
           include: [
             {
               model: Customer,
               as: "customer",
-              attributes: ["id", "name", "phone", "address", "city"],
+
+              attributes: ["id", "name", "phone", "address", "city", "shopId"],
+
               required: false,
             },
           ],
         },
       ],
-      order: [["createdAt", "DESC"]],
+
+      order: [
+        ["sequence", "ASC"],
+        ["createdAt", "DESC"],
+      ],
     });
 
-    // Group tasks by customer_name so the UI can display per-customer cards.
     const grouped = {};
-    for (const t of tasks) {
-      const key = t.customer_name || "Unknown";
+
+    for (const task of tasks) {
+      const key = task.customer_name || "Unknown";
+
       if (!grouped[key]) {
         grouped[key] = {
           customerName: key,
-          customerPhone: t.customer_phone || t.order?.customer?.phone || null,
-          customerAddress: t.customer_address || t.order?.customer?.address || null,
-          customerCity: t.order?.customer?.city || null,
+
+          customerPhone:
+            task.customer_phone || task.order?.customer?.phone || null,
+
+          customerAddress:
+            task.customer_address || task.order?.customer?.address || null,
+
+          customerCity: task.order?.customer?.city || null,
+
           tasks: [],
         };
       }
-      grouped[key].tasks.push(t);
+
+      grouped[key].tasks.push(task);
     }
 
-    return res.status(200).json({ success: true, data: Object.values(grouped) });
+    return res.status(200).json({
+      success: true,
+      data: Object.values(grouped),
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Get My Customer Tasks Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };

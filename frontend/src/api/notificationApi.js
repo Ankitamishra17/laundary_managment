@@ -64,6 +64,16 @@ export const getNotificationHistory = async () => {
   return response.data;
 };
 
+// NOTE: this hits the low-stock-specific PATCH /:id/mark-read route
+// (backed by markLowStockNotificationAsRead in the controller) — it
+// was defined on the backend but had no matching export here, so a
+// low-stock item could only ever be marked read via the general
+// markNotificationAsRead() above.
+export const markLowStockNotificationAsRead = async (id) => {
+  const response = await api.patch(`/notifications/${id}/mark-read`);
+  return response.data;
+};
+
 export const markAllLowStockNotificationsAsRead = async () => {
   const response = await api.patch("/notifications/mark-all-read");
   return response.data;
@@ -82,5 +92,6 @@ export const notificationApi = {
   getLowStockNotifications,
   getLowStockNotificationCount,
   getNotificationHistory,
+  markLowStockRead: markLowStockNotificationAsRead,
   markAllLowStockNotificationsAsRead,
 };

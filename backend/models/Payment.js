@@ -20,7 +20,6 @@ const Payment = sequelize.define(
     paymentNumber: {
       type: DataTypes.STRING(100),
       allowNull: false,
-      unique: true,
     },
 
     // CUSTOMER / SUPPLIER / SALARY
@@ -72,13 +71,7 @@ const Payment = sequelize.define(
 
     // Payment Method
     paymentMethod: {
-      type: DataTypes.ENUM(
-        "Cash",
-        "UPI",
-        "Card",
-        "Bank_Transfer",
-        "Cheque"
-      ),
+      type: DataTypes.ENUM("Cash", "UPI", "Card", "Bank_Transfer", "Cheque"),
       allowNull: false,
     },
 
@@ -89,7 +82,7 @@ const Payment = sequelize.define(
         "Paid",
         "Failed",
         "Cancelled",
-        "Refunded"
+        "Refunded",
       ),
       allowNull: false,
       defaultValue: "Paid",
@@ -153,7 +146,14 @@ const Payment = sequelize.define(
   {
     tableName: "payments",
     timestamps: true,
-  }
+    indexes: [
+      {
+        unique: true,
+        name: "unique_shop_payment_number",
+        fields: ["shopId", "paymentNumber"],
+      },
+    ],
+  },
 );
 
 export default Payment;

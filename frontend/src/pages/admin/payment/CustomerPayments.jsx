@@ -9,8 +9,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { getPayments } from "../../../api/paymentApi";
-
+import { getAllCustomerPayments } from "../../../api/paymentApi";
 const CustomerPayments = () => {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,16 +32,22 @@ const CustomerPayments = () => {
   const fetchPayments = async () => {
     try {
       setLoading(true);
+      setError("");
 
-      const response = await getPayments();
+      const response = await getAllCustomerPayments();
 
-      if (response.success) {
+      if (response?.success) {
         setPayments(response.data || []);
+      } else {
+        setPayments([]);
+        setError(response?.message || "Failed to load customer payments.");
       }
     } catch (error) {
       console.error("Customer Payments Error:", error);
 
-      setError(error.message || "Failed to load customer payments.");
+      setPayments([]);
+
+      setError(error?.message || "Failed to load customer payments.");
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,6 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
 
-
 const Customer = sequelize.define(
   "Customer",
   {
@@ -11,14 +10,10 @@ const Customer = sequelize.define(
       primaryKey: true,
     },
 
-
-    // Links to users.id
-
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
-
 
     shopId: {
       type: DataTypes.INTEGER,
@@ -33,7 +28,6 @@ const Customer = sequelize.define(
     email: {
       type: DataTypes.STRING,
       allowNull: true,
-      unique: true,
       validate: {
         isEmail: true,
       },
@@ -63,6 +57,19 @@ const Customer = sequelize.define(
   {
     tableName: "customers",
     timestamps: true,
+
+    indexes: [
+      {
+        unique: true,
+        fields: ["shopId", "email"],
+        name: "unique_shop_customer_email",
+      },
+      {
+        unique: true,
+        fields: ["shopId", "phone"],
+        name: "unique_shop_customer_phone",
+      },
+    ],
   },
 );
 

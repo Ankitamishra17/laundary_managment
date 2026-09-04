@@ -9,10 +9,10 @@ import {
   markRead,
 
   // Low-stock notifications
-  getNotifications,
-  getUnreadNotificationCount,
-  markNotificationAsRead,
-  markAllNotificationsAsRead,
+  getLowStockNotifications,
+  getLowStockUnreadNotificationCount,
+  markLowStockNotificationAsRead,
+  markAllLowStockNotificationsAsRead,
   getNotificationHistory,
   resolveNotification,
 } from "../controllers/notification.controller.js";
@@ -44,11 +44,11 @@ router.patch("/read-all", markAllRead);
 
 // GET /api/notifications/low-stock
 // Get active low-stock notifications
-router.get("/low-stock", getNotifications);
+router.get("/low-stock", getLowStockNotifications);
 
 // GET /api/notifications/count
 // Get unread low-stock notification count
-router.get("/count", getUnreadNotificationCount);
+router.get("/count", getLowStockUnreadNotificationCount);
 
 // GET /api/notifications/history
 // Get low-stock notification history
@@ -56,7 +56,7 @@ router.get("/history", getNotificationHistory);
 
 // PATCH /api/notifications/mark-all-read
 // Mark all low-stock notifications as read
-router.patch("/mark-all-read", markAllNotificationsAsRead);
+router.patch("/mark-all-read", markAllLowStockNotificationsAsRead);
 
 // =====================================================
 // SINGLE NOTIFICATION ROUTES
@@ -67,12 +67,12 @@ router.patch("/mark-all-read", markAllNotificationsAsRead);
 router.patch("/:id/resolve", resolveNotification);
 
 // PATCH /api/notifications/:id/read
-// Mark any notification as read
+// Mark any (general) notification as read
 router.patch("/:id/read", markRead);
 
 // PATCH /api/notifications/:id/mark-read
-// Backward-compatible low-stock route
-router.patch("/:id/mark-read", markNotificationAsRead);
+// Mark a low-stock notification as read specifically
+router.patch("/:id/mark-read", markLowStockNotificationAsRead);
 
 // =====================================================
 // EXPORT

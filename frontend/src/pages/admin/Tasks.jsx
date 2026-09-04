@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+
 import { Link } from "react-router-dom";
+
 import {
   ClipboardList,
   Clock,
@@ -15,6 +17,7 @@ import {
   UserPlus,
   History,
 } from "lucide-react";
+
 import toast from "react-hot-toast";
 
 import { taskApi } from "../../api/taskApi";
@@ -23,6 +26,10 @@ import { getShopCustomers } from "../../api/customerApi";
 
 import StatusPill from "../../components/layout/StatusPill";
 import TaskFilterTabs from "../../components/layout/TaskFilterTabs";
+
+/* ================================================================
+   TASK CONSTANTS
+================================================================ */
 
 const TASK_TYPE_LABEL = {
   pickup: "Pickup",
@@ -40,10 +47,20 @@ const TASK_TYPE_OPTIONS = Object.entries(TASK_TYPE_LABEL).map(
   }),
 );
 
+/* ================================================================
+   HELPERS
+================================================================ */
+
 function formatScheduled(iso) {
   if (!iso) return "—";
 
-  return new Date(iso).toLocaleString([], {
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleString([], {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -51,9 +68,9 @@ function formatScheduled(iso) {
   });
 }
 
-/* ------------------------------------------------------------------ */
-/* Presentational helpers                                              */
-/* ------------------------------------------------------------------ */
+/* ================================================================
+   PRESENTATIONAL HELPERS
+================================================================ */
 
 function StatCard({ icon: Icon, label, value, color, bg }) {
   return (
@@ -83,6 +100,10 @@ function StatCard({ icon: Icon, label, value, color, bg }) {
   );
 }
 
+/* ================================================================
+   PRIORITY PILL
+================================================================ */
+
 function PriorityPill({ priority }) {
   const urgent = priority === "urgent";
 
@@ -95,20 +116,32 @@ function PriorityPill({ priority }) {
       }}
     >
       {urgent && <AlertTriangle size={11} />}
+
       {urgent ? "Urgent" : "Normal"}
     </span>
   );
 }
 
+/* ================================================================
+   TABLE SKELETON
+================================================================ */
+
 function TableSkeleton() {
   return (
     <div className="p-5 space-y-3">
-      {[...Array(4)].map((_, i) => (
-        <div key={i} className="h-12 rounded-xl bg-[#EEF7F6] animate-pulse" />
+      {[...Array(4)].map((_, index) => (
+        <div
+          key={index}
+          className="h-12 rounded-xl bg-[#EEF7F6] animate-pulse"
+        />
       ))}
     </div>
   );
 }
+
+/* ================================================================
+   EMPTY STATE
+================================================================ */
 
 function EmptyState({ hasEmployees }) {
   return (
@@ -131,6 +164,10 @@ function EmptyState({ hasEmployees }) {
   );
 }
 
+/* ================================================================
+   FIELD
+================================================================ */
+
 function Field({ label, required, className = "", children }) {
   return (
     <div className={className}>
@@ -143,15 +180,18 @@ function Field({ label, required, className = "", children }) {
   );
 }
 
+/* ================================================================
+   COMMON INPUT CLASS
+================================================================ */
+
 const inputCls =
   "w-full rounded-lg border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-2.5 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:shadow-[0_0_0_3px_rgba(2,128,144,0.12)] transition";
 
-/* ------------------------------------------------------------------ */
-/* Assign Task Modal                                                   */
-/* ------------------------------------------------------------------ */
+/* ================================================================
+   EMPTY FORM
+================================================================ */
 
 const EMPTY_FORM = {
-  employee_id: "",
   priority: "normal",
   scheduled_time: "",
   order_id: "",
@@ -162,6 +202,31 @@ const EMPTY_FORM = {
   notes: "",
 };
 
+/*
+ * Each task type gets its own employee.
+ *
+ * Example:
+ *
+ * pickup   -> employee 5
+ * wash     -> employee 7
+ * dry      -> employee 7
+ * iron     -> employee 8
+ * pack     -> employee 8
+ * delivery -> employee 5
+ */
+const EMPTY_ASSIGNMENTS = {
+  pickup: "",
+  wash: "",
+  dry: "",
+  iron: "",
+  pack: "",
+  delivery: "",
+};
+
+/* ================================================================
+   ASSIGN TASK MODAL
+================================================================ */
+
 function AssignTaskModal({
   isOpen,
   onClose,
@@ -171,7 +236,7 @@ function AssignTaskModal({
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const [selectedTypes, setSelectedTypes] = useState(["pickup"]);
+  const [assignments, setAssignments] = useState(EMPTY_ASSIGNMENTS);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -185,12 +250,21 @@ function AssignTaskModal({
   const [orderTasks, setOrderTasks] = useState([]);
   const [orderTasksLoading, setOrderTasksLoading] = useState(false);
 
+  /* --------------------------------------------------------------
+     Minimum date/time
+  -------------------------------------------------------------- */
+
   const minDateTime = useMemo(() => {
     const now = new Date();
+
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
 
     return now.toISOString().slice(0, 16);
   }, []);
+
+  /* --------------------------------------------------------------
+     Load customers + orders
+  -------------------------------------------------------------- */
 
   useEffect(() => {
     if (!isOpen) return;
@@ -214,9 +288,13 @@ function AssignTaskModal({
           );
         }
       } catch {
-        if (!cancelled) setCustomers([]);
+        if (!cancelled) {
+          setCustomers([]);
+        }
       } finally {
-        if (!cancelled) setCustomersLoading(false);
+        if (!cancelled) {
+          setCustomersLoading(false);
+        }
       }
 
       try {
@@ -236,9 +314,13 @@ function AssignTaskModal({
           );
         }
       } catch {
-        if (!cancelled) setOrders([]);
+        if (!cancelled) {
+          setOrders([]);
+        }
       } finally {
-        if (!cancelled) setOrdersLoading(false);
+        if (!cancelled) {
+          setOrdersLoading(false);
+        }
       }
     };
 
@@ -248,6 +330,10 @@ function AssignTaskModal({
       cancelled = true;
     };
   }, [isOpen]);
+
+  /* --------------------------------------------------------------
+     Load existing tasks for selected order
+  -------------------------------------------------------------- */
 
   useEffect(() => {
     if (!form.order_id) {
@@ -264,14 +350,22 @@ function AssignTaskModal({
         const res = await taskApi.getOrderTasks(form.order_id);
 
         if (!cancelled) {
-          setOrderTasks(
-            Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [],
-          );
+          const data = Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res)
+              ? res
+              : [];
+
+          setOrderTasks(data);
         }
       } catch {
-        if (!cancelled) setOrderTasks([]);
+        if (!cancelled) {
+          setOrderTasks([]);
+        }
       } finally {
-        if (!cancelled) setOrderTasksLoading(false);
+        if (!cancelled) {
+          setOrderTasksLoading(false);
+        }
       }
     };
 
@@ -282,29 +376,45 @@ function AssignTaskModal({
     };
   }, [form.order_id]);
 
-  const availableEmployees = useMemo(() => {
-    if (!form.order_id || orderTasks.length === 0) {
+  /* --------------------------------------------------------------
+     Existing task types
+  -------------------------------------------------------------- */
+
+  const existingTaskTypes = useMemo(() => {
+    return new Set(orderTasks.map((task) => task.task_type));
+  }, [orderTasks]);
+
+  /* --------------------------------------------------------------
+     Available employees
+  -------------------------------------------------------------- */
+
+  const getAvailableEmployees = useCallback(
+    (taskType) => {
+      if (existingTaskTypes.has(taskType)) {
+        return [];
+      }
+
       return employees;
-    }
+    },
+    [employees, existingTaskTypes],
+  );
 
-    const blockedEmployeeIds = new Set(
-      orderTasks
-        .filter((task) => selectedTypes.includes(task.task_type))
-        .map((task) => Number(task.employee_id)),
-    );
-
-    return employees.filter(
-      (employee) => !blockedEmployeeIds.has(Number(employee.id)),
-    );
-  }, [employees, orderTasks, selectedTypes, form.order_id]);
+  /* --------------------------------------------------------------
+     Reset
+  -------------------------------------------------------------- */
 
   const resetAndClose = () => {
     setForm(EMPTY_FORM);
-    setSelectedTypes(["pickup"]);
+    setAssignments(EMPTY_ASSIGNMENTS);
     setError("");
     setOrderTasks([]);
+
     onClose();
   };
+
+  /* --------------------------------------------------------------
+     Form change
+  -------------------------------------------------------------- */
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -315,6 +425,21 @@ function AssignTaskModal({
     }));
   };
 
+  /* --------------------------------------------------------------
+     Employee assignment change
+  -------------------------------------------------------------- */
+
+  const handleEmployeeChange = (taskType, employeeId) => {
+    setAssignments((prev) => ({
+      ...prev,
+      [taskType]: employeeId,
+    }));
+  };
+
+  /* --------------------------------------------------------------
+     Customer selection
+  -------------------------------------------------------------- */
+
   const handleCustomerSelect = (e) => {
     const id = e.target.value;
 
@@ -323,6 +448,7 @@ function AssignTaskModal({
         ...prev,
         customer_id: "",
       }));
+
       return;
     }
 
@@ -339,6 +465,10 @@ function AssignTaskModal({
     }));
   };
 
+  /* --------------------------------------------------------------
+     Customer name manual change
+  -------------------------------------------------------------- */
+
   const handleNameChange = (e) => {
     const { value } = e.target;
 
@@ -349,48 +479,112 @@ function AssignTaskModal({
     }));
   };
 
-  const toggleTaskType = (taskType) => {
-    setSelectedTypes((prev) =>
-      prev.includes(taskType)
-        ? prev.filter((type) => type !== taskType)
-        : [...prev, taskType],
-    );
-  };
+  /* --------------------------------------------------------------
+     Group task assignments by employee
+  -------------------------------------------------------------- */
+
+  const selectedAssignments = useMemo(() => {
+    const grouped = {};
+
+    Object.entries(assignments).forEach(([taskType, employeeId]) => {
+      if (!employeeId) return;
+
+      const employeeIdNumber = Number(employeeId);
+
+      if (!grouped[employeeIdNumber]) {
+        grouped[employeeIdNumber] = {
+          employee_id: employeeIdNumber,
+          task_types: [],
+        };
+      }
+
+      grouped[employeeIdNumber].task_types.push(taskType);
+    });
+
+    return Object.values(grouped);
+  }, [assignments]);
+
+  /* --------------------------------------------------------------
+     Number of selected tasks
+  -------------------------------------------------------------- */
+
+  const selectedTaskCount = useMemo(() => {
+    return Object.values(assignments).filter(Boolean).length;
+  }, [assignments]);
+
+  /* --------------------------------------------------------------
+     Submit
+  -------------------------------------------------------------- */
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     setError("");
 
-    if (!form.employee_id) {
-      setError("Please select an employee.");
+    /* No task selected */
+    if (selectedTaskCount === 0) {
+      setError("Please assign at least one task to an employee.");
+
       return;
     }
 
-    if (selectedTypes.length === 0) {
-      setError("Please select at least one task type.");
-      return;
-    }
-
+    /* Scheduled time validation */
     if (
       form.scheduled_time &&
       new Date(form.scheduled_time).getTime() < Date.now()
     ) {
       setError("Scheduled time cannot be in the past.");
+
+      return;
+    }
+
+    /* Prevent duplicate task types */
+    const duplicateTaskTypes = Object.keys(assignments).filter(
+      (taskType) => assignments[taskType] && existingTaskTypes.has(taskType),
+    );
+
+    if (duplicateTaskTypes.length > 0) {
+      setError(
+        `These task types are already assigned: ${duplicateTaskTypes
+          .map((type) => TASK_TYPE_LABEL[type] || type)
+          .join(", ")}`,
+      );
+
       return;
     }
 
     setLoading(true);
 
     try {
+      /*
+       * New API payload.
+       *
+       * Example:
+       *
+       * assignments: [
+       *   {
+       *     employee_id: 5,
+       *     task_types: ["pickup", "delivery"]
+       *   },
+       *   {
+       *     employee_id: 7,
+       *     task_types: ["wash", "dry"]
+       *   }
+       * ]
+       */
       const payload = {
-        employee_id: Number(form.employee_id),
-        task_types: selectedTypes,
+        assignments: selectedAssignments,
+
         priority: form.priority,
+
         scheduled_time: form.scheduled_time,
+
         customer_name: form.customer_name,
+
         customer_phone: form.customer_phone || null,
+
         customer_address: form.customer_address || null,
+
         notes: form.notes || null,
       };
 
@@ -405,24 +599,28 @@ function AssignTaskModal({
       await taskApi.assignTask(payload);
 
       toast.success(
-        selectedTypes.length > 1
-          ? `${selectedTypes.length} tasks assigned successfully`
+        selectedTaskCount > 1
+          ? `${selectedTaskCount} tasks assigned successfully`
           : "Task assigned successfully",
       );
 
       onAssigned?.();
+
       resetAndClose();
     } catch (err) {
       const message = err.response?.data?.message || "Failed to assign task";
 
       setError(message);
+
       toast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <div
@@ -430,9 +628,13 @@ function AssignTaskModal({
       onClick={resetAndClose}
     >
       <div
-        className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-[0_20px_50px_rgba(5,40,42,0.25)]"
+        className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-[0_20px_50px_rgba(5,40,42,0.25)]"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* ------------------------------------------------------
+            Header
+        ------------------------------------------------------ */}
+
         <div className="flex items-start justify-between mb-6">
           <div>
             <h2
@@ -441,15 +643,16 @@ function AssignTaskModal({
                 fontFamily: "'Libre Baskerville', Georgia, serif",
               }}
             >
-              Assign Task
+              Assign Tasks
             </h2>
 
             <p className="text-[13px] text-[#5A7A79] mt-1">
-              Assign a new task to an employee
+              Assign different tasks to different employees.
             </p>
           </div>
 
           <button
+            type="button"
             onClick={resetAndClose}
             aria-label="Close"
             className="w-8 h-8 rounded-lg bg-[#EEF7F6] border border-[#D8ECEA] text-[#0F2C2E] flex items-center justify-center hover:bg-[#DFF3F5] transition-colors"
@@ -458,7 +661,11 @@ function AssignTaskModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* ----------------------------------------------------
+              Order
+          ---------------------------------------------------- */}
+
           <Field label="Link to Order (optional)">
             <select
               name="order_id"
@@ -483,117 +690,202 @@ function AssignTaskModal({
             </select>
           </Field>
 
-          <Field label="Assign To" required>
-            <select
-              name="employee_id"
-              value={form.employee_id}
-              onChange={handleChange}
-              required
-              disabled={
-                employeesLoading ||
-                orderTasksLoading ||
-                availableEmployees.length === 0
-              }
-              className={inputCls}
-            >
-              <option value="" disabled>
-                {employeesLoading
-                  ? "Loading employees…"
-                  : orderTasksLoading
-                    ? "Checking availability…"
-                    : availableEmployees.length === 0
-                      ? "No available employees"
-                      : "Select an employee"}
-              </option>
+          {/* ----------------------------------------------------
+              Existing tasks
+          ---------------------------------------------------- */}
 
-              {availableEmployees.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {employee.name}
-                  {employee.designation ? ` — ${employee.designation}` : ""}
-                  {employee.status === "inactive" ? " (inactive)" : ""}
-                </option>
-              ))}
-            </select>
+          {form.order_id && orderTasksLoading && (
+            <div className="rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-4 py-3 text-xs text-[#6B8482] flex items-center gap-2">
+              <Loader2 size={14} className="animate-spin text-[#028090]" />
+              Checking existing tasks for this order…
+            </div>
+          )}
 
-            {form.order_id && orderTasks.length > 0 && (
-              <p className="mt-1 text-[11px] text-[#6B8482]">
-                Only showing employees available for the selected task types on
-                this order.
-              </p>
-            )}
-          </Field>
+          {form.order_id && !orderTasksLoading && orderTasks.length > 0 && (
+            <div className="rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-4 py-3">
+              <div className="text-xs font-semibold text-[#0F2C2E] mb-2">
+                Existing Tasks
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {orderTasks.map((task) => (
+                  <span
+                    key={task.id}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#D8ECEA] text-[11px] text-[#028090]"
+                  >
+                    {TASK_TYPE_LABEL[task.task_type] || task.task_type}
+
+                    {task.employee?.name && (
+                      <span className="text-[#6B8482]">
+                        → {task.employee.name}
+                      </span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ----------------------------------------------------
+              Task → Employee assignment
+          ---------------------------------------------------- */}
 
           <div>
-            <label className="block text-[13px] font-medium text-[#0F2C2E] mb-2">
-              Task Types <span className="text-[#B3261E]">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-[13px] font-medium text-[#0F2C2E]">
+                Task Assignments <span className="text-[#B3261E]">*</span>
+              </label>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <span className="text-[11px] text-[#6B8482]">
+                {selectedTaskCount} selected
+              </span>
+            </div>
+
+            <div className="border border-[#D8ECEA] rounded-xl overflow-hidden">
               {TASK_TYPE_OPTIONS.map((option) => {
-                const checked = selectedTypes.includes(option.value);
+                const taskType = option.value;
+
+                const selectedEmployee = assignments[taskType];
+
+                const alreadyExists = existingTaskTypes.has(taskType);
+
+                const availableEmployees = getAvailableEmployees(taskType);
 
                 return (
-                  <label
-                    key={option.value}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-[13px] font-medium cursor-pointer transition-all ${
-                      checked
-                        ? "border-[#028090] bg-[#DFF3F5] text-[#028090]"
-                        : "border-[#D8ECEA] bg-white text-[#6B8482] hover:border-[#A9C9C6]"
+                  <div
+                    key={taskType}
+                    className={`flex flex-col sm:flex-row sm:items-center gap-3 p-3.5 border-b last:border-b-0 border-[#EEF7F6] ${
+                      alreadyExists ? "bg-[#FAFDFC]" : "bg-white"
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleTaskType(option.value)}
-                      className="sr-only"
-                    />
+                    {/* Task name */}
 
-                    <div
-                      className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-                        checked
-                          ? "border-[#028090] bg-[#028090]"
-                          : "border-[#D8ECEA]"
-                      }`}
-                    >
-                      {checked && (
-                        <svg
-                          className="w-2.5 h-2.5 text-white"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={3}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
+                    <div className="flex items-center gap-2 min-w-[140px]">
+                      <div
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          selectedEmployee
+                            ? "bg-[#02C39A]"
+                            : alreadyExists
+                              ? "bg-[#A9C9C6]"
+                              : "bg-[#D8ECEA]"
+                        }`}
+                      />
+
+                      <span
+                        className={`text-[13px] font-semibold ${
+                          alreadyExists ? "text-[#8AA19F]" : "text-[#0F2C2E]"
+                        }`}
+                      >
+                        {option.label}
+                      </span>
+
+                      {alreadyExists && (
+                        <span className="text-[9px] font-bold uppercase tracking-wide text-[#8AA19F] bg-[#EEF7F6] px-1.5 py-0.5 rounded">
+                          Assigned
+                        </span>
                       )}
                     </div>
 
-                    {option.label}
-                  </label>
+                    {/* Employee */}
+
+                    <div className="flex-1">
+                      <select
+                        value={selectedEmployee}
+                        onChange={(e) =>
+                          handleEmployeeChange(taskType, e.target.value)
+                        }
+                        disabled={
+                          employeesLoading ||
+                          orderTasksLoading ||
+                          alreadyExists ||
+                          availableEmployees.length === 0
+                        }
+                        className={`${inputCls} ${
+                          alreadyExists ? "cursor-not-allowed opacity-60" : ""
+                        }`}
+                      >
+                        <option value="">
+                          {alreadyExists
+                            ? "Task already assigned"
+                            : employeesLoading
+                              ? "Loading employees…"
+                              : availableEmployees.length === 0
+                                ? "No employees available"
+                                : "Select employee"}
+                        </option>
+
+                        {availableEmployees.map((employee) => (
+                          <option key={employee.id} value={employee.id}>
+                            {employee.name}
+
+                            {employee.designation
+                              ? ` — ${employee.designation}`
+                              : ""}
+
+                            {employee.status === "inactive"
+                              ? " (inactive)"
+                              : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 );
               })}
             </div>
 
-            {selectedTypes.length > 1 && (
-              <div className="mt-2 flex flex-wrap items-center gap-1 text-[11px] text-[#6B8482]">
-                <span className="font-medium">Order:</span>
-
-                {selectedTypes.map((type, index) => (
-                  <span key={type} className="inline-flex items-center gap-1">
-                    {index > 0 && <span className="text-[#A9C9C6]">→</span>}
-
-                    <span className="px-1.5 py-0.5 rounded bg-[#EEF7F6] text-[#028090] font-medium">
-                      {TASK_TYPE_LABEL[type] || type}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            )}
+            <p className="mt-2 text-[11px] text-[#6B8482]">
+              Each task can be assigned to a different employee. You can also
+              assign multiple tasks to the same employee.
+            </p>
           </div>
+
+          {/* ----------------------------------------------------
+              Assignment summary
+          ---------------------------------------------------- */}
+
+          {selectedAssignments.length > 0 && (
+            <div className="rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] p-3.5">
+              <div className="text-xs font-semibold text-[#0F2C2E] mb-2">
+                Assignment Summary
+              </div>
+
+              <div className="space-y-2">
+                {selectedAssignments.map((assignment) => {
+                  const employee = employees.find(
+                    (item) =>
+                      Number(item.id) === Number(assignment.employee_id),
+                  );
+
+                  return (
+                    <div
+                      key={assignment.employee_id}
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 bg-white rounded-lg px-3 py-2 border border-[#D8ECEA]"
+                    >
+                      <span className="text-[12px] font-semibold text-[#0F2C2E]">
+                        {employee?.name || "Employee"}
+                      </span>
+
+                      <div className="flex flex-wrap gap-1">
+                        {assignment.task_types.map((taskType) => (
+                          <span
+                            key={taskType}
+                            className="px-1.5 py-0.5 rounded bg-[#DFF3F5] text-[#028090] text-[10px] font-semibold"
+                          >
+                            {TASK_TYPE_LABEL[taskType] || taskType}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ----------------------------------------------------
+              Priority
+          ---------------------------------------------------- */}
 
           <Field label="Priority">
             <select
@@ -608,6 +900,10 @@ function AssignTaskModal({
             </select>
           </Field>
 
+          {/* ----------------------------------------------------
+              Scheduled time
+          ---------------------------------------------------- */}
+
           <Field label="Scheduled Date & Time" required>
             <input
               name="scheduled_time"
@@ -619,6 +915,10 @@ function AssignTaskModal({
               className={inputCls}
             />
           </Field>
+
+          {/* ----------------------------------------------------
+              Customer
+          ---------------------------------------------------- */}
 
           <Field label="Customer">
             <select
@@ -636,6 +936,7 @@ function AssignTaskModal({
               {customers.map((customer) => (
                 <option key={customer.id} value={customer.id}>
                   {customer.name}
+
                   {customer.phone ? ` · ${customer.phone}` : ""}
                 </option>
               ))}
@@ -648,6 +949,10 @@ function AssignTaskModal({
             )}
           </Field>
 
+          {/* ----------------------------------------------------
+              Customer name
+          ---------------------------------------------------- */}
+
           <Field label="Customer Name" required>
             <input
               name="customer_name"
@@ -658,6 +963,10 @@ function AssignTaskModal({
               className={inputCls}
             />
           </Field>
+
+          {/* ----------------------------------------------------
+              Phone + address
+          ---------------------------------------------------- */}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Customer Phone">
@@ -681,6 +990,10 @@ function AssignTaskModal({
             </Field>
           </div>
 
+          {/* ----------------------------------------------------
+              Notes
+          ---------------------------------------------------- */}
+
           <Field label="Notes">
             <textarea
               name="notes"
@@ -692,15 +1005,23 @@ function AssignTaskModal({
             />
           </Field>
 
+          {/* ----------------------------------------------------
+              Error
+          ---------------------------------------------------- */}
+
           {error && (
             <div className="text-[13px] text-[#B3261E] bg-[#FDECEC] border border-[#F5C6C0] rounded-lg px-3.5 py-2.5">
               {error}
             </div>
           )}
 
+          {/* ----------------------------------------------------
+              Submit
+          ---------------------------------------------------- */}
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || selectedTaskCount === 0}
             className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition hover:brightness-105 active:scale-[0.98]"
             style={{
               background: "linear-gradient(135deg, #028090, #00A896)",
@@ -714,7 +1035,12 @@ function AssignTaskModal({
             ) : (
               <>
                 <UserPlus size={16} />
-                Assign Task
+                Assign{" "}
+                {selectedTaskCount > 0
+                  ? `${selectedTaskCount} Task${
+                      selectedTaskCount > 1 ? "s" : ""
+                    }`
+                  : "Tasks"}
               </>
             )}
           </button>
@@ -724,9 +1050,9 @@ function AssignTaskModal({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Page Tabs                                                           */
-/* ------------------------------------------------------------------ */
+/* ================================================================
+   PAGE TABS
+================================================================ */
 
 const PAGE_TABS = [
   {
@@ -747,6 +1073,7 @@ function PageTabs({ active, onChange }) {
       {PAGE_TABS.map(({ key, label, icon: Icon }) => (
         <button
           key={key}
+          type="button"
           onClick={() => onChange(key)}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
             active === key
@@ -755,6 +1082,7 @@ function PageTabs({ active, onChange }) {
           }`}
         >
           <Icon size={14} />
+
           {label}
         </button>
       ))}
@@ -762,13 +1090,15 @@ function PageTabs({ active, onChange }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Task History                                                        */
-/* ------------------------------------------------------------------ */
+/* ================================================================
+   TASK HISTORY TAB
+================================================================ */
 
 function TaskHistoryTab({ employees }) {
   const [history, setHistory] = useState([]);
+
   const [loading, setLoading] = useState(true);
+
   const [error, setError] = useState("");
 
   const [filters, setFilters] = useState({
@@ -780,6 +1110,10 @@ function TaskHistoryTab({ employees }) {
     startDate: "",
     endDate: "",
   });
+
+  /* --------------------------------------------------------------
+     Fetch history
+  -------------------------------------------------------------- */
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
@@ -833,12 +1167,20 @@ function TaskHistoryTab({ employees }) {
     fetchHistory();
   }, [fetchHistory]);
 
+  /* --------------------------------------------------------------
+     Filter change
+  -------------------------------------------------------------- */
+
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({
       ...prev,
       [key]: value,
     }));
   };
+
+  /* --------------------------------------------------------------
+     Clear filters
+  -------------------------------------------------------------- */
 
   const clearFilters = () => {
     setFilters({
@@ -856,6 +1198,10 @@ function TaskHistoryTab({ employees }) {
 
   return (
     <div className="space-y-4">
+      {/* --------------------------------------------------------
+          Filters
+      -------------------------------------------------------- */}
+
       <div className="bg-white border border-[#D8ECEA] rounded-2xl p-4 sm:p-5 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-[#0F2C2E]">
@@ -864,6 +1210,7 @@ function TaskHistoryTab({ employees }) {
 
           {hasActiveFilters && (
             <button
+              type="button"
               onClick={clearFilters}
               className="text-xs text-[#028090] hover:underline font-medium"
             >
@@ -873,6 +1220,8 @@ function TaskHistoryTab({ employees }) {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+          {/* Employee */}
+
           <select
             value={filters.employee_id}
             onChange={(e) => handleFilterChange("employee_id", e.target.value)}
@@ -887,6 +1236,8 @@ function TaskHistoryTab({ employees }) {
             ))}
           </select>
 
+          {/* Customer */}
+
           <input
             type="text"
             placeholder="Customer name"
@@ -895,6 +1246,8 @@ function TaskHistoryTab({ employees }) {
             className={inputCls}
           />
 
+          {/* Order */}
+
           <input
             type="number"
             placeholder="Order ID"
@@ -902,6 +1255,8 @@ function TaskHistoryTab({ employees }) {
             onChange={(e) => handleFilterChange("order_id", e.target.value)}
             className={inputCls}
           />
+
+          {/* Task type */}
 
           <select
             value={filters.task_type}
@@ -917,6 +1272,8 @@ function TaskHistoryTab({ employees }) {
             ))}
           </select>
 
+          {/* Status */}
+
           <select
             value={filters.status}
             onChange={(e) => handleFilterChange("status", e.target.value)}
@@ -930,6 +1287,8 @@ function TaskHistoryTab({ employees }) {
 
             <option value="completed">Completed</option>
           </select>
+
+          {/* Dates */}
 
           <div className="flex gap-2">
             <input
@@ -949,11 +1308,19 @@ function TaskHistoryTab({ employees }) {
         </div>
       </div>
 
+      {/* --------------------------------------------------------
+          Error
+      -------------------------------------------------------- */}
+
       {error && (
         <div className="text-sm text-[#9A2E12] bg-[#FBE4DC] border border-[#F3C7B8] rounded-xl px-4 py-3">
           {error}
         </div>
       )}
+
+      {/* --------------------------------------------------------
+          History table
+      -------------------------------------------------------- */}
 
       <div className="bg-white border border-[#D8ECEA] rounded-2xl shadow-[0_1px_2px_rgba(15,44,46,0.04)] overflow-hidden">
         {loading ? (
@@ -962,7 +1329,9 @@ function TaskHistoryTab({ employees }) {
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
             <div
               className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-              style={{ background: "#EEF7F6" }}
+              style={{
+                background: "#EEF7F6",
+              }}
             >
               <History size={24} className="text-[#028090]" strokeWidth={1.7} />
             </div>
@@ -983,27 +1352,35 @@ function TaskHistoryTab({ employees }) {
                   <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
                     Order
                   </th>
+
                   <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
                     Customer
                   </th>
+
                   <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
                     Task Type
                   </th>
+
                   <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
                     Employee
                   </th>
+
                   <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
                     Scheduled
                   </th>
+
                   <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
                     Started
                   </th>
+
                   <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
                     Completed
                   </th>
+
                   <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
                     Status
                   </th>
+
                   <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
                     Notes
                   </th>
@@ -1016,6 +1393,8 @@ function TaskHistoryTab({ employees }) {
                     key={task.id}
                     className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC] transition-colors duration-150"
                   >
+                    {/* Order */}
+
                     <td className="py-3.5 px-5">
                       {task.order ? (
                         <Link
@@ -1029,6 +1408,8 @@ function TaskHistoryTab({ employees }) {
                       )}
                     </td>
 
+                    {/* Customer */}
+
                     <td className="py-3.5 px-5">
                       <div className="text-[#0F2C2E] font-medium">
                         {task.customer_name || "—"}
@@ -1041,11 +1422,15 @@ function TaskHistoryTab({ employees }) {
                       )}
                     </td>
 
+                    {/* Task type */}
+
                     <td className="py-3.5 px-5">
                       <span className="text-[12px] font-semibold text-[#028090]">
                         {TASK_TYPE_LABEL[task.task_type] || task.task_type}
                       </span>
                     </td>
+
+                    {/* Employee */}
 
                     <td className="py-3.5 px-5">
                       <div className="text-[#0F2C2E] font-medium">
@@ -1059,21 +1444,31 @@ function TaskHistoryTab({ employees }) {
                       )}
                     </td>
 
+                    {/* Scheduled */}
+
                     <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">
                       {formatScheduled(task.scheduled_time)}
                     </td>
+
+                    {/* Started */}
 
                     <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">
                       {formatScheduled(task.started_at)}
                     </td>
 
+                    {/* Completed */}
+
                     <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">
                       {formatScheduled(task.completed_at)}
                     </td>
 
+                    {/* Status */}
+
                     <td className="py-3.5 px-5">
                       <StatusPill status={task.status} />
                     </td>
+
+                    {/* Notes */}
 
                     <td className="py-3.5 px-5">
                       <div className="text-[11px] text-[#6B8482] max-w-[150px] truncate">
@@ -1091,15 +1486,17 @@ function TaskHistoryTab({ employees }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Main Tasks Page                                                     */
-/* ------------------------------------------------------------------ */
+/* ================================================================
+   MAIN TASKS PAGE
+================================================================ */
 
 export default function Tasks() {
   const { employees, loading: employeesLoading } = useEmployees();
 
   const [tasks, setTasks] = useState([]);
+
   const [loading, setLoading] = useState(true);
+
   const [error, setError] = useState("");
 
   const [statusFilter, setStatusFilter] = useState("all");
@@ -1107,6 +1504,10 @@ export default function Tasks() {
   const [showAssign, setShowAssign] = useState(false);
 
   const [activeTab, setActiveTab] = useState("active");
+
+  /* --------------------------------------------------------------
+     Fetch tasks
+  -------------------------------------------------------------- */
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
@@ -1130,6 +1531,10 @@ export default function Tasks() {
     fetchTasks();
   }, [fetchTasks]);
 
+  /* --------------------------------------------------------------
+     Filter tasks
+  -------------------------------------------------------------- */
+
   const filtered = useMemo(() => {
     if (statusFilter === "all") {
       return tasks;
@@ -1137,6 +1542,10 @@ export default function Tasks() {
 
     return tasks.filter((task) => task.status === statusFilter);
   }, [tasks, statusFilter]);
+
+  /* --------------------------------------------------------------
+     Stats
+  -------------------------------------------------------------- */
 
   const stats = useMemo(
     () => ({
@@ -1151,10 +1560,22 @@ export default function Tasks() {
     [tasks],
   );
 
+  /* ==============================================================
+     RENDER
+  ============================================================== */
+
   return (
-    <div className="min-h-screen" style={{ background: "#EEF7F6" }}>
+    <div
+      className="min-h-screen"
+      style={{
+        background: "#EEF7F6",
+      }}
+    >
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8">
-        {/* Header */}
+        {/* ======================================================
+            HEADER
+        ====================================================== */}
+
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div className="flex items-center gap-3">
             <div
@@ -1184,6 +1605,7 @@ export default function Tasks() {
 
           {activeTab === "active" && (
             <button
+              type="button"
               onClick={() => setShowAssign(true)}
               disabled={!employeesLoading && employees.length === 0}
               className="flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-lg hover:brightness-105 hover:-translate-y-0.5 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
@@ -1202,12 +1624,22 @@ export default function Tasks() {
           )}
         </div>
 
-        {/* Page tabs */}
+        {/* ======================================================
+            PAGE TABS
+        ====================================================== */}
+
         <PageTabs active={activeTab} onChange={setActiveTab} />
+
+        {/* ======================================================
+            ACTIVE TASKS
+        ====================================================== */}
 
         {activeTab === "active" ? (
           <>
-            {/* KPI */}
+            {/* --------------------------------------------------
+                KPI
+            -------------------------------------------------- */}
+
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <StatCard
                 icon={ClipboardList}
@@ -1242,7 +1674,10 @@ export default function Tasks() {
               />
             </div>
 
-            {/* Status filters */}
+            {/* --------------------------------------------------
+                Status filters
+            -------------------------------------------------- */}
+
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <TaskFilterTabs
                 active={statusFilter}
@@ -1257,14 +1692,20 @@ export default function Tasks() {
               )}
             </div>
 
-            {/* Error */}
+            {/* --------------------------------------------------
+                Error
+            -------------------------------------------------- */}
+
             {error && (
               <div className="text-sm text-[#9A2E12] bg-[#FBE4DC] border border-[#F3C7B8] rounded-xl px-4 py-3">
                 {error}
               </div>
             )}
 
-            {/* Tasks table */}
+            {/* --------------------------------------------------
+                Tasks table
+            -------------------------------------------------- */}
+
             <div className="bg-white border border-[#D8ECEA] rounded-2xl shadow-[0_1px_2px_rgba(15,44,46,0.04)] overflow-hidden">
               {loading ? (
                 <TableSkeleton />
@@ -1307,6 +1748,8 @@ export default function Tasks() {
                           key={task.id}
                           className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC] transition-colors duration-150"
                         >
+                          {/* Task */}
+
                           <td className="py-3.5 px-5">
                             <div
                               className="font-semibold"
@@ -1337,6 +1780,8 @@ export default function Tasks() {
                             )}
                           </td>
 
+                          {/* Employee */}
+
                           <td className="py-3.5 px-5">
                             <div className="text-[#0F2C2E] font-medium">
                               {task.employee?.name || "—"}
@@ -1349,6 +1794,8 @@ export default function Tasks() {
                             )}
                           </td>
 
+                          {/* Customer */}
+
                           <td className="py-3.5 px-5">
                             <div className="text-[#0F2C2E] font-medium">
                               {task.customer_name || "—"}
@@ -1357,6 +1804,7 @@ export default function Tasks() {
                             {task.customer_phone && (
                               <div className="flex items-center gap-1 text-[11px] text-[#6B8482] mt-0.5">
                                 <Phone size={11} />
+
                                 {task.customer_phone}
                               </div>
                             )}
@@ -1364,18 +1812,25 @@ export default function Tasks() {
                             {task.customer_address && (
                               <div className="flex items-center gap-1 text-[11px] text-[#6B8482] mt-0.5">
                                 <MapPin size={11} />
+
                                 {task.customer_address}
                               </div>
                             )}
                           </td>
 
+                          {/* Scheduled */}
+
                           <td className="py-3.5 px-5 text-[#6B8482] whitespace-nowrap">
                             {formatScheduled(task.scheduled_time)}
                           </td>
 
+                          {/* Priority */}
+
                           <td className="py-3.5 px-5">
                             <PriorityPill priority={task.priority} />
                           </td>
+
+                          {/* Status */}
 
                           <td className="py-3.5 px-5">
                             <StatusPill status={task.status} />
@@ -1387,6 +1842,10 @@ export default function Tasks() {
                 </div>
               )}
             </div>
+
+            {/* --------------------------------------------------
+                No employees warning
+            -------------------------------------------------- */}
 
             {!employeesLoading &&
               employees.length === 0 &&
@@ -1406,9 +1865,17 @@ export default function Tasks() {
               )}
           </>
         ) : (
+          /* ====================================================
+             HISTORY
+          ==================================================== */
+
           <TaskHistoryTab employees={employees} />
         )}
       </div>
+
+      {/* ========================================================
+          ASSIGN TASK MODAL
+      ======================================================== */}
 
       <AssignTaskModal
         isOpen={showAssign}

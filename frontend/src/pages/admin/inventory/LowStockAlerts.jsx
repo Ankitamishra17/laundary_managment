@@ -10,8 +10,8 @@ import {
   PackagePlus,
 } from "lucide-react";
 
-import { getLowStockItems } from "../../../api/inventoryApi";
-
+import { getLowStockItems,  } from "../../../api/inventoryApi";
+import {createStockIn} from "../../../api/inventoryTransactionApi"
 import StockInModal from "../../../components/inventory/StockInModal";
 
 const COLORS = {
@@ -240,53 +240,41 @@ export default function LowStockAlerts() {
   // SUBMIT STOCK IN
   // =====================================================
 
-  const handleSubmitStockIn = async (stockData) => {
-    try {
-      setActionLoading(true);
-      setError("");
+ const handleSubmitStockIn = async (stockData) => {
+  try {
+    setActionLoading(true);
+    setError("");
 
-      /*
-          IMPORTANT:
+    console.log("Stock In Data:", stockData);
 
-          Use the SAME inventory transaction
-          API that your backend route exposes.
+    const response = await createStockIn(stockData);
 
-          Example:
-          POST /api/inventory/transactions
-        */
+    console.log("Stock In Response:", response);
 
-      const response = await fetch("/api/inventory/transactions", {
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        credentials: "include",
-
-        body: JSON.stringify(stockData),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result?.message || "Failed to add stock.");
-      }
-
-      setShowStockIn(false);
-      setSelectedItem(null);
-
-      await fetchLowStockItems();
-    } catch (err) {
-      console.error("Stock in error:", err);
-
-      setError(err?.message || "Failed to add stock.");
-
-      throw err;
-    } finally {
-      setActionLoading(false);
+    if (!response?.success) {
+      throw new Error(
+        response?.message || "Failed to add stock."
+      );
     }
-  };
+
+    setShowStockIn(false);
+    setSelectedItem(null);
+
+    await fetchLowStockItems();
+  } catch (err) {
+    console.error("Stock in error:", err);
+
+    setError(
+      err?.response?.data?.message ||
+        err?.message ||
+        "Failed to add stock."
+    );
+
+    throw err;
+  } finally {
+    setActionLoading(false);
+  }
+};
 
   // =====================================================
   // UI

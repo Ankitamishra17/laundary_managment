@@ -57,6 +57,30 @@ const Notification = sequelize.define(
       allowNull: true,
     },
 
+
+    // SUBSCRIPTION NOTIFICATION
+
+    subscriptionId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    daysRemaining: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    notificationDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
+
+    emailSent: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+
     type: {
       type: DataTypes.STRING(50),
       allowNull: false,
@@ -71,9 +95,7 @@ const Notification = sequelize.define(
     message: {
       type: DataTypes.TEXT,
 
-     
       allowNull: false,
- 
     },
 
     // Frontend route to open when notification is clicked
@@ -103,7 +125,7 @@ const Notification = sequelize.define(
   {
     tableName: "notifications",
     timestamps: true,
-  }
+  },
 );
 
 export default Notification;

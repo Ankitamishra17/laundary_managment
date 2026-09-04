@@ -440,7 +440,6 @@
 //   );
 // }
 
-
 import { useState } from "react";
 import { createShop } from "../../api/shopApi";
 
@@ -518,15 +517,27 @@ export default function CreateShopModal({
   onShopCreated,
 }) {
   const [form, setForm] = useState(initialState);
+
   const [loading, setLoading] = useState(false);
+
   const [error, setError] = useState("");
+
   const [credentials, setCredentials] = useState(null);
+
   const [copied, setCopied] = useState(false);
 
-  // Don't render when modal is closed
-  if (!isOpen) return null;
+  // ============================================================
+  // DO NOT RENDER WHEN MODAL IS CLOSED
+  // ============================================================
 
-  // Reset everything and close modal
+  if (!isOpen) {
+    return null;
+  }
+
+  // ============================================================
+  // RESET AND CLOSE
+  // ============================================================
+
   const resetAndClose = () => {
     setForm(initialState);
     setError("");
@@ -537,7 +548,10 @@ export default function CreateShopModal({
     onClose?.();
   };
 
-  // Handle form input
+  // ============================================================
+  // HANDLE INPUT CHANGE
+  // ============================================================
+
   const handleChange = (e) => {
     const { name, value } = e.target;
 
@@ -547,7 +561,10 @@ export default function CreateShopModal({
     }));
   };
 
-  // Create shop
+  // ============================================================
+  // CREATE SHOP
+  // ============================================================
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -558,10 +575,15 @@ export default function CreateShopModal({
       const data = await createShop(form);
 
       if (!data?.success) {
-        throw new Error(data?.message || "Unable to create shop.");
+        throw new Error(
+          data?.message || "Unable to create shop."
+        );
       }
 
-      // Save all returned credentials including slug
+      // ========================================================
+      // SAVE SHOP + ADMIN DETAILS
+      // ========================================================
+
       setCredentials({
         email: data.admin?.email || "",
         password: data.admin?.temporaryPassword || "",
@@ -575,28 +597,51 @@ export default function CreateShopModal({
     } catch (err) {
       console.error("Create Shop Error:", err);
 
-      setError(
+      const message =
+        err?.response?.data?.message ||
         err?.message ||
-          err?.response?.data?.message ||
-          "Something went wrong while creating the shop."
-      );
+        "Something went wrong while creating the shop.";
+
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Build unique customer signup URL
-  const getSignupUrl = () => {
-    if (!credentials?.slug) return "";
+  // ============================================================
+  // CUSTOMER SHOP WEBSITE URL
+  //
+  // IMPORTANT:
+  //
+  // This is ONLY:
+  //
+  // http://localhost:5173/laundry-shop
+  //
+  // NOT:
+  //
+  // http://localhost:5173/laundry-shop/signup
+  // ============================================================
 
-    return `${window.location.origin}/${credentials.slug}/signup`;
+  const getShopUrl = () => {
+    if (!credentials?.slug) {
+      return "";
+    }
+
+    return `${window.location.origin}/${credentials.slug}`;
   };
 
-  // Copy credentials
-  const handleCopy = async () => {
-    if (!credentials) return;
+  const shopUrl = credentials ? getShopUrl() : "";
 
-    const signupUrl = getSignupUrl();
+  // ============================================================
+  // COPY ALL DETAILS
+  // ============================================================
+
+  const handleCopy = async () => {
+    if (!credentials) {
+      return;
+    }
+
+    const customerWebsite = getShopUrl();
 
     const text = `Shop Name: ${credentials.shopName}
 Shop Code: ${credentials.shopCode}
@@ -605,8 +650,8 @@ Admin Login Details
 Email: ${credentials.email}
 Temporary Password: ${credentials.password}
 
-Customer Signup URL:
-${signupUrl}`;
+Customer Website:
+${customerWebsite}`;
 
     try {
       await navigator.clipboard.writeText(text);
@@ -618,11 +663,10 @@ ${signupUrl}`;
       }, 1800);
     } catch (err) {
       console.error("Clipboard Error:", err);
+
       setError("Could not copy to clipboard.");
     }
   };
-
-  const signupUrl = credentials ? getSignupUrl() : "";
 
   return (
     <div
@@ -646,62 +690,94 @@ ${signupUrl}`;
 
           position: fixed;
           inset: 0;
+
           background: rgba(5, 40, 42, 0.55);
+
           display: flex;
           align-items: center;
           justify-content: center;
+
           z-index: 1000;
+
           font-family: 'Inter', sans-serif;
+
           padding: 20px;
         }
 
         .shop-modal-card {
           width: 100%;
           max-width: 600px;
+
           max-height: 90vh;
+
           overflow-y: auto;
+
           background: var(--bg-light);
+
           border-radius: 16px;
+
           padding: 32px;
-          box-shadow: 0 20px 50px rgba(5, 40, 42, 0.25);
+
+          box-shadow:
+            0 20px 50px rgba(5, 40, 42, 0.25);
         }
 
         .shop-modal-header {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
+
           margin-bottom: 24px;
         }
 
         .shop-modal-header h2 {
           font-family: 'Libre Baskerville', serif;
+
           color: var(--text-dark);
+
           font-size: 24px;
+
           margin: 0 0 6px;
         }
 
         .shop-modal-header p {
           color: var(--text-muted);
+
           font-size: 13px;
+
           margin: 0;
         }
 
         .close-btn {
           background: var(--card-tint);
+
           border: 1px solid var(--card-border);
+
           color: var(--text-dark);
+
           border-radius: 8px;
+
           width: 34px;
           height: 34px;
+
           font-size: 18px;
+
           cursor: pointer;
+
           line-height: 1;
+
           flex-shrink: 0;
+        }
+
+        .close-btn:hover {
+          background: #e3f1ef;
         }
 
         .shop-form-grid {
           display: grid;
+
           grid-template-columns: 1fr 1fr;
+
           gap: 16px;
         }
 
@@ -711,133 +787,206 @@ ${signupUrl}`;
 
         .form-field label {
           display: block;
+
           font-size: 13px;
+
           font-weight: 600;
+
           color: var(--text-dark);
+
           margin-bottom: 6px;
         }
 
         .form-field input,
         .form-field select {
           width: 100%;
+
           padding: 11px 12px;
+
           border-radius: 8px;
+
           border: 1px solid var(--card-border);
+
           background: var(--card-tint);
+
           font-family: 'Inter', sans-serif;
+
           font-size: 14px;
+
           color: var(--text-dark);
+
           outline: none;
+
           box-sizing: border-box;
-          transition: border-color 0.15s ease;
+
+          transition:
+            border-color 0.15s ease,
+            box-shadow 0.15s ease;
         }
 
         .form-field input:focus,
         .form-field select:focus {
           border-color: var(--teal-primary);
-          box-shadow: 0 0 0 3px rgba(2, 128, 144, 0.12);
+
+          box-shadow:
+            0 0 0 3px rgba(2, 128, 144, 0.12);
         }
 
         .plan-note {
           display: block;
+
           color: var(--text-muted);
+
           font-size: 11px;
+
           margin-top: 6px;
+
           line-height: 1.5;
         }
 
         .submit-btn {
           margin-top: 22px;
+
           width: 100%;
+
           padding: 13px;
+
           border: none;
+
           border-radius: 10px;
-          background: linear-gradient(
-            135deg,
-            var(--teal-primary),
-            var(--seafoam)
-          );
+
+          background:
+            linear-gradient(
+              135deg,
+              var(--teal-primary),
+              var(--seafoam)
+            );
+
           color: white;
+
           font-family: 'Inter', sans-serif;
+
           font-weight: 600;
+
           font-size: 15px;
+
           cursor: pointer;
         }
 
         .submit-btn:disabled {
           opacity: 0.6;
+
           cursor: not-allowed;
         }
 
         .alert-error {
           margin-top: 14px;
+
           padding: 10px 14px;
+
           border-radius: 8px;
+
           font-size: 13px;
+
           background: #FDECEC;
+
           color: #B3261E;
         }
+
+        /* ======================================================
+           SUCCESS
+        ====================================================== */
 
         .success-icon {
           width: 54px;
           height: 54px;
+
           border-radius: 50%;
-          background: linear-gradient(
-            135deg,
-            var(--teal-primary),
-            var(--mint)
-          );
+
+          background:
+            linear-gradient(
+              135deg,
+              var(--teal-primary),
+              var(--mint)
+            );
+
           display: flex;
+
           align-items: center;
           justify-content: center;
+
           color: white;
+
           font-size: 27px;
+
           margin: 0 auto 16px;
         }
 
         .success-title {
           font-family: 'Libre Baskerville', serif;
+
           color: var(--text-dark);
+
           font-size: 22px;
+
           text-align: center;
+
           margin: 0 0 6px;
         }
 
         .success-subtitle {
           text-align: center;
+
           color: var(--text-muted);
+
           font-size: 13px;
+
           margin: 0 0 22px;
+
           line-height: 1.5;
         }
 
         .shop-code-wrapper {
           text-align: center;
+
           margin-bottom: 16px;
         }
 
         .shop-code-pill {
           display: inline-block;
+
           background: rgba(2, 195, 154, 0.12);
+
           color: var(--teal-primary);
+
           font-weight: 700;
+
           font-size: 12px;
+
           padding: 6px 12px;
+
           border-radius: 999px;
         }
 
         .credentials-box {
           background: var(--card-tint);
+
           border: 1px solid var(--card-border);
+
           border-radius: 12px;
+
           padding: 8px 20px;
         }
 
         .credential-row {
           display: flex;
+
           justify-content: space-between;
+
           align-items: flex-start;
+
           gap: 20px;
+
           padding: 13px 0;
         }
 
@@ -847,38 +996,70 @@ ${signupUrl}`;
 
         .cred-label {
           font-size: 11px;
+
           color: var(--text-muted);
+
           text-transform: uppercase;
+
           letter-spacing: 0.04em;
+
           flex-shrink: 0;
+
           padding-top: 2px;
         }
 
         .cred-value {
           font-family: 'Inter', monospace;
+
           font-size: 13px;
+
           font-weight: 600;
+
           color: var(--text-dark);
+
           text-align: right;
+
           word-break: break-all;
         }
 
         .signup-url {
           color: var(--teal-primary);
+
+          text-decoration: none;
+        }
+
+        .signup-url:hover {
+          text-decoration: underline;
         }
 
         .copy-btn {
           margin-top: 18px;
+
           width: 100%;
+
           padding: 12px;
+
           border: none;
+
           border-radius: 10px;
+
           background: var(--panel-dark);
+
           color: white;
+
           font-family: 'Inter', sans-serif;
+
           font-weight: 600;
+
           font-size: 14px;
+
           cursor: pointer;
+
+          transition: background 0.15s ease;
+        }
+
+        .copy-btn:hover {
+          background: var(--teal-primary);
         }
 
         .copy-btn.copied {
@@ -887,17 +1068,35 @@ ${signupUrl}`;
 
         .done-btn {
           margin-top: 10px;
+
           width: 100%;
+
           padding: 12px;
+
           border-radius: 10px;
+
           border: 1px solid var(--card-border);
+
           background: transparent;
+
           color: var(--text-dark);
+
           font-family: 'Inter', sans-serif;
+
           font-weight: 500;
+
           font-size: 14px;
+
           cursor: pointer;
         }
+
+        .done-btn:hover {
+          background: var(--card-tint);
+        }
+
+        /* ======================================================
+           MOBILE
+        ====================================================== */
 
         @media (max-width: 600px) {
           .shop-modal-overlay {
@@ -918,6 +1117,7 @@ ${signupUrl}`;
 
           .credential-row {
             flex-direction: column;
+
             gap: 5px;
           }
 
@@ -931,12 +1131,20 @@ ${signupUrl}`;
         className="shop-modal-card"
         onClick={(e) => e.stopPropagation()}
       >
+
+        {/* ======================================================
+            CREATE SHOP FORM
+        ====================================================== */}
+
         {!credentials ? (
           <>
             <div className="shop-modal-header">
               <div>
                 <h2>Create Shop</h2>
-                <p>Add a new laundry shop to the platform</p>
+
+                <p>
+                  Add a new laundry shop to the platform
+                </p>
               </div>
 
               <button
@@ -950,14 +1158,19 @@ ${signupUrl}`;
             </div>
 
             <form onSubmit={handleSubmit}>
+
               <div className="shop-form-grid">
+
                 {textFields.map((field) => (
                   <div
                     className={`form-field ${
-                      field.fullWidth ? "full-width" : ""
+                      field.fullWidth
+                        ? "full-width"
+                        : ""
                     }`}
                     key={field.name}
                   >
+
                     <label htmlFor={field.name}>
                       {field.label}
                     </label>
@@ -969,18 +1182,24 @@ ${signupUrl}`;
                       placeholder={field.placeholder}
                       value={form[field.name]}
                       onChange={handleChange}
-                      required={field.required !== false}
+                      required={
+                        field.required !== false
+                      }
                       min={
-                        field.name === "subscriptionAmount"
+                        field.name ===
+                        "subscriptionAmount"
                           ? "0"
                           : undefined
                       }
                     />
+
                   </div>
                 ))}
 
-                {/* Plan Tier */}
+                {/* PLAN TIER */}
+
                 <div className="form-field">
+
                   <label htmlFor="planName">
                     Plan Tier
                   </label>
@@ -991,6 +1210,7 @@ ${signupUrl}`;
                     value={form.planName}
                     onChange={handleChange}
                   >
+
                     {PLAN_TIERS.map((plan) => (
                       <option
                         key={plan}
@@ -999,16 +1219,21 @@ ${signupUrl}`;
                         {plan}
                       </option>
                     ))}
+
                   </select>
 
                   <small className="plan-note">
-                    Free: 2 employees · Basic: 5 employees ·
-                    Pro: 15 employees · Premium: Unlimited
+                    Free: 2 employees · Basic: 5
+                    employees · Pro: 15 employees ·
+                    Premium: Unlimited
                   </small>
+
                 </div>
 
-                {/* Billing Cycle */}
+                {/* BILLING CYCLE */}
+
                 <div className="form-field">
+
                   <label htmlFor="subscriptionPlan">
                     Billing Cycle
                   </label>
@@ -1020,6 +1245,7 @@ ${signupUrl}`;
                     onChange={handleChange}
                     required
                   >
+
                     <option value="Monthly">
                       Monthly
                     </option>
@@ -1027,8 +1253,11 @@ ${signupUrl}`;
                     <option value="Yearly">
                       Yearly
                     </option>
+
                   </select>
+
                 </div>
+
               </div>
 
               {error && (
@@ -1046,9 +1275,15 @@ ${signupUrl}`;
                   ? "Creating Shop..."
                   : "Create Shop"}
               </button>
+
             </form>
           </>
         ) : (
+
+          /* ====================================================
+             SUCCESS / CREDENTIALS
+          ==================================================== */
+
           <>
             <div className="success-icon">
               ✓
@@ -1059,18 +1294,28 @@ ${signupUrl}`;
             </h2>
 
             <p className="success-subtitle">
-              Save these admin credentials and share the unique
-              customer signup link with your customers.
+              Save these admin credentials and share
+              the customer website with your customers.
             </p>
 
+            {/* SHOP CODE */}
+
             <div className="shop-code-wrapper">
+
               <span className="shop-code-pill">
                 {credentials.shopCode}
               </span>
+
             </div>
 
+            {/* DETAILS */}
+
             <div className="credentials-box">
+
+              {/* SHOP NAME */}
+
               <div className="credential-row">
+
                 <span className="cred-label">
                   Shop Name
                 </span>
@@ -1078,9 +1323,13 @@ ${signupUrl}`;
                 <span className="cred-value">
                   {credentials.shopName}
                 </span>
+
               </div>
 
+              {/* ADMIN EMAIL */}
+
               <div className="credential-row">
+
                 <span className="cred-label">
                   Admin Email
                 </span>
@@ -1088,9 +1337,13 @@ ${signupUrl}`;
                 <span className="cred-value">
                   {credentials.email}
                 </span>
+
               </div>
 
+              {/* TEMP PASSWORD */}
+
               <div className="credential-row">
+
                 <span className="cred-label">
                   Temporary Password
                 </span>
@@ -1098,17 +1351,29 @@ ${signupUrl}`;
                 <span className="cred-value">
                   {credentials.password}
                 </span>
+
               </div>
+
+              {/* CUSTOMER WEBSITE */}
 
               <div className="credential-row">
+
                 <span className="cred-label">
-                  Customer Signup
+                  Customer Website
                 </span>
 
-                <span className="cred-value signup-url">
-                  {signupUrl || "Slug not available"}
-                </span>
+                <a
+                  href={shopUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="cred-value signup-url"
+                >
+                  {shopUrl ||
+                    "Shop URL not available"}
+                </a>
+
               </div>
+
             </div>
 
             {error && (
@@ -1116,6 +1381,8 @@ ${signupUrl}`;
                 {error}
               </div>
             )}
+
+            {/* COPY */}
 
             <button
               type="button"
@@ -1129,6 +1396,8 @@ ${signupUrl}`;
                 : "Copy All Details"}
             </button>
 
+            {/* DONE */}
+
             <button
               type="button"
               className="done-btn"
@@ -1136,8 +1405,10 @@ ${signupUrl}`;
             >
               Done
             </button>
+
           </>
         )}
+
       </div>
     </div>
   );

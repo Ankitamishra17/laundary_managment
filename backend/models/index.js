@@ -85,6 +85,20 @@ Task.belongsTo(Employee, {
 });
 
 // =====================================================
+// SHOP ↔ TASK
+// =====================================================
+
+Shop.hasMany(Task, {
+  foreignKey: "shop_id",
+  as: "tasks",
+});
+
+Task.belongsTo(Shop, {
+  foreignKey: "shop_id",
+  as: "shop",
+});
+
+// =====================================================
 // TASK ↔ ORDER
 // =====================================================
 
@@ -379,6 +393,20 @@ Customer.hasMany(Payment, {
 Payment.belongsTo(Customer, {
   foreignKey: "customerId",
   as: "customer",
+});
+
+// =====================================================
+// ORDER ↔ PAYMENT
+// =====================================================
+
+Order.hasMany(Payment, {
+  foreignKey: "orderId",
+  as: "payments",
+});
+
+Payment.belongsTo(Order, {
+  foreignKey: "orderId",
+  as: "order",
 });
 
 // =====================================================

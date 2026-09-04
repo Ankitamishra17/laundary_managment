@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   Truck,
@@ -154,6 +154,7 @@ function SectionHeader({ icon: Icon, title, to, linkLabel }) {
 }
 
 export default function Dashboard() {
+  const {slug} = useParams();
   const { user } = useAuth();
   const {
     all: pickups = [],
@@ -288,14 +289,14 @@ export default function Dashboard() {
             </div>
             <div className="flex flex-wrap gap-2.5 lg:shrink-0">
               <Link
-                to="/employee/mytask"
+                  to={`/${slug}/employee/mytask`}
                 className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-lg transition-all hover:brightness-110 hover:-translate-y-0.5 active:scale-[0.97]"
                 style={{ background: "linear-gradient(135deg, #02C39A, #7EE8CC)", color: "#05282A" }}
               >
                 <ClipboardList size={15} /> My Tasks
               </Link>
               <Link
-                to="/employee/pickups"
+                  to={`/${slug}/employee/pickups`}
                 className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-lg transition-all hover:brightness-110 hover:-translate-y-0.5 active:scale-[0.97]"
                 style={{ background: "rgba(255,255,255,0.12)", color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.18)" }}
               >

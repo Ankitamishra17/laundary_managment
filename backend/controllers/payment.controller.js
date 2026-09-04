@@ -5,7 +5,7 @@ import Payment from "../models/Payment.js";
 import Shop from "../models/Shop.js";
 import User from "../models/User.js";
 import Customer from "../models/Customer.js";
-import Order from "../models/Order.js"
+import Order from "../models/Order.js";
 import Supplier from "../models/Supplier.js";
 import Purchase from "../models/Purchase.js";
 import Payroll from "../models/Payroll.js";
@@ -668,12 +668,21 @@ export const createEmployeePayment = async (req, res) => {
       paymentDate,
     } = req.body;
 
-    const shopId = req.user.shopId;
-    const createdBy = req.user.id;
+    const shopId = req.user?.shopId;
+    const createdBy = req.user?.id;
 
     // =================================================
     // VALIDATION
     // =================================================
+
+    if (!shopId) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Shop ID is missing",
+      });
+    }
 
     if (!employeeId) {
       await transaction.rollback();
@@ -695,7 +704,7 @@ export const createEmployeePayment = async (req, res) => {
 
     const paymentAmount = Number(amount);
 
-    if (!paymentAmount || paymentAmount <= 0) {
+    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
       await transaction.rollback();
 
       return res.status(400).json({
@@ -715,13 +724,11 @@ export const createEmployeePayment = async (req, res) => {
 
     // =================================================
     // CHECK EMPLOYEE
-    //
-    // Your Employee model uses shop_id
     // =================================================
 
     const employee = await Employee.findOne({
       where: {
-        id: employeeId,
+        id: Number(employeeId),
         shop_id: shopId,
       },
       transaction,
@@ -742,9 +749,9 @@ export const createEmployeePayment = async (req, res) => {
 
     const payroll = await Payroll.findOne({
       where: {
-        id: payrollId,
-        shopId,
-        employeeId,
+        id: Number(payrollId),
+        shopId: shopId,
+        employeeId: Number(employeeId),
       },
       transaction,
     });
@@ -781,10 +788,14 @@ export const createEmployeePayment = async (req, res) => {
     }
 
     // =================================================
-    // CHECK DUE AMOUNT
+    // CURRENT DUE
     // =================================================
 
-    const currentDueAmount = Number(payroll.dueAmount) || 0;
+    const netSalary = Number(payroll.netSalary) || 0;
+    const oldPaidAmount = Number(payroll.paidAmount) || 0;
+
+    const currentDueAmount =
+      Number(payroll.dueAmount) || Math.max(netSalary - oldPaidAmount, 0);
 
     if (currentDueAmount <= 0) {
       await transaction.rollback();
@@ -804,7 +815,9 @@ export const createEmployeePayment = async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        message: `Payment amount cannot be greater than remaining salary ₹${currentDueAmount}`,
+        message: `Payment amount cannot be greater than remaining salary ₹${currentDueAmount.toFixed(
+          2,
+        )}`,
       });
     }
 
@@ -821,8 +834,10 @@ export const createEmployeePayment = async (req, res) => {
     });
 
     const paymentNumber = lastPayment
-      ? Number(lastPayment.paymentNumber) + 1
-      : 1;
+      ? String(Number(lastPayment.paymentNumber) + 1)
+      : "1";
+
+   
 
     // =================================================
     // CREATE PAYMENT
@@ -836,27 +851,33 @@ export const createEmployeePayment = async (req, res) => {
 
         paymentType: "SALARY",
 
-        employeeId,
+        employeeId: Number(employeeId),
 
-        payrollId,
+        payrollId: Number(payrollId),
 
         amount: paymentAmount,
 
         paymentMethod,
 
+        // IMPORTANT:
+        // Payment model uses "Paid"
+        // NOT "PAID"
         status: "Paid",
 
-        transactionId: transactionId || null,
+        transactionId: transactionId?.trim() || null,
 
-        referenceNumber: referenceNumber || null,
+        referenceNumber: referenceNumber?.trim() || null,
 
-        paymentDate: paymentDate || new Date(),
+        paymentDate: paymentDate
+          ? new Date(`${paymentDate}T00:00:00`)
+          : new Date(),
 
-        description: description || `Salary payment for payroll #${payroll.id}`,
+        description:
+          description?.trim() || `Salary payment for payroll #${payroll.id}`,
 
-        remarks: remarks || null,
+        remarks: remarks?.trim() || null,
 
-        createdBy,
+        createdBy: createdBy || null,
       },
       {
         transaction,
@@ -864,17 +885,17 @@ export const createEmployeePayment = async (req, res) => {
     );
 
     // =================================================
-    // CALCULATE NEW PAYROLL PAYMENT VALUES
+    // CALCULATE NEW PAYMENT VALUES
     // =================================================
 
-    const oldPaidAmount = Number(payroll.paidAmount) || 0;
+    const newPaidAmount = Number((oldPaidAmount + paymentAmount).toFixed(2));
 
-    const newPaidAmount = oldPaidAmount + paymentAmount;
-
-    const newDueAmount = Math.max(Number(payroll.netSalary) - newPaidAmount, 0);
+    const newDueAmount = Number(
+      Math.max(netSalary - newPaidAmount, 0).toFixed(2),
+    );
 
     // =================================================
-    // CALCULATE PAYROLL STATUS
+    // PAYROLL STATUS
     // =================================================
 
     let payrollStatus = "PENDING";
@@ -894,9 +915,12 @@ export const createEmployeePayment = async (req, res) => {
     await payroll.update(
       {
         paidAmount: newPaidAmount,
+
         dueAmount: newDueAmount,
+
         status: payrollStatus,
-        updatedBy: createdBy,
+
+        updatedBy: createdBy || null,
       },
       {
         transaction,
@@ -904,34 +928,62 @@ export const createEmployeePayment = async (req, res) => {
     );
 
     // =================================================
-    // COMMIT TRANSACTION
+    // COMMIT
     // =================================================
 
     await transaction.commit();
 
     return res.status(201).json({
       success: true,
+
       message: "Employee salary payment saved successfully",
 
       data: {
         payment,
+
         payroll: {
           id: payroll.id,
-          netSalary: Number(payroll.netSalary),
+
+          netSalary,
+
           paidAmount: newPaidAmount,
+
           dueAmount: newDueAmount,
+
           status: payrollStatus,
         },
       },
     });
   } catch (error) {
-    await transaction.rollback();
+    try {
+      await transaction.rollback();
+    } catch (rollbackError) {
+      console.error("Rollback error:", rollbackError);
+    }
 
-    console.error("Create employee payment error:", error);
+    console.error("=================================");
+    console.error("CREATE EMPLOYEE PAYMENT ERROR");
+    console.error("Name:", error?.name);
+    console.error("Message:", error?.message);
+    console.error("Errors:", error?.errors);
+    console.error("=================================");
+
+    // Sequelize validation error
+    if (error?.name === "SequelizeValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: "Payment validation failed",
+        errors: error.errors?.map((item) => ({
+          field: item.path,
+          value: item.value,
+          message: item.message,
+        })),
+      });
+    }
 
     return res.status(500).json({
       success: false,
-      message: error.message || "Failed to save employee salary payment",
+      message: error?.message || "Failed to save employee salary payment",
     });
   }
 };
@@ -1189,6 +1241,203 @@ export const getCustomerPayments = async (req, res) => {
     });
   } catch (error) {
     console.error("Get Customer Payments Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch customer payments",
+      error: error.message,
+    });
+  }
+};
+
+// =====================================================
+// GET ALL CUSTOMER PAYMENTS
+// GET /api/payments/customers
+// =====================================================
+
+export const getAllCustomerPayments = async (req, res) => {
+  try {
+    const shopId = req.user?.shopId;
+
+    if (!shopId) {
+      return res.status(400).json({
+        success: false,
+        message: "Shop information is missing",
+      });
+    }
+
+    const {
+      paymentMethod,
+      status,
+      startDate,
+      endDate,
+      search,
+      page = 1,
+      limit = 100,
+    } = req.query;
+
+    const where = {
+      shopId,
+      paymentType: "CUSTOMER",
+    };
+
+    // PAYMENT METHOD
+    if (paymentMethod && paymentMethod !== "ALL") {
+      where.paymentMethod = paymentMethod;
+    }
+
+    // STATUS
+    if (status && status !== "ALL") {
+      where.status = status;
+    }
+
+    // DATE
+    if (startDate && endDate) {
+      where.paymentDate = {
+        [Op.between]: [
+          new Date(`${startDate}T00:00:00`),
+          new Date(`${endDate}T23:59:59`),
+        ],
+      };
+    } else if (startDate) {
+      where.paymentDate = {
+        [Op.gte]: new Date(`${startDate}T00:00:00`),
+      };
+    } else if (endDate) {
+      where.paymentDate = {
+        [Op.lte]: new Date(`${endDate}T23:59:59`),
+      };
+    }
+
+    // SEARCH
+    if (search) {
+      where[Op.or] = [
+        {
+          transactionId: {
+            [Op.like]: `%${search}%`,
+          },
+        },
+        {
+          referenceNumber: {
+            [Op.like]: `%${search}%`,
+          },
+        },
+        {
+          description: {
+            [Op.like]: `%${search}%`,
+          },
+        },
+      ];
+    }
+
+    const pageNumber = Math.max(Number(page) || 1, 1);
+    const limitNumber = Math.min(
+      Math.max(Number(limit) || 100, 1),
+      100,
+    );
+
+    const offset = (pageNumber - 1) * limitNumber;
+
+    const { count, rows } = await Payment.findAndCountAll({
+      where,
+
+      include: [
+        {
+          model: Customer,
+          as: "customer",
+          required: false,
+        },
+        {
+          model: Order,
+          as: "order",
+          required: false,
+        },
+      ],
+
+      order: [
+        ["paymentDate", "DESC"],
+        ["createdAt", "DESC"],
+      ],
+
+      limit: limitNumber,
+      offset,
+
+      distinct: true,
+    });
+
+    // =================================================
+    // STATISTICS
+    // =================================================
+
+    const allCustomerPayments = await Payment.findAll({
+      where,
+      attributes: [
+        "id",
+        "amount",
+        "status",
+        "refundAmount",
+      ],
+    });
+
+    const paidPayments = allCustomerPayments.filter(
+      (payment) => payment.status === "Paid",
+    );
+
+    const pendingPayments = allCustomerPayments.filter(
+      (payment) => payment.status === "Pending",
+    );
+
+    const refundedPayments = allCustomerPayments.filter(
+      (payment) =>
+        payment.status === "Refunded" ||
+        Number(payment.refundAmount || 0) > 0,
+    );
+
+    const totalReceived = paidPayments.reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
+      0,
+    );
+
+    const pendingAmount = pendingPayments.reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
+      0,
+    );
+
+    const refundedAmount = refundedPayments.reduce(
+      (sum, payment) => sum + Number(payment.refundAmount || 0),
+      0,
+    );
+
+    return res.status(200).json({
+      success: true,
+
+      data: rows,
+
+      statistics: {
+        totalPayments: count,
+
+        totalReceived: Number(totalReceived.toFixed(2)),
+
+        paidCount: paidPayments.length,
+
+        pendingAmount: Number(pendingAmount.toFixed(2)),
+
+        pendingCount: pendingPayments.length,
+
+        refundedAmount: Number(refundedAmount.toFixed(2)),
+
+        refundedCount: refundedPayments.length,
+      },
+
+      pagination: {
+        total: count,
+        page: pageNumber,
+        limit: limitNumber,
+        totalPages: Math.ceil(count / limitNumber),
+      },
+    });
+  } catch (error) {
+    console.error("Get All Customer Payments Error:", error);
 
     return res.status(500).json({
       success: false,
@@ -1780,6 +2029,132 @@ export const getPaymentReport = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to generate payment report",
+      error: error.message,
+    });
+  }
+};
+
+// =====================================================
+// REFUND CUSTOMER PAYMENT
+// POST /api/payments/:id/refund
+// =====================================================
+
+export const refundPayment = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const shopId = req.user?.shopId;
+    const { id } = req.params;
+
+    const {
+      refundAmount,
+      refundReason,
+    } = req.body;
+
+    if (!shopId) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Shop information is missing",
+      });
+    }
+
+    const payment = await Payment.findOne({
+      where: {
+        id,
+        shopId,
+        paymentType: "CUSTOMER",
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!payment) {
+      await transaction.rollback();
+
+      return res.status(404).json({
+        success: false,
+        message: "Customer payment not found",
+      });
+    }
+
+    if (payment.status !== "Paid") {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Only paid customer payments can be refunded",
+      });
+    }
+
+    const originalAmount = Number(payment.amount || 0);
+    const alreadyRefunded = Number(payment.refundAmount || 0);
+    const requestedRefund = Number(refundAmount);
+
+    if (
+      !Number.isFinite(requestedRefund) ||
+      requestedRefund <= 0
+    ) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Valid refund amount is required",
+      });
+    }
+
+    const remainingRefundable =
+      originalAmount - alreadyRefunded;
+
+    if (requestedRefund > remainingRefundable) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Refund amount cannot exceed refundable amount",
+        refundableAmount: remainingRefundable,
+      });
+    }
+
+    const newRefundAmount = Number(
+      (alreadyRefunded + requestedRefund).toFixed(2),
+    );
+
+    await payment.update(
+      {
+        refundAmount: newRefundAmount,
+        refundDate: new Date(),
+        refundReason: refundReason?.trim() || null,
+
+        status:
+          newRefundAmount >= originalAmount
+            ? "Refunded"
+            : "Paid",
+      },
+      {
+        transaction,
+      },
+    );
+
+    await transaction.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: "Customer payment refunded successfully",
+
+      data: payment,
+    });
+  } catch (error) {
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+
+    console.error("Refund Payment Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to refund payment",
       error: error.message,
     });
   }

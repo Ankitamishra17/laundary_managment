@@ -300,6 +300,28 @@ export const getPaymentReport = async (params = {}) => {
 };
 
 /* =====================================================
+   GET ALL CUSTOMER PAYMENTS
+   GET /api/payments/customers
+   ===================================================== */
+
+export const getAllCustomerPayments = async (params = {}) => {
+  try {
+    const { data } = await api.get("/payments/customers", {
+      params,
+    });
+
+    return data;
+  } catch (error) {
+    throw (
+      error.response?.data || {
+        success: false,
+        message: "Failed to fetch customer payments.",
+      }
+    );
+  }
+};
+
+/* =====================================================
    DEFAULT EXPORT
    ===================================================== */
 
@@ -315,6 +337,7 @@ const paymentApi = {
   cancelPayment,
 
   getCustomerPayments,
+  getAllCustomerPayments,
   getSupplierPayments,
   getEmployeePayments,
 

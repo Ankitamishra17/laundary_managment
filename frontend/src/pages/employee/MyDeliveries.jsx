@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   PackageCheck,
   Clock,
@@ -14,7 +14,10 @@ import StatusPill from "../../components/layout/StatusPill";
 import TaskFilterTabs from "../../components/layout/TaskFilterTabs";
 
 function formatTime(iso) {
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatDay(iso) {
@@ -35,7 +38,9 @@ function StatCard({ icon: Icon, label, value, color, bg }) {
         <Icon size={20} style={{ color }} strokeWidth={2} />
       </div>
       <div className="min-w-0">
-        <div className="text-[11px] sm:text-xs text-[#6B8482] font-medium truncate">{label}</div>
+        <div className="text-[11px] sm:text-xs text-[#6B8482] font-medium truncate">
+          {label}
+        </div>
         <div
           className="text-xl sm:text-2xl text-[#0F2C2E] mt-0.5"
           style={{ fontFamily: "'Libre Baskerville', Georgia, serif" }}
@@ -56,7 +61,8 @@ function DeliveryAction({ status, busy, onStart, onComplete }) {
         className="text-[11px] font-semibold px-3.5 py-1.5 rounded-lg text-white shadow-sm hover:shadow-md hover:brightness-105 active:scale-[0.97] transition-all duration-200 whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
         style={{ background: "linear-gradient(135deg, #028090, #00A896)" }}
       >
-        {busy ? <Loader2 size={12} className="animate-spin inline" /> : null} Start Delivery
+        {busy ? <Loader2 size={12} className="animate-spin inline" /> : null}{" "}
+        Start Delivery
       </button>
     );
   }
@@ -68,7 +74,8 @@ function DeliveryAction({ status, busy, onStart, onComplete }) {
         className="text-[11px] font-semibold px-3.5 py-1.5 rounded-lg text-white shadow-sm hover:shadow-md hover:brightness-105 active:scale-[0.97] transition-all duration-200 whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
         style={{ background: "linear-gradient(135deg, #00A896, #02C39A)" }}
       >
-        {busy ? <Loader2 size={12} className="animate-spin inline" /> : null} Mark Delivered
+        {busy ? <Loader2 size={12} className="animate-spin inline" /> : null}{" "}
+        Mark Delivered
       </button>
     );
   }
@@ -82,10 +89,15 @@ function DeliveryAction({ status, busy, onStart, onComplete }) {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-      <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: "#EEF7F6" }}>
+      <div
+        className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+        style={{ background: "#EEF7F6" }}
+      >
         <PackageCheck size={24} className="text-[#028090]" strokeWidth={1.7} />
       </div>
-      <p className="text-sm font-medium text-[#0F2C2E]">No deliveries scheduled</p>
+      <p className="text-sm font-medium text-[#0F2C2E]">
+        No deliveries scheduled
+      </p>
       <p className="text-xs text-[#6B8482] mt-1">
         When the admin assigns a delivery task, it will show up here.
       </p>
@@ -104,6 +116,7 @@ function TableSkeleton() {
 }
 
 export default function MyDeliveries() {
+  const { slug } = useParams();
   const {
     tasks = [],
     stats = { total: 0, pending: 0, inProgress: 0, completed: 0 },
@@ -123,7 +136,9 @@ export default function MyDeliveries() {
           <div className="flex items-center gap-3">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: "linear-gradient(135deg, #028090, #02C39A)" }}
+              style={{
+                background: "linear-gradient(135deg, #028090, #02C39A)",
+              }}
             >
               <PackageCheck size={18} className="text-white" strokeWidth={2} />
             </div>
@@ -135,12 +150,13 @@ export default function MyDeliveries() {
                 My Deliveries
               </h1>
               <p className="text-xs sm:text-sm text-[#6B8482] mt-0.5">
-                Your deliveries from today onwards — full customer address included.
+                Your deliveries from today onwards — full customer address
+                included.
               </p>
             </div>
           </div>
           <Link
-            to="/employee/mytask"
+            to={`/${slug}/employee/mytask`}
             className="text-xs font-semibold text-[#028090] hover:text-[#02C39A] transition-colors inline-flex items-center gap-1.5"
           >
             <CalendarClock size={14} /> View full task list
@@ -149,10 +165,34 @@ export default function MyDeliveries() {
 
         {/* KPI row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <StatCard icon={PackageCheck} label="Total Deliveries" value={stats.total} color="#028090" bg="#DFF3F5" />
-          <StatCard icon={Clock} label="Pending" value={stats.pending} color="#9A6A12" bg="#FBF0DC" />
-          <StatCard icon={Loader2} label="In Progress" value={stats.inProgress} color="#0B3B3E" bg="#DCEBEA" />
-          <StatCard icon={CheckCircle2} label="Delivered" value={stats.completed} color="#02C39A" bg="#DFF7F1" />
+          <StatCard
+            icon={PackageCheck}
+            label="Total Deliveries"
+            value={stats.total}
+            color="#028090"
+            bg="#DFF3F5"
+          />
+          <StatCard
+            icon={Clock}
+            label="Pending"
+            value={stats.pending}
+            color="#9A6A12"
+            bg="#FBF0DC"
+          />
+          <StatCard
+            icon={Loader2}
+            label="In Progress"
+            value={stats.inProgress}
+            color="#0B3B3E"
+            bg="#DCEBEA"
+          />
+          <StatCard
+            icon={CheckCircle2}
+            label="Delivered"
+            value={stats.completed}
+            color="#02C39A"
+            bg="#DFF7F1"
+          />
         </div>
 
         {/* Filter tabs */}
@@ -185,12 +225,24 @@ export default function MyDeliveries() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[#EEF7F6] bg-[#FAFDFC]">
-                      <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Delivery</th>
-                      <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Customer</th>
-                      <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Address</th>
-                      <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Time</th>
-                      <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Status</th>
-                      <th className="text-right font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Action</th>
+                      <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
+                        Delivery
+                      </th>
+                      <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
+                        Customer
+                      </th>
+                      <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
+                        Address
+                      </th>
+                      <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
+                        Time
+                      </th>
+                      <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
+                        Status
+                      </th>
+                      <th className="text-right font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">
+                        Action
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -199,11 +251,16 @@ export default function MyDeliveries() {
                         key={t.id}
                         className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC] transition-colors duration-150"
                       >
-                        <td className="py-3.5 px-5 font-semibold" style={{ color: "#028090" }}>
+                        <td
+                          className="py-3.5 px-5 font-semibold"
+                          style={{ color: "#028090" }}
+                        >
                           #{t.id}
                         </td>
                         <td className="py-3.5 px-5">
-                          <div className="text-[#0F2C2E] font-medium">{t.customer_name}</div>
+                          <div className="text-[#0F2C2E] font-medium">
+                            {t.customer_name}
+                          </div>
                           {t.customer_phone && (
                             <div className="flex items-center gap-1 text-[11px] text-[#6B8482] mt-0.5">
                               <Phone size={11} /> {t.customer_phone}
@@ -214,13 +271,17 @@ export default function MyDeliveries() {
                           {t.customer_address ? (
                             <div className="flex items-start gap-1 text-[#6B8482] max-w-[260px]">
                               <MapPin size={11} className="mt-0.5 shrink-0" />
-                              <span className="line-clamp-2">{t.customer_address}</span>
+                              <span className="line-clamp-2">
+                                {t.customer_address}
+                              </span>
                             </div>
                           ) : (
                             <span className="text-[#A9C9C6]">—</span>
                           )}
                         </td>
-                        <td className="py-3.5 px-5 text-[#6B8482] whitespace-nowrap">{formatTime(t.scheduled_time)}</td>
+                        <td className="py-3.5 px-5 text-[#6B8482] whitespace-nowrap">
+                          {formatTime(t.scheduled_time)}
+                        </td>
                         <td className="py-3.5 px-5">
                           <StatusPill status={t.status} />
                         </td>
@@ -243,13 +304,18 @@ export default function MyDeliveries() {
                 {tasks.map((t) => (
                   <div key={t.id} className="p-4 space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold" style={{ color: "#028090" }}>
+                      <span
+                        className="text-sm font-semibold"
+                        style={{ color: "#028090" }}
+                      >
                         Delivery #{t.id}
                       </span>
                       <StatusPill status={t.status} />
                     </div>
                     <div>
-                      <div className="text-sm font-medium text-[#0F2C2E]">{t.customer_name}</div>
+                      <div className="text-sm font-medium text-[#0F2C2E]">
+                        {t.customer_name}
+                      </div>
                       {t.customer_phone && (
                         <div className="flex items-center gap-1 text-[11px] text-[#6B8482] mt-0.5">
                           <Phone size={11} /> {t.customer_phone}
@@ -257,13 +323,15 @@ export default function MyDeliveries() {
                       )}
                       {t.customer_address && (
                         <div className="flex items-start gap-1 text-[11px] text-[#6B8482] mt-0.5">
-                          <MapPin size={11} className="mt-px shrink-0" /> {t.customer_address}
+                          <MapPin size={11} className="mt-px shrink-0" />{" "}
+                          {t.customer_address}
                         </div>
                       )}
                     </div>
                     <div className="flex items-center justify-between pt-1">
                       <div className="text-xs text-[#6B8482]">
-                        {formatDay(t.scheduled_time)} &middot; {formatTime(t.scheduled_time)}
+                        {formatDay(t.scheduled_time)} &middot;{" "}
+                        {formatTime(t.scheduled_time)}
                       </div>
                       <DeliveryAction
                         status={t.status}

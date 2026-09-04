@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import axios from "axios";
 import {
   CalendarDays,
   CreditCard,
@@ -13,6 +12,8 @@ import {
   Building2,
   BriefcaseBusiness,
 } from "lucide-react";
+
+import { getPayments } from "../../../api/paymentApi";
 
 const AllTransactions = () => {
   const [payments, setPayments] = useState([]);
@@ -32,6 +33,7 @@ const AllTransactions = () => {
 
   // =====================================================
   // FETCH ALL PAYMENTS
+  // GET /api/payments
   // =====================================================
 
   const fetchPayments = async () => {
@@ -39,17 +41,22 @@ const AllTransactions = () => {
       setLoading(true);
       setError("");
 
-      const response = await axios.get("http://localhost:5000/api/payments");
+      const response = await getPayments({
+        limit: 100,
+      });
 
-      if (response.data?.success) {
-        setPayments(response.data.data || []);
+      if (response?.success) {
+        setPayments(Array.isArray(response.data) ? response.data : []);
       } else {
         setPayments([]);
+        setError(response?.message || "Failed to load transactions.");
       }
     } catch (err) {
       console.error("All Transactions Error:", err);
 
-      setError(err.response?.data?.message || "Failed to load transactions.");
+      setPayments([]);
+
+      setError(err?.message || err?.error || "Failed to load transactions.");
     } finally {
       setLoading(false);
     }
@@ -64,28 +71,38 @@ const AllTransactions = () => {
   // =====================================================
 
   const filteredPayments = useMemo(() => {
-    return payments.filter((payment) => {
-      const search = filters.search.toLowerCase();
+    const search = filters.search.trim().toLowerCase();
 
+    return payments.filter((payment) => {
       const partyName =
         payment.customer?.name ||
+        payment.customer?.customerName ||
         payment.supplier?.name ||
+        payment.supplier?.supplierName ||
         payment.employee?.name ||
+        payment.employee?.employeeName ||
         payment.customerName ||
         payment.supplierName ||
         payment.employeeName ||
         "";
 
-      const searchableText = `
-        ${payment.paymentNumber || ""}
-        ${payment.transactionId || ""}
-        ${payment.referenceNumber || ""}
-        ${partyName}
-        ${payment.description || ""}
-        ${payment.orderId || ""}
-        ${payment.purchaseId || ""}
-        ${payment.payrollId || ""}
-      `.toLowerCase();
+      const searchableText = [
+        payment.paymentNumber,
+        payment.transactionId,
+        payment.referenceNumber,
+        partyName,
+        payment.description,
+        payment.remarks,
+        payment.orderId,
+        payment.purchaseId,
+        payment.payrollId,
+        payment.customerId,
+        payment.supplierId,
+        payment.employeeId,
+      ]
+        .filter((value) => value !== null && value !== undefined)
+        .join(" ")
+        .toLowerCase();
 
       const matchesSearch = !search || searchableText.includes(search);
 
@@ -98,20 +115,30 @@ const AllTransactions = () => {
       const matchesMethod =
         filters.method === "ALL" || payment.paymentMethod === filters.method;
 
-      const paymentDate = payment.paymentDate
-        ? new Date(payment.paymentDate)
-        : null;
+      let matchesFromDate = true;
+      let matchesToDate = true;
 
-      const fromDate = filters.fromDate ? new Date(filters.fromDate) : null;
+      if (payment.paymentDate) {
+        const paymentDate = new Date(payment.paymentDate);
 
-      const toDate = filters.toDate
-        ? new Date(`${filters.toDate}T23:59:59`)
-        : null;
+        if (!Number.isNaN(paymentDate.getTime())) {
+          if (filters.fromDate) {
+            const fromDate = new Date(`${filters.fromDate}T00:00:00`);
 
-      const matchesFromDate =
-        !fromDate || (paymentDate && paymentDate >= fromDate);
+            matchesFromDate = paymentDate >= fromDate;
+          }
 
-      const matchesToDate = !toDate || (paymentDate && paymentDate <= toDate);
+          if (filters.toDate) {
+            const toDate = new Date(`${filters.toDate}T23:59:59`);
+
+            matchesToDate = paymentDate <= toDate;
+          }
+        }
+      } else {
+        if (filters.fromDate || filters.toDate) {
+          return false;
+        }
+      }
 
       return (
         matchesSearch &&
@@ -129,68 +156,70 @@ const AllTransactions = () => {
   // =====================================================
 
   const stats = useMemo(() => {
-    const paid = filteredPayments.filter((p) => p.status === "Paid");
+    const paid = filteredPayments.filter(
+      (payment) => payment.status === "Paid",
+    );
 
-    const pending = filteredPayments.filter((p) => p.status === "Pending");
+    const pending = filteredPayments.filter(
+      (payment) => payment.status === "Pending",
+    );
 
-    const refunded = filteredPayments.filter((p) => p.status === "Refunded");
+    const refunded = filteredPayments.filter(
+      (payment) =>
+        payment.status === "Refunded" || Number(payment.refundAmount || 0) > 0,
+    );
 
-    const customer = paid.filter((p) => p.paymentType === "CUSTOMER");
+    const customerPayments = paid.filter(
+      (payment) => payment.paymentType === "CUSTOMER",
+    );
 
-    const supplier = paid.filter((p) => p.paymentType === "SUPPLIER");
+    const supplierPayments = paid.filter(
+      (payment) => payment.paymentType === "SUPPLIER",
+    );
 
-    const salary = paid.filter((p) => p.paymentType === "SALARY");
+    const salaryPayments = paid.filter(
+      (payment) => payment.paymentType === "SALARY",
+    );
 
-    const received = customer.reduce(
-      (sum, p) => sum + Number(p.amount || 0),
+    const customerReceived = customerPayments.reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
       0,
     );
 
-    const supplierPaid = supplier.reduce(
-      (sum, p) => sum + Number(p.amount || 0),
+    const supplierPaid = supplierPayments.reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
       0,
     );
 
-    const salaryPaid = salary.reduce(
-      (sum, p) => sum + Number(p.amount || 0),
+    const salaryPaid = salaryPayments.reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
       0,
     );
 
     const pendingAmount = pending.reduce(
-      (sum, p) => sum + Number(p.amount || 0),
+      (sum, payment) => sum + Number(payment.amount || 0),
       0,
     );
 
     const refundAmount = refunded.reduce(
-      (sum, p) => sum + Number(p.refundAmount || p.amount || 0),
+      (sum, payment) => sum + Number(payment.refundAmount || 0),
       0,
     );
 
     return {
       total: filteredPayments.length,
 
-      received,
-
+      received: customerReceived,
       supplierPaid,
-
       salaryPaid,
-
-      totalPaid: supplierPaid + salaryPaid,
-
       pendingAmount,
-
       refundAmount,
 
-      customerCount: customer.length,
-
-      supplierCount: supplier.length,
-
-      salaryCount: salary.length,
-
-      paidCount: paid.length,
+      customerCount: customerPayments.length,
+      supplierCount: supplierPayments.length,
+      salaryCount: salaryPayments.length,
 
       pendingCount: pending.length,
-
       refundedCount: refunded.length,
     };
   }, [filteredPayments]);
@@ -216,6 +245,7 @@ const AllTransactions = () => {
 
   const formatCurrency = (amount) => {
     return `₹${Number(amount || 0).toLocaleString("en-IN", {
+      minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     })}`;
   };
@@ -228,6 +258,7 @@ const AllTransactions = () => {
     if (payment.paymentType === "CUSTOMER") {
       return (
         payment.customer?.name ||
+        payment.customer?.customerName ||
         payment.customerName ||
         `Customer #${payment.customerId || "-"}`
       );
@@ -236,6 +267,7 @@ const AllTransactions = () => {
     if (payment.paymentType === "SUPPLIER") {
       return (
         payment.supplier?.name ||
+        payment.supplier?.supplierName ||
         payment.supplierName ||
         `Supplier #${payment.supplierId || "-"}`
       );
@@ -244,9 +276,30 @@ const AllTransactions = () => {
     if (payment.paymentType === "SALARY") {
       return (
         payment.employee?.name ||
+        payment.employee?.employeeName ||
         payment.employeeName ||
         `Employee #${payment.employeeId || "-"}`
       );
+    }
+
+    return "-";
+  };
+
+  // =====================================================
+  // PARTY ID
+  // =====================================================
+
+  const getPartyId = (payment) => {
+    if (payment.paymentType === "CUSTOMER") {
+      return payment.customerId || "-";
+    }
+
+    if (payment.paymentType === "SUPPLIER") {
+      return payment.supplierId || "-";
+    }
+
+    if (payment.paymentType === "SALARY") {
+      return payment.employeeId || "-";
     }
 
     return "-";
@@ -257,15 +310,19 @@ const AllTransactions = () => {
   // =====================================================
 
   const getTypeIcon = (type) => {
-    if (type === "CUSTOMER") {
-      return Users;
-    }
+    switch (type) {
+      case "CUSTOMER":
+        return Users;
 
-    if (type === "SUPPLIER") {
-      return Building2;
-    }
+      case "SUPPLIER":
+        return Building2;
 
-    return BriefcaseBusiness;
+      case "SALARY":
+        return BriefcaseBusiness;
+
+      default:
+        return CreditCard;
+    }
   };
 
   // =====================================================
@@ -273,15 +330,19 @@ const AllTransactions = () => {
   // =====================================================
 
   const getTypeStyle = (type) => {
-    if (type === "CUSTOMER") {
-      return "bg-blue-50 text-blue-700";
-    }
+    switch (type) {
+      case "CUSTOMER":
+        return "bg-blue-50 text-blue-700";
 
-    if (type === "SUPPLIER") {
-      return "bg-orange-50 text-orange-700";
-    }
+      case "SUPPLIER":
+        return "bg-orange-50 text-orange-700";
 
-    return "bg-purple-50 text-purple-700";
+      case "SALARY":
+        return "bg-purple-50 text-purple-700";
+
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
   };
 
   // =====================================================
@@ -311,12 +372,90 @@ const AllTransactions = () => {
   };
 
   // =====================================================
+  // PAYMENT METHOD
+  // =====================================================
+
+  const formatPaymentMethod = (method) => {
+    if (!method) {
+      return "-";
+    }
+
+    return method.replace(/_/g, " ");
+  };
+
+  // =====================================================
+  // REFERENCE
+  // =====================================================
+
+  const getReference = (payment) => {
+    if (payment.orderId) {
+      return `Order #${payment.orderId}`;
+    }
+
+    if (payment.purchaseId) {
+      return `Purchase #${payment.purchaseId}`;
+    }
+
+    if (payment.payrollId) {
+      return `Payroll #${payment.payrollId}`;
+    }
+
+    return "-";
+  };
+
+  // =====================================================
+  // DATE
+  // =====================================================
+
+  const formatDate = (date) => {
+    if (!date) {
+      return "-";
+    }
+
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return "-";
+    }
+
+    return parsedDate.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  };
+
+  // =====================================================
+  // DATE + TIME
+  // =====================================================
+
+  const formatDateTime = (date) => {
+    if (!date) {
+      return "-";
+    }
+
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return "-";
+    }
+
+    return parsedDate.toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  // =====================================================
   // LOADING
   // =====================================================
 
   if (loading) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center bg-[#f5fbfb]">
+      <div className="flex min-h-[70vh] items-center justify-center bg-[#f5fbfb]">
         <div className="text-center">
           <RefreshCw
             size={32}
@@ -335,9 +474,9 @@ const AllTransactions = () => {
 
   return (
     <div className="min-h-screen bg-[#f5fbfb] p-4 md:p-6 lg:p-8">
-      {/* =================================================
+      {/* =====================================================
           HEADER
-      ================================================= */}
+      ===================================================== */}
 
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -351,39 +490,45 @@ const AllTransactions = () => {
         </div>
 
         <button
+          type="button"
           onClick={fetchPayments}
-          className="inline-flex w-fit items-center gap-2 rounded-lg border border-teal-200 bg-white px-4 py-2.5 text-sm font-medium text-teal-700 hover:bg-teal-50"
+          disabled={loading}
+          className="inline-flex w-fit items-center gap-2 rounded-lg border border-teal-200 bg-white px-4 py-2.5 text-sm font-medium text-teal-700 transition hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <RefreshCw size={17} />
+          <RefreshCw size={17} className={loading ? "animate-spin" : ""} />
           Refresh
         </button>
       </div>
 
-      {/* =================================================
+      {/* =====================================================
           ERROR
-      ================================================= */}
+      ===================================================== */}
 
       {error && (
-        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">
-          {error}
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">
+          <span>{error}</span>
+
+          <button
+            type="button"
+            onClick={() => setError("")}
+            className="ml-4 rounded p-1 hover:bg-red-100"
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
 
-      {/* =================================================
-          STATS
-      ================================================= */}
+      {/* =====================================================
+          STATISTICS
+      ===================================================== */}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {/* Total */}
-
         <StatCard
           title="Transactions"
           value={stats.total}
           icon={CreditCard}
           iconClass="bg-teal-50 text-teal-600"
         />
-
-        {/* Customer */}
 
         <StatCard
           title="Customer Received"
@@ -393,8 +538,6 @@ const AllTransactions = () => {
           iconClass="bg-green-50 text-green-600"
         />
 
-        {/* Supplier */}
-
         <StatCard
           title="Supplier Paid"
           value={formatCurrency(stats.supplierPaid)}
@@ -403,8 +546,6 @@ const AllTransactions = () => {
           iconClass="bg-orange-50 text-orange-600"
         />
 
-        {/* Salary */}
-
         <StatCard
           title="Salary Paid"
           value={formatCurrency(stats.salaryPaid)}
@@ -412,8 +553,6 @@ const AllTransactions = () => {
           icon={ArrowUpRight}
           iconClass="bg-purple-50 text-purple-600"
         />
-
-        {/* Pending */}
 
         <StatCard
           title="Pending"
@@ -424,9 +563,9 @@ const AllTransactions = () => {
         />
       </div>
 
-      {/* =================================================
+      {/* =====================================================
           FILTERS
-      ================================================= */}
+      ===================================================== */}
 
       <div className="mb-6 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
@@ -441,8 +580,9 @@ const AllTransactions = () => {
           </div>
 
           <button
+            type="button"
             onClick={clearFilters}
-            className="flex items-center gap-1 text-sm text-red-500 hover:text-red-600"
+            className="flex items-center gap-1 text-sm text-red-500 transition hover:text-red-600"
           >
             <X size={15} />
             Clear
@@ -462,13 +602,13 @@ const AllTransactions = () => {
               type="text"
               placeholder="Search payment, customer..."
               value={filters.search}
-              onChange={(e) =>
-                setFilters({
-                  ...filters,
-                  search: e.target.value,
-                })
+              onChange={(event) =>
+                setFilters((previous) => ({
+                  ...previous,
+                  search: event.target.value,
+                }))
               }
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
             />
           </div>
 
@@ -476,20 +616,17 @@ const AllTransactions = () => {
 
           <select
             value={filters.type}
-            onChange={(e) =>
-              setFilters({
-                ...filters,
-                type: e.target.value,
-              })
+            onChange={(event) =>
+              setFilters((previous) => ({
+                ...previous,
+                type: event.target.value,
+              }))
             }
-            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-teal-500"
+            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
           >
             <option value="ALL">All Types</option>
-
             <option value="CUSTOMER">Customer</option>
-
             <option value="SUPPLIER">Supplier</option>
-
             <option value="SALARY">Salary</option>
           </select>
 
@@ -497,24 +634,19 @@ const AllTransactions = () => {
 
           <select
             value={filters.status}
-            onChange={(e) =>
-              setFilters({
-                ...filters,
-                status: e.target.value,
-              })
+            onChange={(event) =>
+              setFilters((previous) => ({
+                ...previous,
+                status: event.target.value,
+              }))
             }
-            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-teal-500"
+            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
           >
             <option value="ALL">All Status</option>
-
             <option value="Paid">Paid</option>
-
             <option value="Pending">Pending</option>
-
             <option value="Failed">Failed</option>
-
             <option value="Cancelled">Cancelled</option>
-
             <option value="Refunded">Refunded</option>
           </select>
 
@@ -522,28 +654,23 @@ const AllTransactions = () => {
 
           <select
             value={filters.method}
-            onChange={(e) =>
-              setFilters({
-                ...filters,
-                method: e.target.value,
-              })
+            onChange={(event) =>
+              setFilters((previous) => ({
+                ...previous,
+                method: event.target.value,
+              }))
             }
-            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-teal-500"
+            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
           >
             <option value="ALL">All Methods</option>
-
             <option value="Cash">Cash</option>
-
             <option value="UPI">UPI</option>
-
             <option value="Card">Card</option>
-
             <option value="Bank_Transfer">Bank Transfer</option>
-
             <option value="Cheque">Cheque</option>
           </select>
 
-          {/* From */}
+          {/* From Date */}
 
           <div className="relative">
             <CalendarDays
@@ -554,17 +681,17 @@ const AllTransactions = () => {
             <input
               type="date"
               value={filters.fromDate}
-              onChange={(e) =>
-                setFilters({
-                  ...filters,
-                  fromDate: e.target.value,
-                })
+              onChange={(event) =>
+                setFilters((previous) => ({
+                  ...previous,
+                  fromDate: event.target.value,
+                }))
               }
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-2 text-sm outline-none focus:border-teal-500"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-2 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
             />
           </div>
 
-          {/* To */}
+          {/* To Date */}
 
           <div className="relative">
             <CalendarDays
@@ -575,21 +702,21 @@ const AllTransactions = () => {
             <input
               type="date"
               value={filters.toDate}
-              onChange={(e) =>
-                setFilters({
-                  ...filters,
-                  toDate: e.target.value,
-                })
+              onChange={(event) =>
+                setFilters((previous) => ({
+                  ...previous,
+                  toDate: event.target.value,
+                }))
               }
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-2 text-sm outline-none focus:border-teal-500"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-2 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
             />
           </div>
         </div>
       </div>
 
-      {/* =================================================
+      {/* =====================================================
           TRANSACTION TABLE
-      ================================================= */}
+      ===================================================== */}
 
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
         <div className="border-b border-gray-100 p-5">
@@ -648,7 +775,10 @@ const AllTransactions = () => {
                   const TypeIcon = getTypeIcon(payment.paymentType);
 
                   return (
-                    <tr key={payment.id} className="text-sm hover:bg-gray-50">
+                    <tr
+                      key={payment.id}
+                      className="text-sm transition hover:bg-gray-50"
+                    >
                       {/* Payment */}
 
                       <td className="px-5 py-4">
@@ -671,7 +801,7 @@ const AllTransactions = () => {
                         >
                           <TypeIcon size={13} />
 
-                          {payment.paymentType}
+                          {payment.paymentType || "-"}
                         </span>
                       </td>
 
@@ -683,26 +813,14 @@ const AllTransactions = () => {
                         </p>
 
                         <p className="mt-1 text-xs text-gray-400">
-                          {payment.paymentType === "CUSTOMER"
-                            ? `ID: ${payment.customerId || "-"}`
-                            : payment.paymentType === "SUPPLIER"
-                              ? `ID: ${payment.supplierId || "-"}`
-                              : `ID: ${payment.employeeId || "-"}`}
+                          ID: {getPartyId(payment)}
                         </p>
                       </td>
 
                       {/* Reference */}
 
                       <td className="px-5 py-4">
-                        <p className="text-gray-700">
-                          {payment.orderId
-                            ? `Order #${payment.orderId}`
-                            : payment.purchaseId
-                              ? `Purchase #${payment.purchaseId}`
-                              : payment.payrollId
-                                ? `Payroll #${payment.payrollId}`
-                                : "-"}
-                        </p>
+                        <p className="text-gray-700">{getReference(payment)}</p>
                       </td>
 
                       {/* Amount */}
@@ -715,7 +833,7 @@ const AllTransactions = () => {
 
                       <td className="px-5 py-4">
                         <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                          {payment.paymentMethod?.replace("_", " ") || "-"}
+                          {formatPaymentMethod(payment.paymentMethod)}
                         </span>
                       </td>
 
@@ -727,24 +845,21 @@ const AllTransactions = () => {
                             payment.status,
                           )}`}
                         >
-                          {payment.status}
+                          {payment.status || "-"}
                         </span>
                       </td>
 
                       {/* Date */}
 
                       <td className="px-5 py-4 text-gray-500">
-                        {payment.paymentDate
-                          ? new Date(payment.paymentDate).toLocaleDateString(
-                              "en-IN",
-                            )
-                          : "-"}
+                        {formatDate(payment.paymentDate)}
                       </td>
 
                       {/* Action */}
 
                       <td className="px-5 py-4">
                         <button
+                          type="button"
                           onClick={() => setSelectedPayment(payment)}
                           className="rounded-lg border border-teal-200 p-2 text-teal-600 transition hover:bg-teal-50"
                           title="View Details"
@@ -761,13 +876,19 @@ const AllTransactions = () => {
         )}
       </div>
 
-      {/* =================================================
+      {/* =====================================================
           DETAILS MODAL
-      ================================================= */}
+      ===================================================== */}
 
       {selectedPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setSelectedPayment(null)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
             {/* Header */}
 
             <div className="flex items-center justify-between border-b border-gray-100 p-5">
@@ -783,8 +904,9 @@ const AllTransactions = () => {
               </div>
 
               <button
+                type="button"
                 onClick={() => setSelectedPayment(null)}
-                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100"
               >
                 <X size={20} />
               </button>
@@ -805,6 +927,8 @@ const AllTransactions = () => {
 
               <Detail label="Party" value={getPartyName(selectedPayment)} />
 
+              <Detail label="Party ID" value={getPartyId(selectedPayment)} />
+
               <Detail
                 label="Amount"
                 value={formatCurrency(selectedPayment.amount)}
@@ -812,7 +936,7 @@ const AllTransactions = () => {
 
               <Detail
                 label="Payment Method"
-                value={selectedPayment.paymentMethod?.replace("_", " ") || "-"}
+                value={formatPaymentMethod(selectedPayment.paymentMethod)}
               />
 
               <Detail label="Status" value={selectedPayment.status || "-"} />
@@ -842,33 +966,52 @@ const AllTransactions = () => {
                 value={selectedPayment.employeeId || "-"}
               />
 
-              <Detail label="Order ID" value={selectedPayment.orderId || "-"} />
+              <Detail
+                label="Order ID"
+                value={
+                  selectedPayment.orderId ? `#${selectedPayment.orderId}` : "-"
+                }
+              />
 
               <Detail
                 label="Purchase ID"
-                value={selectedPayment.purchaseId || "-"}
+                value={
+                  selectedPayment.purchaseId
+                    ? `#${selectedPayment.purchaseId}`
+                    : "-"
+                }
               />
 
               <Detail
                 label="Payroll ID"
-                value={selectedPayment.payrollId || "-"}
+                value={
+                  selectedPayment.payrollId
+                    ? `#${selectedPayment.payrollId}`
+                    : "-"
+                }
               />
 
               <Detail
                 label="Payment Date"
-                value={
-                  selectedPayment.paymentDate
-                    ? new Date(selectedPayment.paymentDate).toLocaleString(
-                        "en-IN",
-                      )
-                    : "-"
-                }
+                value={formatDateTime(selectedPayment.paymentDate)}
               />
 
               <Detail
                 label="Refund Amount"
                 value={formatCurrency(selectedPayment.refundAmount)}
               />
+
+              <Detail
+                label="Refund Date"
+                value={formatDateTime(selectedPayment.refundDate)}
+              />
+
+              <div className="sm:col-span-2">
+                <Detail
+                  label="Refund Reason"
+                  value={selectedPayment.refundReason || "-"}
+                />
+              </div>
 
               <div className="sm:col-span-2">
                 <Detail
@@ -884,6 +1027,18 @@ const AllTransactions = () => {
                 />
               </div>
             </div>
+
+            {/* Footer */}
+
+            <div className="flex justify-end border-t border-gray-100 p-5">
+              <button
+                type="button"
+                onClick={() => setSelectedPayment(null)}
+                className="rounded-lg bg-[#123b3d] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#0d3032]"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -898,8 +1053,8 @@ const AllTransactions = () => {
 const StatCard = ({ title, value, subtitle, icon: Icon, iconClass }) => {
   return (
     <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-sm text-gray-500">{title}</p>
 
           <p className="mt-2 text-xl font-semibold text-[#123b3d]">{value}</p>
@@ -907,7 +1062,7 @@ const StatCard = ({ title, value, subtitle, icon: Icon, iconClass }) => {
           {subtitle && <p className="mt-1 text-xs text-gray-400">{subtitle}</p>}
         </div>
 
-        <div className={`rounded-xl p-3 ${iconClass}`}>
+        <div className={`shrink-0 rounded-xl p-3 ${iconClass}`}>
           <Icon size={21} />
         </div>
       </div>

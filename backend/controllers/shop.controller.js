@@ -472,12 +472,13 @@ export const createShop = async (req, res) => {
     const admin = await User.create({
       shopId: shop.id,
       name: ownerName,
-      email,
+      email: email.trim().toLowerCase(),
       phone,
       password: hashedPassword,
       role: "admin",
       mustChangePassword: true,
       isActive: true,
+      isDeleted: false,
     });
 
     // ========================================================
