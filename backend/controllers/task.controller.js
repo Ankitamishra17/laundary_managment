@@ -1027,6 +1027,7 @@ export const assignTask = async (req, res) => {
 
       try {
         await createNotification({
+          shopId: adminShopId,
           employeeId,
 
           orderId: resolvedOrderId,
@@ -1726,6 +1727,7 @@ export const updateTaskStatus = async (req, res) => {
 
         try {
           await createNotification({
+             shopId,
             employeeId,
 
             taskId: existingActive.id,
@@ -1865,7 +1867,7 @@ export const updateTaskStatus = async (req, res) => {
         freshOrder.status = calculatedStatus;
 
         if (calculatedStatus === "delivered") {
-          freshOrder.delivery_time = new Date();
+          freshOrder.delivery_time = new Date().toISOString();
         }
 
         await freshOrder.save();
@@ -1927,6 +1929,7 @@ export const updateTaskStatus = async (req, res) => {
 
       try {
         await createNotification({
+           shopId,
           employeeId: Number(nextTask.employee_id),
 
           taskId: nextTask.id,
@@ -2356,6 +2359,7 @@ export const reassignTask = async (req, res) => {
 
     try {
       await createNotification({
+        shopId,
         employeeId: newEmployeeId,
 
         taskId: task.id,

@@ -169,7 +169,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
     if (result.ok) {
       setCreated({
         name: result.employee?.name,
-        tempPassword: result.tempPassword,
+        tempPassword: autoPassword ? result.tempPassword : form.password,
       });
     } else {
       setError(result.error || "Failed to create employee");
@@ -263,7 +263,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
                       value={form.phone}
                       onChange={handleChange}
                       required
-                      placeholder="99XXXXXXXX"
+                      placeholder="+91XXXXXXXX"
                       className={`${inputClass} pl-9`}
                     />
                   </div>
@@ -309,7 +309,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
               </label>
 
               {!autoPassword && (
-                <Field label="Password" required className="sm:col-span-2">
+                <Field label="Password" required className="sm:col-span-2 ">
                   <input
                     name="password"
                     type="text"
@@ -773,8 +773,8 @@ function DeleteEmployeeModal({
                 <span className="font-semibold text-[#0F2C2E]">
                   {employee.name}
                 </span>{" "}
-                will lose access to the employee portal. They can be
-                reactivated anytime from this page.
+                will lose access to the employee portal. They can be reactivated
+                anytime from this page.
               </>
             ) : (
               <>
@@ -881,8 +881,8 @@ function DeleteEmployeeModal({
                 className="w-full mt-2 text-[11px] text-center"
                 style={{ color: "#9A6A12" }}
               >
-                This removes the employee forever. Deactivation is
-                reversible — deletion is not.
+                This removes the employee forever. Deactivation is reversible —
+                deletion is not.
               </p>
             </>
           )}
