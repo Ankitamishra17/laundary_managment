@@ -5,6 +5,7 @@ import {
   getSubscriptionById,
   getShopSubscriptions,
   renewSubscription,
+  renewAdminSubscription,
   cancelSubscription,
 } from "../controllers/subscription.controller.js";
 
@@ -32,6 +33,15 @@ router.get(
 
 // Renew Subscription
 router.put("/:id/renew", protect, allowRoles("super_admin"), renewSubscription);
+
+
+// Renew Subscription - Shop Admin
+router.put(
+  "/admin/renew",
+  protect,
+  allowRoles("admin"),
+  renewAdminSubscription,
+);
 
 // Cancel Subscription
 router.put(

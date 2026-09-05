@@ -35,7 +35,7 @@ export default function ShopsPage() {
 
   const handleShopUpdated = (updatedShop) => {
     setShops((prev) =>
-      prev.map((s) => (s.id === updatedShop.id ? { ...s, ...updatedShop } : s))
+      prev.map((s) => (s.id === updatedShop.id ? { ...s, ...updatedShop } : s)),
     );
   };
 
@@ -187,7 +187,10 @@ export default function ShopsPage() {
           <h1>Shops</h1>
           <p>All laundry shops registered on the platform</p>
         </div>
-        <button className="create-shop-btn" onClick={() => setIsCreateOpen(true)}>
+        <button
+          className="create-shop-btn"
+          onClick={() => setIsCreateOpen(true)}
+        >
           + Create Shop
         </button>
       </div>
@@ -209,6 +212,7 @@ export default function ShopsPage() {
                 <th>City</th>
                 <th>Plan</th>
                 <th>Status</th>
+                <th>Shop URL</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -223,7 +227,27 @@ export default function ShopsPage() {
                   <td>{shop.city}</td>
                   <td>{shop.planName || shop.subscriptionPlan}</td>
                   <td>
-                    <span className="status-pill">{shop.subscriptionStatus}</span>
+                    <span className="status-pill">
+                      {shop.subscriptionStatus}
+                    </span>
+                  </td>
+                  <td>
+                    {shop.slug ? (
+                      <a
+                        href={`/${shop.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          color: "var(--teal-primary)",
+                          fontWeight: 600,
+                          textDecoration: "none",
+                        }}
+                      >
+                         SHOP URL
+                      </a>
+                    ) : (
+                      "N/A"
+                    )}
                   </td>
                   <td>
                     <div className="actions-cell">

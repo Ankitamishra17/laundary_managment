@@ -5,6 +5,7 @@ import Shop from "../models/Shop.js";
 import User from "../models/User.js";
 import Service from "../models/Service.js";
 import generatePassword from "../utils/generatePassword.js";
+import Subscription from "../models/Subscription.js";
 
 // ============================================================
 // DEFAULT SERVICES
@@ -463,6 +464,21 @@ export const createShop = async (req, res) => {
       subscriptionEnd,
       subscriptionStatus: "Active",
       isActive: true,
+    });
+
+    // ========================================================
+    // CREATE SUBSCRIPTION
+    // Automatically create subscription for new shop
+    // ========================================================
+
+    const subscription = await Subscription.create({
+      shopId: shop.id,
+      plan: subscriptionPlan,
+      amount: subscriptionAmount,
+      startDate: subscriptionStart,
+      endDate: subscriptionEnd,
+      status: "Active",
+      paymentStatus: "Paid",
     });
 
     // ========================================================

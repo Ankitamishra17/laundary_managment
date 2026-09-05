@@ -1,5 +1,7 @@
 import Subscription from "../models/Subscription.js";
 import Shop from "../models/Shop.js";
+import User from "../models/User.js";
+import { sendSubscriptionRenewalEmail } from "../utils/subscriptionEmail.js";
 
 /**
  * ===========================================
@@ -269,6 +271,39 @@ export const renewSubscription = async (req, res) => {
       subscriptionStatus: "Active",
     });
 
+    // ============================================================
+    // FIND SHOP ADMIN
+    // ============================================================
+
+    const shopAdmin = await User.findOne({
+      where: {
+        shopId: shop.id,
+        role: "admin",
+        isDeleted: false,
+        isActive: true,
+      },
+    });
+
+    // ============================================================
+    // SEND RENEWAL EMAIL
+    // ============================================================
+
+    if (shopAdmin?.email) {
+      try {
+        await sendSubscriptionRenewalEmail({
+          to: shopAdmin.email,
+          adminName: shopAdmin.name || shop.ownerName,
+          shopName: shop.name,
+          plan,
+          amount,
+          startDate,
+          endDate,
+        });
+      } catch (emailError) {
+        console.error("Subscription renewal email failed:", emailError.message);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "Subscription renewed successfully.",
@@ -276,6 +311,153 @@ export const renewSubscription = async (req, res) => {
     });
   } catch (error) {
     console.error("Renew Subscription Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * ===========================================
+ * Renew Subscription - Shop Admin
+ * PUT /api/subscriptions/admin/renew
+ * ===========================================
+ */
+
+export const renewAdminSubscription = async (req, res) => {
+  try {
+    const { plan, amount, paymentMethod, transactionId, remarks } = req.body;
+
+    // ============================================================
+    // GET SHOP FROM LOGGED-IN ADMIN
+    // ============================================================
+
+    const shopId = req.user.shopId;
+
+    if (!shopId) {
+      return res.status(400).json({
+        success: false,
+        message: "Shop not associated with this admin.",
+      });
+    }
+
+    // ============================================================
+    // VALIDATION
+    // ============================================================
+
+    if (!plan || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: "Plan and Amount are required.",
+      });
+    }
+
+    if (!["Monthly", "Yearly"].includes(plan)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid subscription plan.",
+      });
+    }
+
+    // ============================================================
+    // FIND SHOP
+    // ============================================================
+
+    const shop = await Shop.findByPk(shopId);
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: "Shop not found.",
+      });
+    }
+
+    // ============================================================
+    // FIND CURRENT / LATEST SUBSCRIPTION
+    // ============================================================
+
+    const currentSubscription = await Subscription.findOne({
+      where: {
+        shopId,
+      },
+      order: [["createdAt", "DESC"]],
+    });
+
+    // ============================================================
+    // CALCULATE START DATE
+    //
+    // If subscription is still active:
+    // start from old expiry date.
+    //
+    // If subscription has expired:
+    // start from today.
+    // ============================================================
+
+    const today = new Date();
+
+    let startDate;
+
+    if (currentSubscription && new Date(currentSubscription.endDate) > today) {
+      startDate = new Date(currentSubscription.endDate);
+    } else {
+      startDate = today;
+    }
+
+    // ============================================================
+    // CALCULATE END DATE
+    // ============================================================
+
+    const endDate = new Date(startDate);
+
+    if (plan === "Monthly") {
+      endDate.setMonth(endDate.getMonth() + 1);
+    } else {
+      endDate.setFullYear(endDate.getFullYear() + 1);
+    }
+
+    // ============================================================
+    // CREATE NEW SUBSCRIPTION HISTORY ROW
+    // ============================================================
+
+    const newSubscription = await Subscription.create({
+      shopId,
+      plan,
+      amount,
+      startDate,
+      endDate,
+      status: "Active",
+      paymentStatus: "Paid",
+      paymentMethod,
+      transactionId,
+      remarks,
+    });
+
+    // ============================================================
+    // UPDATE CURRENT SHOP SUBSCRIPTION
+    // ============================================================
+
+    await shop.update({
+      subscriptionPlan: plan,
+      subscriptionAmount: amount,
+      subscriptionStart: startDate,
+      subscriptionEnd: endDate,
+      subscriptionStatus: "Active",
+    });
+
+    // ============================================================
+    // RESPONSE
+    // ============================================================
+
+    return res.status(200).json({
+      success: true,
+      message: "Subscription renewed successfully.",
+      data: newSubscription,
+    });
+  } catch (error) {
+    console.error("Admin Renew Subscription Error:", error);
 
     return res.status(500).json({
       success: false,

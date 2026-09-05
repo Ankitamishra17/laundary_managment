@@ -468,7 +468,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* Today's pickups */}
           <div className="lg:col-span-2 bg-white border border-[#D8ECEA] rounded-2xl shadow-[0_1px_2px_rgba(15,44,46,0.04)] overflow-hidden">
-            <SectionHeader icon={Truck} title="Today's Pickups" to="/employee/pickups" />
+            <SectionHeader icon={Truck} title="Today's Pickups"  to={`/${slug}/employee/pickups`} />
             {pickupsLoading ? (
               <div className="p-5 space-y-3">
                 {[...Array(3)].map((_, i) => (
@@ -533,7 +533,7 @@ export default function Dashboard() {
 
           {/* Today's schedule */}
           <div className="bg-white border border-[#D8ECEA] rounded-2xl shadow-[0_1px_2px_rgba(15,44,46,0.04)] overflow-hidden">
-            <SectionHeader icon={ClipboardList} title="Today's Schedule" to="/employee/mytask" />
+            <SectionHeader icon={ClipboardList} title="Today's Schedule" to={`/${slug}/employee/mytask`}/>
             {scheduleLoading ? (
               <div className="p-5 space-y-3">
                 {[...Array(4)].map((_, i) => (
@@ -571,7 +571,7 @@ export default function Dashboard() {
             {!scheduleLoading && schedule.filter((t) => t.status !== "completed").length > 6 && (
               <div className="px-5 py-3 border-t border-[#EEF7F6]">
                 <Link
-                  to="/employee/mytask"
+                  to={`/${slug}/employee/mytask`}
                   className="text-xs font-semibold text-[#028090] hover:text-[#02C39A] transition-colors inline-flex items-center gap-1"
                 >
                   See full task list <ArrowRight size={13} />
