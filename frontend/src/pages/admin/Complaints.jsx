@@ -221,9 +221,9 @@ export default function Complaints() {
                       <div className="mt-3">
                         <p className="text-sm" style={{ color: C.textDark }}>{c.description}</p>
                         {c.image_url && (
-                          <a href={c.image_url} target="_blank" rel="noopener noreferrer">
+                          <a href={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}${c.image_url}`} target="_blank" rel="noopener noreferrer">
                             <img
-                              src={c.image_url}
+                              src={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}${c.image_url}`}
                               alt="Complaint evidence"
                               className="mt-2 h-28 rounded-lg object-cover border cursor-pointer hover:brightness-90 transition"
                               style={{ borderColor: C.cardBorder }}

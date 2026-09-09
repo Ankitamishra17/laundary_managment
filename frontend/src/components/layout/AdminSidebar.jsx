@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   WashingMachine,
   X,
+  FileText,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -68,6 +69,7 @@ const NAV_ITEMS = [
   { label: "Reports", icon: BarChart3, to: "/admin/reports" },
   { label: "Reviews", icon: Star, to: "/admin/reviews" },
   { label: "Complaints", icon: AlertTriangle, to: "/admin/complaints" },
+  { label: "Invoices", icon: FileText, to: "/admin/invoices" },
 ];
 
 export default function AdminSidebar() {

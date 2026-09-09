@@ -5,9 +5,11 @@ import Order from "../models/Order.js";
 import OrderItem from "../models/OrderItem.js";
 import Customer from "../models/Customer.js";
 import Shop from "../models/Shop.js";
+import Invoice from "../models/Invoice.js";
 import Service from "../models/Service.js";
 import Employee from "../models/Employee.js";
 import Task from "../models/Tasks.js";
+<<<<<<< HEAD
 
 import {
   notifyShopAdmins,
@@ -18,6 +20,11 @@ import {
   getShopPlan,
   countShopOrdersThisMonth,
 } from "../utils/subscription.js";
+=======
+import { notifyShopAdmins, notifyCustomer } from "./notification.controller.js";
+import { getShopPlan, countShopOrdersThisMonth } from "../utils/subscription.js";
+import { sendInvoiceEmail } from "../utils/invoiceEmail.js";
+>>>>>>> origin/amisha
 
 const STATUS_LABELS = {
   pending: "Pending",
@@ -501,9 +508,366 @@ export const createOrder = async (
       await transaction.rollback();
     } catch {}
 
+<<<<<<< HEAD
     console.error(
       "Create Order Error:",
       error
+=======
+// ============================================================
+// CUSTOMER — my orders
+// GET /api/orders/mine
+// ============================================================
+export const getMyOrders = async (req, res) => {
+  try {
+    const customer = await getCustomerForUser(req.user.id);
+    if (!customer) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const orders = await Order.findAll({
+      where: { customer_id: customer.id },
+      include: ORDER_INCLUDES,
+      order: [["createdAt", "DESC"]],
+    });
+
+    return res.status(200).json({ success: true, data: orders });
+  } catch (error) {
+    console.error("Get My Orders Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================
+// CUSTOMER — one of my orders
+// GET /api/orders/:id
+// ============================================================
+export const getMyOrderById = async (req, res) => {
+  try {
+    const customer = await getCustomerForUser(req.user.id);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    const order = await Order.findOne({
+      where: { id: req.params.id, customer_id: customer.id },
+      include: ORDER_INCLUDES,
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    return res.status(200).json({ success: true, data: order });
+  } catch (error) {
+    console.error("Get Order Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================
+// CUSTOMER — cancel a pending order
+// PATCH /api/orders/:id/cancel
+// ============================================================
+export const cancelMyOrder = async (req, res) => {
+  try {
+    const customer = await getCustomerForUser(req.user.id);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    const order = await Order.findOne({
+      where: { id: req.params.id, customer_id: customer.id },
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    if (order.status !== "pending") {
+      return res.status(400).json({
+        success: false,
+        message: "Only pending orders can be cancelled.",
+      });
+    }
+
+    order.status = "cancelled";
+    await order.save();
+
+    // Let the shop admins know the order was cancelled.
+    await notifyShopAdmins(order.shop_id, {
+      title: "Order cancelled",
+      message: `Order #${order.id} was cancelled by the customer.`,
+      type: "order",
+      link: "/admin/orders",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Order cancelled successfully.",
+      data: order,
+    });
+  } catch (error) {
+    console.error("Cancel Order Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+// const reorderOrder = async(req,res)=>{
+//   const oldOrder = await Order.findByPk(req.params.orderId);
+
+//   if(!oldOrder){
+//     return res.status(404).json({
+//       success:false,
+//       message:"Order not found"
+//     })
+//   }
+
+// const newOrder = await Order.create({
+//   customerId: oldOrder.customerId,
+//   shopId:oldOrder.shopId,
+//   totalAmount: oldOrder.totalAmount,
+//   status:'Pending',
+//   reorderOrderFromOrderId: oldOrder.id
+
+// });
+
+// res.status(201).json({
+//   success:true,
+//   message:"Order reordered successfully",
+//   order:newOrder
+// })
+// }
+// ============================================================
+// ADMIN — all orders of my shop
+// GET /api/orders
+// ============================================================
+// Orders are scoped to the admin's shop. Super admins (no shopId) see every
+// shop's orders. A null/undefined shop filter would match `shop_id IS NULL`
+// and return nothing — which is exactly why the filter is only applied when
+// the account actually has a shop.
+export const getShopOrders = async (req, res) => {
+  try {
+    const { status, payment_status } = req.query;
+    const where = {};
+    if (req.user.shopId) where.shop_id = req.user.shopId;
+
+    if (status) where.status = status;
+    if (payment_status) where.payment_status = payment_status;
+
+    const orders = await Order.findAll({
+      where,
+      include: [
+        ...ORDER_INCLUDES,
+        { model: Customer, as: "customer", attributes: ["id", "name", "phone", "address", "city"] },
+        {
+          model: Employee,
+          as: "employee",
+          attributes: ["id", "name"],
+          required: false,
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    return res.status(200).json({ success: true, data: orders });
+  } catch (error) {
+    console.error("Get Shop Orders Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================
+// ADMIN — update order status
+// PATCH /api/orders/:id/status   { status }
+// ============================================================
+export const updateOrderStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    if (!VALID_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Allowed: ${VALID_STATUSES.join(", ")}`,
+      });
+    }
+
+    const where = { id: req.params.id };
+    if (req.user.shopId) where.shop_id = req.user.shopId;
+
+    const order = await Order.findOne({ where });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    order.status = status;
+    // Note: pickup_time is the customer's preferred pickup time (string) —
+    // never overwrite it with a Date here.
+    if (status === "delivered") order.delivery_time = new Date().toISOString();
+
+    await order.save();
+
+    // Tell the customer their order moved forward.
+    const customer = await Customer.findOne({ where: { id: order.customer_id } });
+
+    if (status === "delivered") {
+      await notifyCustomer(customer, {
+        title: "Order delivered — Review us!",
+        message: `Your order #${order.id} has been delivered! We'd love your feedback — write a review to share your experience.`,
+        type: "order",
+        link: "/customer/reviews",
+      });
+
+      // Auto-generate invoice when order is delivered
+      try {
+        const existingInvoice = await Invoice.findOne({ where: { orderId: order.id } });
+        if (!existingInvoice) {
+          const orderWithItems = await Order.findByPk(order.id, {
+            include: [
+              { model: OrderItem, as: "items" },
+              { model: Shop, as: "shop" },
+            ],
+          });
+          const shopObj = orderWithItems?.shop;
+          const customerObj = customer;
+
+          const itemsSnapshot = (orderWithItems?.items || []).map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: Number(item.price),
+            lineTotal: Number(item.lineTotal),
+            itemLabel: item.item_label || null,
+          }));
+          const subtotal = itemsSnapshot.reduce((sum, item) => sum + Number(item.lineTotal), 0);
+
+          // Generate invoice number with shop code prefix
+          const shopPrefix = shopObj?.shopCode
+            ? shopObj.shopCode.toUpperCase().slice(0, 2)
+            : "INV";
+          const seqPrefix = `${shopPrefix}-INV-`;
+          const lastInv = await Invoice.findOne({
+            where: { shopId: order.shop_id, invoiceNumber: { [Op.like]: `${seqPrefix}%` } },
+            order: [["invoiceNumber", "DESC"]],
+          });
+          let seq = 1;
+          if (lastInv) {
+            const parts = lastInv.invoiceNumber.split("-");
+            seq = parseInt(parts[2], 10) + 1;
+          }
+          const invoiceNumber = `${seqPrefix}${String(seq).padStart(5, "0")}`;
+
+          const dueDate = new Date();
+          dueDate.setDate(dueDate.getDate() + 30);
+
+          const newInvoice = await Invoice.create({
+            invoiceNumber,
+            orderId: order.id,
+            customerId: order.customer_id,
+            shopId: order.shop_id,
+            items: itemsSnapshot,
+            subtotal: Number(subtotal.toFixed(2)),
+            taxRate: 0,
+            taxAmount: 0,
+            discount: 0,
+            deliveryCharge: 0,
+            total: Number(subtotal.toFixed(2)),
+            paymentStatus: order.payment_status === "paid" ? "Paid" : "Unpaid",
+            amountPaid: order.payment_status === "paid" ? Number(subtotal.toFixed(2)) : 0,
+            issuedDate: new Date().toISOString().split("T")[0],
+            dueDate: dueDate.toISOString().split("T")[0],
+            customerName: customerObj?.name || null,
+            customerEmail: customerObj?.email || null,
+            customerPhone: customerObj?.phone || null,
+            customerAddress: customerObj?.address || null,
+            shopName: shopObj?.name || null,
+            shopAddress: shopObj?.address || null,
+            shopPhone: shopObj?.phone || null,
+            shopGstNumber: shopObj?.gstNumber || null,
+          });
+
+          // Send invoice email to customer (non-blocking)
+          sendInvoiceEmail(newInvoice.toJSON()).catch((err) => {
+            console.error("Auto-invoice email failed (non-blocking):", err.message);
+          });
+        }
+      } catch (invErr) {
+        console.error("Auto-invoice generation failed:", invErr.message);
+        // Non-critical — don't fail the status update
+      }
+    } else {
+      await notifyCustomer(customer, {
+        title: "Order status updated",
+        message: `Your order #${order.id} is now ${STATUS_LABELS[status] || status}.`,
+        type: "order",
+        link: `/customer/orders/${order.id}`,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Order status updated.",
+      data: order,
+    });
+  } catch (error) {
+    console.error("Update Order Status Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================
+// ADMIN — update payment status
+// PATCH /api/orders/:id/payment   { payment_status }
+// ============================================================
+export const updatePaymentStatus = async (req, res) => {
+  try {
+    const { payment_status } = req.body;
+
+    if (!VALID_PAYMENT_STATUSES.includes(payment_status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid payment status. Allowed: ${VALID_PAYMENT_STATUSES.join(", ")}`,
+      });
+    }
+
+    const where = { id: req.params.id };
+    if (req.user.shopId) where.shop_id = req.user.shopId;
+
+    const order = await Order.findOne({ where });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    order.payment_status = payment_status;
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment status updated.",
+      data: order,
+    });
+  } catch (error) {
+    console.error("Update Payment Status Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================
+// ADMIN — quick order stats for my shop
+// GET /api/orders/stats
+// ============================================================
+export const getOrderStats = async (req, res) => {
+  try {
+    const where = {};
+    if (req.user.shopId) where.shop_id = req.user.shopId;
+
+    const counts = await Promise.all(
+      VALID_STATUSES.map(async (status) => ({
+        status,
+        count: await Order.count({ where: { ...where, status } }),
+      })),
+>>>>>>> origin/amisha
     );
 
     return res.status(500).json({

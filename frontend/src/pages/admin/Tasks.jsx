@@ -16,6 +16,8 @@ import {
   AlertTriangle,
   UserPlus,
   History,
+  UserX,
+  RefreshCw,
 } from "lucide-react";
 
 import toast from "react-hot-toast";
@@ -100,9 +102,24 @@ function StatCard({ icon: Icon, label, value, color, bg }) {
   );
 }
 
+
 /* ================================================================
    PRIORITY PILL
 ================================================================ */
+
+/* ------------------------------------------------------------------ */
+/* Inactive Employee Badge                                              */
+/* ------------------------------------------------------------------ */
+
+function InactiveEmployeeBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md mt-1"
+      style={{ color: "#B3261E", background: "#FDECEC" }}>
+      <UserX size={10} /> EMPLOYEE INACTIVE
+    </span>
+  );
+}
+
 
 function PriorityPill({ priority }) {
   const urgent = priority === "urgent";
@@ -1502,6 +1519,8 @@ export default function Tasks() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [showAssign, setShowAssign] = useState(false);
+  const [reassignTask, setReassignTask] = useState(null);
+  const [reassignLoading, setReassignLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState("active");
 
@@ -1531,9 +1550,30 @@ export default function Tasks() {
     fetchTasks();
   }, [fetchTasks]);
 
+
   /* --------------------------------------------------------------
      Filter tasks
   -------------------------------------------------------------- */
+
+  const handleReassign = useCallback(async (taskId, newEmployeeId) => {
+    setReassignLoading(true);
+    try {
+      await taskApi.reassignTask(taskId, newEmployeeId);
+      toast.success("Task reassigned successfully");
+      setReassignTask(null);
+      fetchTasks();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to reassign task");
+    } finally {
+      setReassignLoading(false);
+    }
+  }, [fetchTasks]);
+
+  const activeEmployees = useMemo(
+    () => employees.filter((e) => e.status === "active"),
+    [employees],
+  );
+
 
   const filtered = useMemo(() => {
     if (statusFilter === "all") {
@@ -1792,6 +1832,19 @@ export default function Tasks() {
                                 {task.employee.designation}
                               </div>
                             )}
+
+                            {task.employee?.status === "inactive" && task.status !== "completed" && (
+                              <div className="mt-1">
+                                <InactiveEmployeeBadge />
+                                <button
+                                  onClick={() => setReassignTask(task)}
+                                  className="inline-flex items-center gap-1 text-[10px] font-semibold mt-1 px-2 py-0.5 rounded-md transition-colors hover:bg-[#FDECEC]"
+                                  style={{ color: "#B3261E", background: "#FEF2F2" }}
+                                >
+                                  <RefreshCw size={9} /> Reassign
+                                </button>
+                              </div>
+                            )}
                           </td>
 
                           {/* Customer */}
@@ -1884,6 +1937,87 @@ export default function Tasks() {
         employeesLoading={employeesLoading}
         onAssigned={fetchTasks}
       />
+
+      {/* Reassign Modal */}
+      {reassignTask && (
+        <div
+          className="fixed inset-0 z-50 bg-[#05282A]/55 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !reassignLoading && setReassignTask(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-6 shadow-[0_20px_50px_rgba(5,40,42,0.25)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-5">
+              <div>
+                <h2
+                  className="text-xl text-[#0F2C2E] leading-tight"
+                  style={{ fontFamily: "'Libre Baskerville', Georgia, serif" }}
+                >
+                  Reassign Task
+                </h2>
+                <p className="text-[13px] text-[#5A7A79] mt-1">
+                  {TASK_TYPE_LABEL[reassignTask.task_type] || reassignTask.task_type} task
+                  {reassignTask.order_id ? ` for Order #${reassignTask.order_id}` : ""}
+                </p>
+                <p className="text-[11px] text-[#B3261E] mt-1 font-medium">
+                  Currently assigned to: {reassignTask.employee?.name || "Unknown"} (Inactive)
+                </p>
+              </div>
+              <button
+                onClick={() => !reassignLoading && setReassignTask(null)}
+                aria-label="Close"
+                className="w-8 h-8 rounded-lg bg-[#EEF7F6] border border-[#D8ECEA] text-[#0F2C2E] flex items-center justify-center hover:bg-[#DFF3F5] transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-[13px] font-medium text-[#0F2C2E]">
+                Select Active Employee <span className="text-[#B3261E]">*</span>
+              </label>
+
+              {activeEmployees.length === 0 ? (
+                <p className="text-[13px] text-[#6B8482] bg-[#EEF7F6] rounded-lg px-3 py-2.5">
+                  No active employees available. Please activate an employee first.
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-[240px] overflow-y-auto">
+                  {activeEmployees.map((emp) => (
+                    <button
+                      key={emp.id}
+                      onClick={() => handleReassign(reassignTask.id, emp.id)}
+                      disabled={reassignLoading}
+                      className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#D8ECEA] text-left transition-all hover:border-[#028090] hover:bg-[#EEF7F6] disabled:opacity-50"
+                    >
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                        style={{ background: "linear-gradient(135deg, #028090, #02C39A)" }}
+                      >
+                        {emp.name?.charAt(0)?.toUpperCase() || "E"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-[#0F2C2E] truncate">
+                          {emp.name}
+                        </div>
+                        {emp.designation && (
+                          <div className="text-[11px] text-[#6B8482]">
+                            {emp.designation}
+                          </div>
+                        )}
+                      </div>
+                      {reassignLoading && (
+                        <Loader2 size={14} className="animate-spin text-[#028090]" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -33,6 +33,7 @@ import attendanceRoutes from "./routes/attendance.routes.js";
 import orderRoutes from "./routes/order.routes.js";
 import customerRoutes from "./routes/customer.routes.js";
 import leaveRoutes from "./routes/leave.routes.js";
+import invoiceRoutes from "./routes/invoice.routes.js";
 
 const app = express();
 
@@ -90,6 +91,9 @@ app.use("/api/customers", customerRoutes);
 
 // Leave management
 app.use("/api/leaves", leaveRoutes);
+
+// Invoices
+app.use("/api/invoices", invoiceRoutes);
 
 app.get("/", (req, res) => {
   res.json({

@@ -15,6 +15,7 @@ import Notifications from "../pages/employee/Notifications";
 import OrdersInProcess from "../pages/employee/OrdersInProcess";
 import CompletedOrders from "../pages/employee/CompletedOrders";
 import MyComplaints from "../pages/employee/MyComplaints";
+import MyPayroll from "../pages/employee/MyPayroll";
 
 // ============================================================
 // EMPLOYEE ROUTES
@@ -116,9 +117,14 @@ const EmployeeRoute = (
 
     <Route path="complaints" element={<MyComplaints />} />
 
+
     {/* ========================================================
         PROFILE
        ======================================================== */}
+
+
+    <Route path="payroll" element={<MyPayroll />} />
+    <Route path="payroll/:id" element={<MyPayroll />} />
 
     <Route path="profile" element={<MyProfile />} />
 

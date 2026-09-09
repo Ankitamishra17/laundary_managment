@@ -439,9 +439,13 @@ export const getAllTasks = async (req, res) => {
           model: Employee,
           as: "employee",
 
+
           attributes: ["id", "name", "email", "designation", "shop_id"],
 
           required: false,
+
+          attributes: ["id", "name", "email", "designation", "shop_id", "status"],
+
         },
 
         {
@@ -1536,13 +1540,38 @@ export const getTaskById = async (req, res) => {
 
 ============================================================ */
 
+/* ============================================================
+   EMPLOYEE — UPDATE TASK STATUS
+   PATCH /api/tasks/:id/status
+
+   BODY:
+   {
+     "status": "in_progress"
+   }
+
+   OR
+
+   {
+     "status": "completed"
+   }
+   ============================================================ */
+
 export const updateTaskStatus = async (req, res) => {
   try {
+    /* --------------------------------------------------------
+       EMPLOYEE CONTEXT
+    -------------------------------------------------------- */
+
     const context = requireEmployeeContext(req, res);
 
     if (!context) return;
 
     const { shopId, employeeId } = context;
+
+    /* --------------------------------------------------------
+       SHOP
+    -------------------------------------------------------- */
+
     const shop = await Shop.findByPk(shopId, {
       attributes: ["id", "slug"],
     });
@@ -1556,11 +1585,18 @@ export const updateTaskStatus = async (req, res) => {
 
     const shopSlug = shop.slug;
 
-    const taskId = Number(req.params.id);
+    /* --------------------------------------------------------
+       REQUEST DATA
+    -------------------------------------------------------- */
 
+    const taskId = Number(req.params.id);
     const { status } = req.body;
 
-    const allowedStatuses = ["pending", "in_progress", "completed"];
+    const allowedStatuses = [
+      "pending",
+      "in_progress",
+      "completed",
+    ];
 
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({
@@ -1568,6 +1604,10 @@ export const updateTaskStatus = async (req, res) => {
         message: "Invalid status value.",
       });
     }
+
+    /* --------------------------------------------------------
+       GET TASK
+    -------------------------------------------------------- */
 
     const task = await Task.findOne({
       where: {
@@ -1580,16 +1620,13 @@ export const updateTaskStatus = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-
           attributes: ["id", "name", "shop_id"],
-
           required: false,
         },
 
         {
           model: Order,
           as: "order",
-
           attributes: [
             "id",
             "status",
@@ -1604,9 +1641,12 @@ export const updateTaskStatus = async (req, res) => {
             {
               model: Customer,
               as: "customer",
-
-              attributes: ["id", "userId", "name", "shopId"],
-
+              attributes: [
+                "id",
+                "userId",
+                "name",
+                "shopId",
+              ],
               required: false,
             },
           ],
@@ -1625,14 +1665,20 @@ export const updateTaskStatus = async (req, res) => {
        TENANT VALIDATION
     -------------------------------------------------------- */
 
-    if (task.employee && Number(task.employee.shop_id) !== shopId) {
+    if (
+      task.employee &&
+      Number(task.employee.shop_id) !== shopId
+    ) {
       return res.status(403).json({
         success: false,
         message: "Task employee does not belong to this shop.",
       });
     }
 
-    if (task.order && Number(task.order.shop_id) !== shopId) {
+    if (
+      task.order &&
+      Number(task.order.shop_id) !== shopId
+    ) {
       return res.status(403).json({
         success: false,
         message: "Task order does not belong to this shop.",
@@ -1665,25 +1711,39 @@ export const updateTaskStatus = async (req, res) => {
     let allOrderTasks = [];
 
     if (task.order_id) {
-      allOrderTasks = await getOrderTasksSorted(task.order_id, shopId);
+      allOrderTasks = await getOrderTasksSorted(
+        task.order_id,
+        shopId
+      );
     }
 
     /* --------------------------------------------------------
        SEQUENCE VALIDATION
     -------------------------------------------------------- */
 
-    if (task.order_id && (status === "in_progress" || status === "completed")) {
-      const canStart = previousTasksCompleted(task.task_type, allOrderTasks);
+    if (
+      task.order_id &&
+      (status === "in_progress" || status === "completed")
+    ) {
+      const canStart = previousTasksCompleted(
+        task.task_type,
+        allOrderTasks
+      );
 
       if (!canStart) {
         const blockingTasks = allOrderTasks
           .filter((item) => {
-            const itemSequence = getTaskSequence(item.task_type);
+            const itemSequence = getTaskSequence(
+              item.task_type
+            );
 
-            const currentSequence = getTaskSequence(task.task_type);
+            const currentSequence = getTaskSequence(
+              task.task_type
+            );
 
             return (
-              itemSequence < currentSequence && item.status !== "completed"
+              itemSequence < currentSequence &&
+              item.status !== "completed"
             );
           })
           .map((item) => getTaskLabel(item.task_type));
@@ -1706,9 +1766,7 @@ export const updateTaskStatus = async (req, res) => {
       const existingActive = await Task.findOne({
         where: {
           shop_id: shopId,
-
           employee_id: employeeId,
-
           status: "in_progress",
 
           id: {
@@ -1721,13 +1779,14 @@ export const updateTaskStatus = async (req, res) => {
         /*
          * Pause current active task.
          */
+
         existingActive.status = "pending";
 
         await existingActive.save();
 
         try {
           await createNotification({
-             shopId,
+            shopId,
             employeeId,
 
             taskId: existingActive.id,
@@ -1736,16 +1795,20 @@ export const updateTaskStatus = async (req, res) => {
 
             title: "Task paused",
 
-            message: `Your ${getTaskLabel(
-              existingActive.task_type,
-            )} task has been paused because another task was started.`,
+            message:
+              `Your ${getTaskLabel(
+                existingActive.task_type
+              )} task has been paused because another task was started.`,
 
             type: "task",
 
             link: `/${shopSlug}/employee/mytask`,
           });
         } catch (notificationError) {
-          console.error("Pause notification error:", notificationError.message);
+          console.error(
+            "Pause notification error:",
+            notificationError.message
+          );
         }
       }
     }
@@ -1778,6 +1841,10 @@ export const updateTaskStatus = async (req, res) => {
       }
     }
 
+    /* --------------------------------------------------------
+       UPDATE TASK
+    -------------------------------------------------------- */
+
     task.status = status;
 
     await task.save();
@@ -1787,7 +1854,10 @@ export const updateTaskStatus = async (req, res) => {
     -------------------------------------------------------- */
 
     if (task.order_id) {
-      allOrderTasks = await getOrderTasksSorted(task.order_id, shopId);
+      allOrderTasks = await getOrderTasksSorted(
+        task.order_id,
+        shopId
+      );
     }
 
     /* --------------------------------------------------------
@@ -1797,17 +1867,17 @@ export const updateTaskStatus = async (req, res) => {
     let nextTask = null;
 
     if (status === "completed" && task.order_id) {
-      nextTask = findNextTask(task.task_type, allOrderTasks);
+      nextTask = findNextTask(
+        task.task_type,
+        allOrderTasks
+      );
     }
 
     /* --------------------------------------------------------
-       DO NOT AUTOMATICALLY START DIFFERENT EMPLOYEE
-       TASK.
+       DO NOT AUTOMATICALLY START DIFFERENT EMPLOYEE TASK
     -------------------------------------------------------- */
 
     /*
-     * Important:
-     *
      * If Employee A completes pickup
      * and Employee B owns wash,
      *
@@ -1821,7 +1891,10 @@ export const updateTaskStatus = async (req, res) => {
     let nextTaskReady = false;
 
     if (nextTask) {
-      nextTaskReady = isTaskReady(nextTask, allOrderTasks);
+      nextTaskReady = isTaskReady(
+        nextTask,
+        allOrderTasks
+      );
     }
 
     /* --------------------------------------------------------
@@ -1841,9 +1914,12 @@ export const updateTaskStatus = async (req, res) => {
           {
             model: Customer,
             as: "customer",
-
-            attributes: ["id", "userId", "name", "shopId"],
-
+            attributes: [
+              "id",
+              "userId",
+              "name",
+              "shopId",
+            ],
             required: false,
           },
         ],
@@ -1851,23 +1927,35 @@ export const updateTaskStatus = async (req, res) => {
     }
 
     const previousOrderStatus =
-      freshOrder?.status || task.order?.status || null;
+      freshOrder?.status ||
+      task.order?.status ||
+      null;
 
-    if (freshOrder && freshOrder.status !== "cancelled") {
-      const calculatedStatus = calculateOrderStatus(
-        allOrderTasks,
-        freshOrder.status,
-      );
+    if (
+      freshOrder &&
+      freshOrder.status !== "cancelled"
+    ) {
+      const calculatedStatus =
+        calculateOrderStatus(
+          allOrderTasks,
+          freshOrder.status
+        );
 
-      const currentRank = ORDER_STATUS_RANK[freshOrder.status] ?? 0;
+      const currentRank =
+        ORDER_STATUS_RANK[freshOrder.status] ?? 0;
 
-      const calculatedRank = ORDER_STATUS_RANK[calculatedStatus] ?? 0;
+      const calculatedRank =
+        ORDER_STATUS_RANK[calculatedStatus] ?? 0;
 
-      if (calculatedStatus && calculatedRank > currentRank) {
+      if (
+        calculatedStatus &&
+        calculatedRank > currentRank
+      ) {
         freshOrder.status = calculatedStatus;
 
         if (calculatedStatus === "delivered") {
-          freshOrder.delivery_time = new Date().toISOString();
+          freshOrder.delivery_time =
+            new Date().toISOString();
         }
 
         await freshOrder.save();
@@ -1878,9 +1966,13 @@ export const updateTaskStatus = async (req, res) => {
        ADMIN NOTIFICATION
     -------------------------------------------------------- */
 
-    const taskLabel = getTaskLabel(task.task_type);
+    const taskLabel = getTaskLabel(
+      task.task_type
+    );
 
-    const employeeName = task.employee?.name || "An employee";
+    const employeeName =
+      task.employee?.name ||
+      "An employee";
 
     const actionWord =
       status === "completed"
@@ -1889,7 +1981,9 @@ export const updateTaskStatus = async (req, res) => {
           ? "started"
           : "updated";
 
-    const orderReference = task.order_id ? ` for order #${task.order_id}` : "";
+    const orderReference = task.order_id
+      ? ` for order #${task.order_id}`
+      : "";
 
     try {
       await notifyShopAdmins(shopId, {
@@ -1906,7 +2000,7 @@ export const updateTaskStatus = async (req, res) => {
     } catch (notificationError) {
       console.error(
         "Admin task notification error:",
-        notificationError.message,
+        notificationError.message
       );
     }
 
@@ -1920,23 +2014,31 @@ export const updateTaskStatus = async (req, res) => {
       nextTask.employee_id &&
       Number(nextTask.employee_id) !== employeeId
     ) {
-      const completedLabel = getTaskLabel(task.task_type);
+      const completedLabel =
+        getTaskLabel(task.task_type);
 
-      const nextLabel = getTaskLabel(nextTask.task_type);
+      const nextLabel =
+        getTaskLabel(nextTask.task_type);
 
       const customerName =
-        task.customer_name || task.order?.customer?.name || "the customer";
+        task.customer_name ||
+        task.order?.customer?.name ||
+        "the customer";
 
       try {
         await createNotification({
-           shopId,
-          employeeId: Number(nextTask.employee_id),
+          shopId,
+
+          employeeId:
+            Number(nextTask.employee_id),
 
           taskId: nextTask.id,
 
           orderId: task.order_id,
 
-          title: `${completedLabel} completed — ${nextLabel} is ready`,
+          title:
+            `${completedLabel} completed — ` +
+            `${nextLabel} is ready`,
 
           message:
             `${completedLabel} completed by ` +
@@ -1951,7 +2053,7 @@ export const updateTaskStatus = async (req, res) => {
       } catch (notificationError) {
         console.error(
           "Next employee notification error:",
-          notificationError.message,
+          notificationError.message
         );
       }
     }
@@ -1960,51 +2062,74 @@ export const updateTaskStatus = async (req, res) => {
        CUSTOMER NOTIFICATION
     -------------------------------------------------------- */
 
-    const effectiveOrder = freshOrder || task.order;
+    const effectiveOrder =
+      freshOrder || task.order;
 
-    if (effectiveOrder && effectiveOrder.customer) {
-      const currentOrderStatus = effectiveOrder.status;
+    if (
+      effectiveOrder &&
+      effectiveOrder.customer
+    ) {
+      const currentOrderStatus =
+        effectiveOrder.status;
 
-      const orderId = effectiveOrder.id;
+      const orderId =
+        effectiveOrder.id;
 
       try {
-        /*
-         * Delivery completed
-         */
-        if (task.task_type === "delivery" && status === "completed") {
-          await notifyCustomer(effectiveOrder.customer, {
-            title: "Order delivered",
+        /* DELIVERY COMPLETED */
 
-            message: `Your order #${orderId} has been delivered successfully.`,
+        if (
+          task.task_type === "delivery" &&
+          status === "completed"
+        ) {
+          await notifyCustomer(
+            effectiveOrder.customer,
+            {
+              title: "Order delivered",
 
-            type: "order",
+              message:
+                `Your order #${orderId} ` +
+                `has been delivered successfully.`,
 
-            orderId,
+              type: "order",
 
-            link: "/customer/reviews",
-          });
-        } else if (previousOrderStatus !== currentOrderStatus) {
-          /*
-           * Order status changed
-           */
-          await notifyCustomer(effectiveOrder.customer, {
-            title: "Order updated",
+              orderId,
 
-            message:
-              `Your order #${orderId} is now ` +
-              `${getStatusLabel(currentOrderStatus)}.`,
+              link: "/customer/reviews",
+            }
+          );
+        }
 
-            type: "order",
+        /* ORDER STATUS CHANGED */
 
-            orderId,
+        else if (
+          previousOrderStatus !==
+          currentOrderStatus
+        ) {
+          await notifyCustomer(
+            effectiveOrder.customer,
+            {
+              title: "Order updated",
 
-            link: `/customer/orders/${orderId}`,
-          });
+              message:
+                `Your order #${orderId} ` +
+                `is now ${getStatusLabel(
+                  currentOrderStatus
+                )}.`,
+
+              type: "order",
+
+              orderId,
+
+              link:
+                `/customer/orders/${orderId}`,
+            }
+          );
         }
       } catch (notificationError) {
         console.error(
           "Customer task notification error:",
-          notificationError.message,
+          notificationError.message
         );
       }
     }
@@ -2013,44 +2138,34 @@ export const updateTaskStatus = async (req, res) => {
        RESPONSE
     -------------------------------------------------------- */
 
-    const responseTask = task.toJSON();
-
-    responseTask.isReady = isTaskReady(task, allOrderTasks);
-
-    if (nextTask) {
-      responseTask.nextTask = {
-        id: nextTask.id,
-
-        task_type: nextTask.task_type,
-
-        task_label: getTaskLabel(nextTask.task_type),
-
-        employee_id: nextTask.employee_id,
-
-        status: nextTask.status,
-
-        isReady: nextTaskReady,
-      };
-    } else {
-      responseTask.nextTask = null;
-    }
-
     return res.status(200).json({
       success: true,
 
-      message: "Task status updated successfully.",
+      message:
+        "Task status updated successfully.",
 
-      data: responseTask,
+      data: {
+        task,
+        nextTask,
+        nextTaskReady,
+        order: freshOrder,
+      },
     });
   } catch (error) {
-    console.error("Update Task Status Error:", error);
+    console.error(
+      "Update Task Status Error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Internal Server Error",
+      error: error.message,
     });
   }
 };
+
+    
 
 /* ============================================================
    EMPLOYEE — UPDATE NOTES

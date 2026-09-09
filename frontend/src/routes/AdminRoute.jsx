@@ -39,6 +39,7 @@ import Complaints from "../pages/admin/Complaints";
 import LeaveReview from "../pages/admin/LeaveReview";
 import Settings from "../pages/admin/Settings";
 import Profile from "../pages/admin/Profile";
+import Invoices from "../pages/admin/Invoices";
 
 // =====================================================
 // ADMIN ROUTES
@@ -132,6 +133,12 @@ const AdminRoute = (
     <Route path="reviews" element={<Reviews />} />
     <Route path="complaints" element={<Complaints />} />
     <Route path="leaves" element={<LeaveReview />} />
+
+    {/* =================================================
+        INVOICES
+    ================================================= */}
+
+    <Route path="invoices" element={<Invoices />} />
 
     {/* =================================================
         SETTINGS

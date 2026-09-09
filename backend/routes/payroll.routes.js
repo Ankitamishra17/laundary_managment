@@ -5,6 +5,9 @@ import {
   getPayrolls,
   getPayrollById,
   getEmployeePayrolls,
+  getMyPayrolls,
+  getMyPayrollById,
+  markPayrollPaid,
   updatePayroll,
   cancelPayroll,
 } from "../controllers/payroll.controller.js";
@@ -20,6 +23,18 @@ const router = express.Router();
 // =====================================================
 
 router.get("/", protect, allowRoles("admin", "super_admin"), getPayrolls);
+
+// =====================================================
+// GET MY PAYROLLS (Employee)
+// GET /api/payroll/my
+// =====================================================
+router.get("/my", protect, allowRoles("employee"), getMyPayrolls);
+
+// =====================================================
+// GET MY PAYROLL BY ID (Employee)
+// GET /api/payroll/my/:id
+// =====================================================
+router.get("/my/:id", protect, allowRoles("employee"), getMyPayrollById);
 
 // =====================================================
 // CREATE PAYROLL
@@ -54,6 +69,17 @@ router.patch(
   protect,
   allowRoles("admin", "super_admin"),
   cancelPayroll,
+);
+
+// =====================================================
+// MARK PAYROLL AS PAID
+// PATCH /api/payroll/:id/mark-paid
+// =====================================================
+router.patch(
+  "/:id/mark-paid",
+  protect,
+  allowRoles("admin", "super_admin"),
+  markPayrollPaid
 );
 
 // =====================================================

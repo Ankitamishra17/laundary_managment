@@ -66,3 +66,33 @@ export const cancelPayroll = async (id, data = {}) => {
 
   return response.data;
 };
+
+// ==========================================
+// GET MY PAYROLLS (Employee)
+// GET /api/payroll/my
+// ==========================================
+
+export const getMyPayrolls = async () => {
+  const response = await api.get("/payroll/my");
+  return response.data;
+};
+
+// ==========================================
+// GET MY PAYROLL BY ID (Employee)
+// GET /api/payroll/my/:id
+// ==========================================
+
+export const getMyPayrollById = async (id) => {
+  const response = await api.get(`/payroll/my/${id}`);
+  return response.data;
+};
+
+// ==========================================
+// MARK PAYROLL AS PAID (Admin)
+// PATCH /api/payroll/:id/mark-paid
+// ==========================================
+
+export const markPayrollPaid = async (id, data = {}) => {
+  const response = await api.patch(`/payroll/${id}/mark-paid`, data);
+  return response.data;
+};

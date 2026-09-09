@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -8,6 +8,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
+
 import {
   ClipboardList,
   IndianRupee,
@@ -15,26 +16,19 @@ import {
   UserCog,
   Clock,
   Truck,
-  Package,
   UserCheck,
   UserX,
   AlarmClock,
-  Sparkles,
-  Receipt,
   TrendingUp,
   ArrowUpRight,
+  Receipt,
 } from "lucide-react";
+
 import { useAuth } from "../../context/AuthContext";
-import { getShopOrders, getOrderStats } from "../../api/orderApi";
-import { getShopCustomers } from "../../api/customerApi";
-import { taskApi } from "../../api/taskApi";
-import { useEmployees } from "../../hooks/useEmployees";
-import { formatINR } from "../../utils/orderStatus";
 import { getAdminDashboard } from "../../api/adminDashboardApi";
 
 const colors = {
   bgDark: "#05282A",
-  panelDark: "#0B3B3E",
   primaryTeal: "#028090",
   seafoam: "#00A896",
   mint: "#02C39A",
@@ -60,29 +54,16 @@ const formatCurrency = (value) => {
 };
 
 // =====================================================
-// ORDER STATUS LABEL
-// =====================================================
-
-const ORDER_STATUS_LABEL = {
-  pending: "Pending",
-  picked_up: "Pickup",
-  processing: "Processing",
-  ready_for_delivery: "Ready",
-  out_for_delivery: "Out for Delivery",
-  delivered: "Delivered",
-  cancelled: "Cancelled",
-};
-
-// =====================================================
 // STATUS STYLES
 // =====================================================
 
 const statusStyles = {
   Pending: { bg: "#D4A0171F", text: "#B8791F" },
+  New: { bg: "#D4A0171F", text: "#B8791F" },
   Pickup: { bg: "#D4A0171F", text: "#B8791F" },
   Processing: { bg: "#00A8961F", text: "#00A896" },
   Ready: { bg: "#02C39A1F", text: "#028090" },
-  "Out for Delivery": { bg: "#0280901F", text: "#028090" },
+  "Out For Delivery": { bg: "#0280901F", text: "#028090" },
   Delivered: { bg: "#0B6E631F", text: "#0B6E63" },
   Cancelled: { bg: "#E0645C1F", text: "#E0645C" },
 };
@@ -93,7 +74,8 @@ const statusStyles = {
 
 const formatStatus = (status) => {
   if (!status) return "Pending";
-  return status
+
+  return String(status)
     .replace(/_/g, " ")
     .toLowerCase()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -105,12 +87,12 @@ const formatStatus = (status) => {
 
 const Badge = ({ status }) => {
   const formattedStatus = formatStatus(status);
-  const s = statusStyles[formattedStatus] || statusStyles.Processing;
+  const style = statusStyles[formattedStatus] || statusStyles.Processing;
 
   return (
     <span
       className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium"
-      style={{ backgroundColor: s.bg, color: s.text }}
+      style={{ backgroundColor: style.bg, color: style.text }}
     >
       {formattedStatus}
     </span>
@@ -124,7 +106,10 @@ const Badge = ({ status }) => {
 const CardShell = ({ children, className = "" }) => (
   <div
     className={`rounded-2xl border p-5 sm:p-6 ${className}`}
-    style={{ backgroundColor: colors.bgLight, borderColor: colors.cardBorder }}
+    style={{
+      backgroundColor: colors.bgLight,
+      borderColor: colors.cardBorder,
+    }}
   >
     {children}
   </div>
@@ -135,10 +120,13 @@ const CardShell = ({ children, className = "" }) => (
 // =====================================================
 
 const SectionTitle = ({ children, action }) => (
-  <div className="flex items-center justify-between mb-4">
+  <div className="flex items-center justify-between gap-3 mb-4">
     <h3
       className="text-base sm:text-lg"
-      style={{ color: colors.textDark, fontFamily: "'Libre Baskerville', serif" }}
+      style={{
+        color: colors.textDark,
+        fontFamily: "'Libre Baskerville', serif",
+      }}
     >
       {children}
     </h3>
@@ -152,44 +140,37 @@ const SectionTitle = ({ children, action }) => (
 
 export default function ShopDashboard() {
   const { user } = useAuth();
-  const { employees } = useEmployees();
 
-  const [orders, setOrders] = useState([]);
-  const [orderStats, setOrderStats] = useState(null);
-  const [customers, setCustomers] = useState([]);
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState("Daily");
   const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // ===================================================
+  // FETCH DASHBOARD
+  // ===================================================
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
+    const fetchDashboard = async () => {
       try {
-        // Fetch both local data and dashboard API data in parallel
-        const [ordersRes, statsRes, customersRes, tasksData, dashRes] =
-          await Promise.allSettled([
-            getShopOrders(),
-            getOrderStats(),
-            getShopCustomers(),
-            taskApi.getAllTasks().catch(() => []),
-            getAdminDashboard(),
-          ]);
+        setLoading(true);
+        setError("");
 
-        if (cancelled) return;
+        const response = await getAdminDashboard();
+        console.log("Admin Dashboard Response:", response);
 
-        setOrders(ordersRes.status === "fulfilled" ? ordersRes.value?.data || [] : []);
-        setOrderStats(statsRes.status === "fulfilled" ? statsRes.value?.data || null : null);
-        setCustomers(customersRes.status === "fulfilled" ? customersRes.value?.data || [] : []);
-        setTasks(Array.isArray(tasksData.status === "fulfilled" ? tasksData.value : []) ? tasksData.value : []);
-        setDashboard(dashRes.status === "fulfilled" ? dashRes.value?.data || dashRes.value : null);
-      } catch (error) {
-        console.error("Dashboard load error:", error);
+        setDashboard(response?.data || response);
+      } catch (err) {
+        console.error("Dashboard Error:", err.response?.data || err.message);
+        setError(
+          err.response?.data?.message || "Failed to load dashboard data",
+        );
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
-    })();
-    return () => { cancelled = true; };
+    };
+
+    fetchDashboard();
   }, []);
 
   // ===================================================
@@ -204,40 +185,34 @@ export default function ShopDashboard() {
   });
 
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
+  const greeting =
+    hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
   const adminName = user?.name?.split(" ")[0] || "Admin";
 
   // ===================================================
-  // COMPUTED DATA
-  // ===================================================
-
-  const byStatus = {};
-  (orderStats?.byStatus || []).forEach((s) => { byStatus[s.status] = s.count; });
-
-  const inProgressCount =
-    (byStatus.picked_up || 0) +
-    (byStatus.processing || 0) +
-    (byStatus.ready_for_delivery || 0) +
-    (byStatus.out_for_delivery || 0);
-
-  const activeEmployees = employees.filter((e) => e.status === "active");
-  const employeeNameById = new Map(employees.map((e) => [e.id, e.name]));
-
-  // ===================================================
-  // STAT CARDS — combine local + dashboard data
+  // STATS
   // ===================================================
 
   const stats = [
     {
+<<<<<<< HEAD
       label: "Total Orders",
       value: dashboard?.orders?.total ?? orderStats?.totalOrders ?? orders.length,
       delta: dashboard?.summary?.todayOrders
         ? `+${dashboard.summary.todayOrders} today`
         : `${byStatus.pending || 0} pending`,
+=======
+      label: "Today's Orders",
+      value: dashboard?.summary?.todayOrders || 0,
+      delta: dashboard?.summary?.todayOrders
+        ? `+${dashboard.summary.todayOrders}`
+        : "0",
+>>>>>>> origin/amisha
       icon: ClipboardList,
       color: colors.primaryTeal,
     },
     {
+<<<<<<< HEAD
       label: "Revenue",
       value: formatINR(
         dashboard?.summary?.totalRevenue ||
@@ -246,154 +221,152 @@ export default function ShopDashboard() {
       delta: dashboard?.summary?.todayRevenue
         ? `+${formatINR(dashboard.summary.todayRevenue)} today`
         : `${orders.length} orders`,
+=======
+      label: "Total Revenue",
+      value: formatCurrency(dashboard?.summary?.totalRevenue || 0),
+      delta: dashboard?.summary?.todayRevenue
+        ? `Today: ${formatCurrency(dashboard.summary.todayRevenue)}`
+        : "₹0 today",
+>>>>>>> origin/amisha
       icon: IndianRupee,
       color: colors.mint,
     },
     {
       label: "Customers",
+<<<<<<< HEAD
       value: dashboard?.customers?.total ?? customers.length,
       delta: dashboard?.customers?.newToday
         ? `+${dashboard.customers.newToday} today`
         : `${customers.filter((c) => c.city).length} with city`,
+=======
+      value: dashboard?.customers?.total || 0,
+      delta: dashboard?.customers?.newToday
+        ? `+${dashboard.customers.newToday}`
+        : "0",
+>>>>>>> origin/amisha
       icon: Users,
       color: colors.seafoam,
     },
     {
       label: "Employees",
+<<<<<<< HEAD
       value: dashboard?.business?.totalEmployees ?? employees.length,
       delta: `${dashboard?.business?.presentToday ?? activeEmployees.length} present`,
+=======
+      value: dashboard?.business?.totalEmployees || 0,
+      delta: `${dashboard?.business?.presentToday || 0} present`,
+>>>>>>> origin/amisha
       icon: UserCog,
       color: colors.primaryTeal,
     },
   ];
 
   // ===================================================
-  // ORDER STATUS DISTRIBUTION
+  // ORDER STATUS
   // ===================================================
 
   const orderStatus = [
+<<<<<<< HEAD
     { label: "Pending", count: (dashboard?.orders?.pending ?? byStatus.pending) || 0, color: colors.amber },
     { label: "Processing", count: dashboard?.orders?.processing ?? inProgressCount, color: colors.seafoam },
     { label: "Ready", count: (dashboard?.orders?.ready ?? byStatus.ready_for_delivery) || 0, color: colors.mint },
     { label: "Delivered", count: (dashboard?.orders?.delivered ?? byStatus.delivered) || 0, color: "#0B6E63" },
     { label: "Cancelled", count: (dashboard?.orders?.cancelled ?? byStatus.cancelled) || 0, color: colors.danger },
+=======
+    {
+      label: "New",
+      count: Number(dashboard?.orders?.pending || 0),
+      color: colors.primaryTeal,
+    },
+    {
+      label: "Processing",
+      count: Number(dashboard?.orders?.processing || 0),
+      color: colors.seafoam,
+    },
+    {
+      label: "Ready",
+      count: Number(dashboard?.orders?.ready || 0),
+      color: colors.mint,
+    },
+    {
+      label: "Delivered",
+      count: Number(dashboard?.orders?.delivered || 0),
+      color: "#0B6E63",
+    },
+    {
+      label: "Cancelled",
+      count: Number(dashboard?.orders?.cancelled || 0),
+      color: colors.danger,
+    },
+>>>>>>> origin/amisha
   ];
-  const maxStatus = Math.max(1, ...orderStatus.map((s) => s.count));
+
+  const maxStatus = Math.max(
+    ...orderStatus.map((item) => Number(item.count) || 0),
+    1,
+  );
 
   // ===================================================
-  // RECENT ORDERS
+  // DATA
   // ===================================================
 
-  const recentOrders = (dashboard?.recentOrders || orders).slice(0, 5).map((o) => ({
-    id: o.id,
-    customer: o.customer?.name || o.customerName || "—",
-    employee: o.employee?.name || o.employeeName || employeeNameById.get(o.employee_id) || "—",
-    amount: formatCurrency(o.total_amount || o.totalAmount || o.amount || 0),
-    status: ORDER_STATUS_LABEL[o.status] || o.status,
-  }));
+  const recentOrders = dashboard?.recentOrders || [];
+  const employeeTasks = dashboard?.employeeTasks || [];
+  const pickups = dashboard?.pickups || [];
+  const deliveries = dashboard?.deliveries || [];
+  const recentPayments = dashboard?.recentTransactions || [];
 
-  // ===================================================
-  // EMPLOYEE TASKS
-  // ===================================================
-
-  const employeeTasks = (dashboard?.employeeTasks ||
-    employees
-      .map((e) => ({
-        name: e.name,
-        orders: tasks.filter((t) => t.employee_id === e.id && t.status !== "completed").length,
-      }))
-      .filter((e) => e.orders > 0)
-      .sort((a, b) => b.orders - a.orders)
-  ).slice(0, 4);
-  const maxTasks = Math.max(1, ...employeeTasks.map((e) => Number(e.orders) || 0));
-
-  // ===================================================
-  // PICKUPS / DELIVERIES
-  // ===================================================
-
-  const pickups = dashboard?.pickups ||
-    orders.filter((o) => o.status === "pending").slice(0, 4).map((o) => ({
-      time: o.pickup_time || "—",
-      customer: o.customer?.name || o.customerName || `#${o.id}`,
-    }));
-
-  const deliveries = dashboard?.deliveries ||
-    orders.filter((o) => o.status === "ready_for_delivery" || o.status === "out_for_delivery")
-      .slice(0, 4)
-      .map((o) => ({
-        time: o.delivery_date
-          ? new Date(o.delivery_date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-          : "—",
-        customer: o.customer?.name || o.customerName || `#${o.id}`,
-      }));
-
-  // ===================================================
-  // LOW INVENTORY
-  // ===================================================
-
-  const inventory = dashboard?.lowStockItems || dashboard?.lowInventory || [];
+  const maxTasks = Math.max(
+    ...employeeTasks.map((item) => Number(item.orders) || 0),
+    1,
+  );
 
   // ===================================================
   // ATTENDANCE
   // ===================================================
 
-  const attendance = dashboard?.business
-    ? [
-        { label: "Present", value: dashboard.business.presentToday || 0, icon: UserCheck, color: colors.mint },
-        { label: "Absent", value: dashboard.business.absentToday || 0, icon: UserX, color: colors.danger },
-        { label: "Employees", value: dashboard.business.totalEmployees || 0, icon: UserCog, color: colors.primaryTeal },
-      ]
-    : [
-        { label: "Active", value: activeEmployees.length, icon: UserCheck, color: colors.mint },
-        { label: "Inactive", value: employees.length - activeEmployees.length, icon: UserX, color: colors.danger },
-        { label: "With Tasks", value: employeeTasks.length, icon: AlarmClock, color: colors.amber },
-      ];
+  const attendance = [
+    {
+      label: "Present",
+      value: dashboard?.attendance?.present || 0,
+      icon: UserCheck,
+      color: colors.mint,
+    },
+    {
+      label: "Absent",
+      value: dashboard?.attendance?.absent || 0,
+      icon: UserX,
+      color: colors.danger,
+    },
+    {
+      label: "Late",
+      value: dashboard?.attendance?.late || 0,
+      icon: AlarmClock,
+      color: colors.amber,
+    },
+  ];
 
   // ===================================================
-  // REVENUE DATA
+  // REVENUE
   // ===================================================
 
-  const revenueData = useMemo(() => {
-    // If dashboard API provides revenue data, use it
-    if (dashboard?.revenue?.[period]) return dashboard.revenue[period];
+  const revenueData = {
+    Daily: dashboard?.revenue?.daily || [],
+    Weekly: dashboard?.revenue?.weekly || [],
+    Monthly: dashboard?.revenue?.monthly || [],
+  };
 
-    // Otherwise compute from orders
-    const days = [];
-    const now = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(now.getDate() - i);
-      d.setHours(0, 0, 0, 0);
-      days.push({ key: d.toDateString(), label: d.toLocaleDateString("en-US", { weekday: "short" }), value: 0 });
-    }
-    const byKey = new Map(days.map((d) => [d.key, d]));
-    orders.forEach((o) => {
-      if (o.status === "cancelled") return;
-      const d = new Date(o.createdAt);
-      d.setHours(0, 0, 0, 0);
-      const bucket = byKey.get(d.toDateString());
-      if (bucket) bucket.value += Number(o.total_amount) || 0;
-    });
-    return days.map(({ label, value }) => ({ label, value }));
-  }, [orders, dashboard, period]);
+  // ===================================================
+  // LOW INVENTORY
+  // ===================================================
+
+  const inventory = dashboard?.lowStockItems || [];
 
   // ===================================================
   // TOP SERVICES
   // ===================================================
 
-  const topServices = dashboard?.topServices || dashboard?.charts?.topServices || [];
-
-  // ===================================================
-  // RECENT PAYMENTS
-  // ===================================================
-
-  const recentPayments = dashboard?.recentPayments ||
-    dashboard?.recentTransactions ||
-    orders.slice(0, 4).map((o) => ({
-      invoice: `ORD-${o.id}`,
-      customer: o.customer?.name || "—",
-      amount: formatCurrency(o.total_amount || 0),
-    }));
+  const topServices = dashboard?.topServices || [];
 
   // ===================================================
   // LOADING
@@ -401,10 +374,22 @@ export default function ShopDashboard() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <div className="flex min-h-[400px] items-center justify-center">
         <div className="text-sm" style={{ color: colors.textMuted }}>
           Loading dashboard...
         </div>
+      </div>
+    );
+  }
+
+  // ===================================================
+  // ERROR
+  // ===================================================
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+        <p className="text-sm text-red-600">{error}</p>
       </div>
     );
   }
@@ -415,52 +400,92 @@ export default function ShopDashboard() {
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap');
-        .row-hover:hover { background-color: ${colors.cardTint}; }
-        .period-btn { transition: background-color 0.15s ease, color 0.15s ease; }
-      `}</style>
-
-      {/* GREETING HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
         <h2
           className="text-2xl sm:text-3xl flex items-center gap-2"
-          style={{ color: colors.textDark, fontFamily: "'Libre Baskerville', serif" }}
+          style={{
+            color: colors.textDark,
+            fontFamily: "'Libre Baskerville', serif",
+          }}
         >
-          {greeting}, {adminName} <span>👋</span>
+          {greeting}, {adminName}
+          <span>👋</span>
         </h2>
-        <span className="text-sm" style={{ color: colors.textMuted }}>{today}</span>
+        <span className="text-sm" style={{ color: colors.textMuted }}>
+          {today}
+        </span>
       </div>
 
       {/* STAT CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-        {stats.map((stat) => (
-          <CardShell key={stat.label}>
-            <div className="flex items-center justify-between">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: `${stat.color}1F` }}>
-                <stat.icon size={18} color={stat.color} />
+        {stats.map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <CardShell key={stat.label}>
+              <div className="flex items-center justify-between">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: `${stat.color}1F` }}
+                >
+                  <Icon size={18} color={stat.color} />
+                </div>
+                <span
+                  className="text-xs font-medium"
+                  style={{ color: colors.seafoam }}
+                >
+                  {stat.delta}
+                </span>
               </div>
-              <span className="text-xs font-medium" style={{ color: colors.seafoam }}>{stat.delta}</span>
-            </div>
-            <div className="mt-4 text-2xl sm:text-3xl" style={{ color: colors.textDark, fontFamily: "'Libre Baskerville', serif" }}>
-              {stat.value}
-            </div>
-            <div className="mt-1 text-xs sm:text-sm" style={{ color: colors.textMuted }}>{stat.label}</div>
-          </CardShell>
-        ))}
+              <div
+                className="mt-4 text-2xl sm:text-3xl"
+                style={{
+                  color: colors.textDark,
+                  fontFamily: "'Libre Baskerville', serif",
+                }}
+              >
+                {stat.value}
+              </div>
+              <div
+                className="mt-1 text-xs sm:text-sm"
+                style={{ color: colors.textMuted }}
+              >
+                {stat.label}
+              </div>
+            </CardShell>
+          );
+        })}
       </div>
 
       {/* ORDER STATUS */}
       <CardShell className="mt-5">
         <SectionTitle>Order Status</SectionTitle>
         <div className="space-y-3">
-          {orderStatus.map((s) => (
-            <div key={s.label} className="flex items-center gap-4">
-              <span className="w-24 text-sm flex-shrink-0" style={{ color: colors.textDark }}>{s.label}</span>
-              <div className="flex-1 h-2.5 rounded-full" style={{ backgroundColor: colors.cardTint }}>
-                <div className="h-2.5 rounded-full transition-all" style={{ width: `${(s.count / maxStatus) * 100}%`, backgroundColor: s.color }} />
+          {orderStatus.map((item) => (
+            <div key={item.label} className="flex items-center gap-4">
+              <span
+                className="w-24 text-sm flex-shrink-0"
+                style={{ color: colors.textDark }}
+              >
+                {item.label}
+              </span>
+              <div
+                className="flex-1 h-2.5 rounded-full"
+                style={{ backgroundColor: colors.cardTint }}
+              >
+                <div
+                  className="h-2.5 rounded-full transition-all"
+                  style={{
+                    width: `${(item.count / maxStatus) * 100}%`,
+                    backgroundColor: item.color,
+                  }}
+                />
               </div>
-              <span className="w-8 text-sm text-right font-medium flex-shrink-0" style={{ color: colors.textDark }}>{s.count}</span>
+              <span
+                className="w-8 text-sm text-right font-medium"
+                style={{ color: colors.textDark }}
+              >
+                {item.count}
+              </span>
             </div>
           ))}
         </div>
@@ -470,17 +495,22 @@ export default function ShopDashboard() {
       <CardShell className="mt-5">
         <SectionTitle
           action={
-            <a href="/admin/orders" className="flex items-center gap-1 text-xs font-medium" style={{ color: colors.primaryTeal }}>
-              View all <ArrowUpRight size={13} />
+            <a
+              href="/admin/orders"
+              className="flex items-center gap-1 text-xs font-medium"
+              style={{ color: colors.primaryTeal }}
+            >
+              View all
+              <ArrowUpRight size={13} />
             </a>
           }
         >
           Recent Orders
         </SectionTitle>
-        <div className="overflow-x-auto -mx-2">
-          <table className="w-full text-sm min-w-[520px]">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
-              <tr style={{ color: colors.textMuted }} className="text-left">
+              <tr className="text-left" style={{ color: colors.textMuted }}>
                 <th className="font-medium px-2 py-2">Order ID</th>
                 <th className="font-medium px-2 py-2">Customer</th>
                 <th className="font-medium px-2 py-2">Employee</th>
@@ -489,211 +519,354 @@ export default function ShopDashboard() {
               </tr>
             </thead>
             <tbody>
-              {recentOrders.length > 0 ? (
-                recentOrders.map((o) => (
-                  <tr key={o.id} className="row-hover transition-colors" style={{ borderTop: `1px solid ${colors.cardBorder}` }}>
-                    <td className="px-2 py-3 font-medium" style={{ color: colors.textDark }}>#{o.id}</td>
-                    <td className="px-2 py-3" style={{ color: colors.textMuted }}>{o.customer}</td>
-                    <td className="px-2 py-3" style={{ color: colors.textMuted }}>{o.employee}</td>
-                    <td className="px-2 py-3" style={{ color: colors.textDark }}>{o.amount}</td>
-                    <td className="px-2 py-3"><Badge status={o.status} /></td>
+              {recentOrders.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-2 py-8 text-center"
+                    style={{ color: colors.textMuted }}
+                  >
+                    No recent orders found
+                  </td>
+                </tr>
+              ) : (
+                recentOrders.map((order, index) => (
+                  <tr
+                    key={order.id || index}
+                    className="transition-colors hover:bg-[#EEF7F6]"
+                    style={{ borderTop: `1px solid ${colors.cardBorder}` }}
+                  >
+                    <td
+                      className="px-2 py-3 font-medium"
+                      style={{ color: colors.textDark }}
+                    >
+                      #{order.id}
+                    </td>
+                    <td className="px-2 py-3" style={{ color: colors.textMuted }}>
+                      {order.customer?.name ||
+                        order.customerName ||
+                        "N/A"}
+                    </td>
+                    <td className="px-2 py-3" style={{ color: colors.textMuted }}>
+                      {order.employee?.name ||
+                        order.employeeName ||
+                        "Unassigned"}
+                    </td>
+                    <td
+                      className="px-2 py-3"
+                      style={{ color: colors.textDark }}
+                    >
+                      {formatCurrency(
+                        order.total_amount || order.totalAmount || 0,
+                      )}
+                    </td>
+                    <td className="px-2 py-3">
+                      <Badge status={order.status} />
+                    </td>
                   </tr>
                 ))
-              ) : (
-                <tr>
-                  <td colSpan="5" className="px-2 py-8 text-center" style={{ color: colors.textMuted }}>No recent orders found</td>
-                </tr>
               )}
             </tbody>
           </table>
         </div>
       </CardShell>
 
-      {/* EMPLOYEE TASKS / PICKUPS / DELIVERIES */}
+      {/* TASKS / PICKUPS / DELIVERIES */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
-        {/* EMPLOYEE TASKS */}
         <CardShell>
           <SectionTitle>Employee Tasks</SectionTitle>
-          <div className="space-y-3">
-            {employeeTasks.length > 0 ? (
-              employeeTasks.map((e) => (
-                <div key={e.name} className="flex items-center gap-3">
-                  <span className="w-14 text-sm flex-shrink-0" style={{ color: colors.textDark }}>{e.name}</span>
-                  <div className="flex-1 h-2 rounded-full" style={{ backgroundColor: colors.cardTint }}>
-                    <div className="h-2 rounded-full" style={{ width: `${((Number(e.orders) || 0) / maxTasks) * 100}%`, backgroundColor: colors.primaryTeal }} />
+          {employeeTasks.length === 0 ? (
+            <p
+              className="text-sm py-4 text-center"
+              style={{ color: colors.textMuted }}
+            >
+              No employee tasks found
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {employeeTasks.map((employee, index) => (
+                <div
+                  key={employee.id || employee.name || index}
+                  className="flex items-center gap-3"
+                >
+                  <span
+                    className="w-20 text-sm truncate"
+                    style={{ color: colors.textDark }}
+                  >
+                    {employee.name || "Employee"}
+                  </span>
+                  <div
+                    className="flex-1 h-2 rounded-full"
+                    style={{ backgroundColor: colors.cardTint }}
+                  >
+                    <div
+                      className="h-2 rounded-full"
+                      style={{
+                        width: `${((Number(employee.orders) || 0) / maxTasks) * 100}%`,
+                        backgroundColor: colors.primaryTeal,
+                      }}
+                    />
                   </div>
-                  <span className="text-xs flex-shrink-0" style={{ color: colors.textMuted }}>{e.orders || 0} orders</span>
+                  <span className="text-xs" style={{ color: colors.textMuted }}>
+                    {employee.orders || 0} tasks
+                  </span>
                 </div>
-              ))
-            ) : (
-              <p className="text-sm text-center py-4" style={{ color: colors.textMuted }}>No employee tasks found</p>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </CardShell>
 
-        {/* PICKUPS */}
         <CardShell>
           <SectionTitle>
             <span className="flex items-center gap-2">
-              <Clock size={16} color={colors.primaryTeal} /> Today's Pickups
+              <Clock size={16} color={colors.primaryTeal} />
+              Pending Pickups
             </span>
           </SectionTitle>
-          <div className="space-y-3">
-            {pickups.length > 0 ? (
-              pickups.map((p, i) => (
-                <div key={i} className="flex items-center justify-between text-sm">
-                  <span style={{ color: colors.textDark }}>{p.customer}</span>
-                  <span style={{ color: colors.textMuted }}>{p.time}</span>
+          {pickups.length === 0 ? (
+            <p
+              className="text-sm py-4 text-center"
+              style={{ color: colors.textMuted }}
+            >
+              No pending pickups 🎉
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {pickups.map((pickup, index) => (
+                <div
+                  key={pickup.id || index}
+                  className="flex items-center justify-between text-sm gap-3"
+                >
+                  <span className="truncate" style={{ color: colors.textDark }}>
+                    {pickup.customer?.name ||
+                      pickup.customerName ||
+                      pickup.customer ||
+                      "N/A"}
+                  </span>
+                  <span
+                    className="whitespace-nowrap"
+                    style={{ color: colors.textMuted }}
+                  >
+                    {pickup.time || pickup.pickupTime || "N/A"}
+                  </span>
                 </div>
-              ))
-            ) : (
-              <p className="text-sm text-center py-4" style={{ color: colors.textMuted }}>No pickups today</p>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </CardShell>
 
-        {/* DELIVERIES */}
         <CardShell>
           <SectionTitle>
             <span className="flex items-center gap-2">
-              <Truck size={16} color={colors.seafoam} /> Today's Deliveries
+              <Truck size={16} color={colors.seafoam} />
+              Awaiting Delivery
             </span>
           </SectionTitle>
-          <div className="space-y-3">
-            {deliveries.length > 0 ? (
-              deliveries.map((d, i) => (
-                <div key={i} className="flex items-center justify-between text-sm">
-                  <span style={{ color: colors.textDark }}>{d.customer}</span>
-                  <span style={{ color: colors.textMuted }}>{d.time}</span>
+          {deliveries.length === 0 ? (
+            <p
+              className="text-sm py-4 text-center"
+              style={{ color: colors.textMuted }}
+            >
+              Nothing out for delivery right now.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {deliveries.map((delivery, index) => (
+                <div
+                  key={delivery.id || index}
+                  className="flex items-center justify-between text-sm gap-3"
+                >
+                  <span className="truncate" style={{ color: colors.textDark }}>
+                    {delivery.customer?.name ||
+                      delivery.customerName ||
+                      delivery.customer ||
+                      "N/A"}
+                  </span>
+                  <span
+                    className="whitespace-nowrap"
+                    style={{ color: colors.textMuted }}
+                  >
+                    {delivery.time || delivery.deliveryTime || "N/A"}
+                  </span>
                 </div>
-              ))
-            ) : (
-              <p className="text-sm text-center py-4" style={{ color: colors.textMuted }}>No deliveries today</p>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </CardShell>
       </div>
 
-      {/* LOW INVENTORY / ATTENDANCE */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
+      {/* LOW INVENTORY / ATTENDANCE / REVENUE */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
         {/* LOW INVENTORY */}
         <CardShell>
           <SectionTitle>
             <span className="flex items-center gap-2">
-              <Package size={16} color={colors.danger} /> Low Inventory
+              Low Stock Items
             </span>
           </SectionTitle>
-          <div className="space-y-4">
-            {inventory.length > 0 ? (
-              inventory.map((item, index) => {
-                const level = Number(item.level ?? item.stockPercentage ?? item.quantity ?? 0);
-                const maxStock = Number(item.maximumStock ?? item.quantity ?? 1);
-                const pct = Math.min((level / maxStock) * 100, 100);
-                const itemName = item.name || item.itemName || "Unknown Item";
-                const quantity = item.qty || item.quantity || item.currentStock || 0;
-
+          {inventory.length === 0 ? (
+            <p
+              className="text-sm py-4 text-center"
+              style={{ color: colors.textMuted }}
+            >
+              All stock levels are healthy
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {inventory.slice(0, 5).map((item, index) => {
+                const level =
+                  Number(item.currentStock || 0) /
+                    Math.max(Number(item.minStock || 1), 1) *
+                    100;
                 return (
                   <div key={item.id || index}>
-                    <div className="flex items-center justify-between text-sm mb-1.5">
-                      <span style={{ color: colors.textDark }}>{itemName}</span>
-                      <span className="font-medium" style={{ color: colors.danger }}>{quantity}</span>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span
+                        className="truncate"
+                        style={{ color: colors.textDark }}
+                      >
+                        {item.name}
+                      </span>
+                      <span
+                        className="font-medium"
+                        style={{ color: colors.danger }}
+                      >
+                        {item.currentStock} {item.unit || ""}
+                      </span>
                     </div>
-                    <div className="h-2 rounded-full" style={{ backgroundColor: colors.cardTint }}>
-                      <div className="h-2 rounded-full" style={{ width: `${pct}%`, backgroundColor: colors.danger }} />
+                    <div
+                      className="h-2 rounded-full"
+                      style={{ backgroundColor: colors.cardTint }}
+                    >
+                      <div
+                        className="h-2 rounded-full"
+                        style={{
+                          width: `${Math.min(level, 100)}%`,
+                          backgroundColor: colors.danger,
+                        }}
+                      />
                     </div>
                   </div>
                 );
-              })
-            ) : (
-              <p className="text-sm text-center py-4" style={{ color: colors.textMuted }}>No low inventory items</p>
-            )}
-          </div>
+              })}
+            </div>
+          )}
         </CardShell>
 
-        {/* ATTENDANCE */}
+        {/* STAFF SNAPSHOT */}
         <CardShell>
-          <SectionTitle>Attendance</SectionTitle>
+          <SectionTitle>Staff Snapshot</SectionTitle>
           <div className="grid grid-cols-3 gap-3">
-            {attendance.map((a) => (
-              <div key={a.label} className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.cardTint }}>
-                <div className="w-8 h-8 rounded-full flex items-center justify-center mx-auto mb-2" style={{ backgroundColor: `${a.color}26` }}>
-                  <a.icon size={15} color={a.color} />
+            {attendance.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.label}
+                  className="rounded-xl p-4 text-center"
+                  style={{ backgroundColor: colors.cardTint }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center mx-auto mb-2"
+                    style={{ backgroundColor: `${item.color}26` }}
+                  >
+                    <Icon size={15} color={item.color} />
+                  </div>
+                  <div
+                    className="text-xl"
+                    style={{
+                      color: colors.textDark,
+                      fontFamily: "'Libre Baskerville', serif",
+                    }}
+                  >
+                    {item.value}
+                  </div>
+                  <div
+                    className="text-xs mt-1"
+                    style={{ color: colors.textMuted }}
+                  >
+                    {item.label}
+                  </div>
                 </div>
-                <div className="text-xl" style={{ color: colors.textDark, fontFamily: "'Libre Baskerville', serif" }}>{a.value}</div>
-                <div className="text-xs mt-0.5" style={{ color: colors.textMuted }}>{a.label}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardShell>
-      </div>
 
-      {/* REVENUE / TOP SERVICES */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
         {/* REVENUE CHART */}
-        <CardShell className="lg:col-span-2">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-base sm:text-lg flex items-center gap-2" style={{ color: colors.textDark, fontFamily: "'Libre Baskerville', serif" }}>
-              <TrendingUp size={17} color={colors.primaryTeal} /> Revenue
+        <CardShell>
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <h3
+              className="text-base sm:text-lg flex items-center gap-2"
+              style={{
+                color: colors.textDark,
+                fontFamily: "'Libre Baskerville', serif",
+              }}
+            >
+              <TrendingUp size={17} color={colors.primaryTeal} />
+              Revenue
             </h3>
-            <div className="flex rounded-lg p-1" style={{ backgroundColor: colors.cardTint }}>
-              {["Daily", "Weekly", "Monthly"].map((p) => (
+            <div
+              className="flex rounded-lg p-1"
+              style={{ backgroundColor: colors.cardTint }}
+            >
+              {["Daily", "Weekly", "Monthly"].map((item) => (
                 <button
-                  key={p}
-                  onClick={() => setPeriod(p)}
-                  className="period-btn px-3 py-1 rounded-md text-xs font-medium"
+                  key={item}
+                  onClick={() => setPeriod(item)}
+                  className="px-2 sm:px-3 py-1 rounded-md text-xs font-medium transition"
                   style={{
-                    backgroundColor: period === p ? colors.primaryTeal : "transparent",
-                    color: period === p ? "#FFFFFF" : colors.textMuted,
+                    backgroundColor:
+                      period === item ? colors.primaryTeal : "transparent",
+                    color: period === item ? "#FFFFFF" : colors.textMuted,
                   }}
                 >
-                  {p}
+                  {item}
                 </button>
               ))}
             </div>
           </div>
-          <div className="h-64 sm:h-72 -ml-2 mt-4">
+
+          <div className="h-64 sm:h-72 mt-4">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={revenueData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <LineChart
+                data={revenueData[period]}
+                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+              >
                 <CartesianGrid stroke={colors.cardBorder} vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: colors.textMuted, fontSize: 12 }} axisLine={{ stroke: colors.cardBorder }} tickLine={false} />
-                <YAxis tick={{ fill: colors.textMuted, fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${v >= 1000 ? `${Math.round(v / 1000)}k` : v}`} width={48} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: colors.bgDark, border: "none", borderRadius: 10, color: "#FFFFFF" }}
-                  labelStyle={{ color: colors.mint }}
-                  formatter={(v) => [formatCurrency(v), "Revenue"]}
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: colors.textMuted, fontSize: 12 }}
+                  axisLine={{ stroke: colors.cardBorder }}
+                  tickLine={false}
                 />
-                <Line type="monotone" dataKey="value" stroke={colors.primaryTeal} strokeWidth={2.5} dot={{ r: 3, fill: colors.mint }} />
+                <YAxis
+                  tick={{ fill: colors.textMuted, fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(value) =>
+                    `₹${value >= 1000 ? `${Math.round(value / 1000)}k` : value}`
+                  }
+                  width={48}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: colors.bgDark,
+                    border: "none",
+                    borderRadius: 10,
+                    color: "#FFFFFF",
+                  }}
+                  labelStyle={{ color: colors.mint }}
+                  formatter={(value) => [formatCurrency(value), "Revenue"]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke={colors.primaryTeal}
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: colors.mint }}
+                />
               </LineChart>
             </ResponsiveContainer>
-          </div>
-        </CardShell>
-
-        {/* TOP SERVICES */}
-        <CardShell>
-          <SectionTitle>
-            <span className="flex items-center gap-2">
-              <Sparkles size={16} color={colors.mint} /> Top Services
-            </span>
-          </SectionTitle>
-          <div className="space-y-4">
-            {topServices.length > 0 ? (
-              topServices.map((s, i) => {
-                const percentage = Number(s.pct ?? s.percentage ?? 0);
-                return (
-                  <div key={s.id || s.name || i}>
-                    <div className="flex items-center justify-between text-sm mb-1.5">
-                      <span style={{ color: colors.textDark }}>{i + 1}. {s.name || s.serviceName || "Unknown"}</span>
-                      <span style={{ color: colors.textMuted }}>{percentage}%</span>
-                    </div>
-                    <div className="h-2 rounded-full" style={{ backgroundColor: colors.cardTint }}>
-                      <div className="h-2 rounded-full" style={{ width: `${Math.min(percentage, 100)}%`, backgroundColor: colors.seafoam }} />
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <p className="text-sm text-center py-4" style={{ color: colors.textMuted }}>No service data found</p>
-            )}
           </div>
         </CardShell>
       </div>
@@ -702,35 +875,65 @@ export default function ShopDashboard() {
       <CardShell className="mt-5">
         <SectionTitle
           action={
-            <a href="/admin/payments" className="flex items-center gap-2 text-xs font-medium" style={{ color: colors.primaryTeal }}>
-              <Receipt size={14} /> View all
+            <a
+              href="/admin/payments"
+              className="flex items-center gap-2 text-xs font-medium"
+              style={{ color: colors.primaryTeal }}
+            >
+              <Receipt size={14} />
+              View all
             </a>
           }
         >
           Recent Payments
         </SectionTitle>
-        <div className="overflow-x-auto -mx-2">
+        <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[420px]">
             <thead>
-              <tr style={{ color: colors.textMuted }} className="text-left">
-                <th className="font-medium px-2 py-2">Order</th>
+              <tr className="text-left" style={{ color: colors.textMuted }}>
+                <th className="font-medium px-2 py-2">Invoice</th>
                 <th className="font-medium px-2 py-2">Customer</th>
                 <th className="font-medium px-2 py-2">Amount</th>
               </tr>
             </thead>
             <tbody>
-              {recentPayments.length > 0 ? (
-                recentPayments.map((p, index) => (
-                  <tr key={p.id || p.invoice || index} className="row-hover transition-colors" style={{ borderTop: `1px solid ${colors.cardBorder}` }}>
-                    <td className="px-2 py-3 font-medium" style={{ color: colors.textDark }}>{p.invoice || `#${p.id}`}</td>
-                    <td className="px-2 py-3" style={{ color: colors.textMuted }}>{p.customer}</td>
-                    <td className="px-2 py-3" style={{ color: colors.textDark }}>{typeof p.amount === "string" ? p.amount : formatCurrency(p.amount)}</td>
+              {recentPayments.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={3}
+                    className="px-2 py-8 text-center"
+                    style={{ color: colors.textMuted }}
+                  >
+                    No recent payments found
+                  </td>
+                </tr>
+              ) : (
+                recentPayments.map((payment, index) => (
+                  <tr
+                    key={payment.id || index}
+                    className="transition-colors hover:bg-[#EEF7F6]"
+                    style={{ borderTop: `1px solid ${colors.cardBorder}` }}
+                  >
+                    <td
+                      className="px-2 py-3 font-medium"
+                      style={{ color: colors.textDark }}
+                    >
+                      {payment.paymentNumber || `#${payment.id || index}`}
+                    </td>
+                    <td className="px-2 py-3" style={{ color: colors.textMuted }}>
+                      {payment.customer?.name ||
+                        payment.customerName ||
+                        payment.customer ||
+                        "N/A"}
+                    </td>
+                    <td
+                      className="px-2 py-3"
+                      style={{ color: colors.textDark }}
+                    >
+                      {formatCurrency(payment.amount || 0)}
+                    </td>
                   </tr>
                 ))
-              ) : (
-                <tr>
-                  <td colSpan="3" className="px-2 py-8 text-center" style={{ color: colors.textMuted }}>No recent payments found</td>
-                </tr>
               )}
             </tbody>
           </table>

@@ -137,9 +137,9 @@ function ComplaintCard({ complaint, onUpdate }) {
           {/* Image */}
           {complaint.image_url && (
             <div className="mt-2">
-              <a href={complaint.image_url} target="_blank" rel="noopener noreferrer">
+              <a href={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}${complaint.image_url}`} target="_blank" rel="noopener noreferrer">
                 <img
-                  src={complaint.image_url}
+                  src={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}${complaint.image_url}`}
                   alt="Complaint evidence"
                   className="h-32 rounded-lg object-cover border cursor-pointer hover:brightness-90 transition"
                   style={{ borderColor: colors.cardBorder }}
