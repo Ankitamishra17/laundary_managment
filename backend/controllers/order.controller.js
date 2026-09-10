@@ -10,11 +10,7 @@ import Service from "../models/Service.js";
 import Employee from "../models/Employee.js";
 import Task from "../models/Tasks.js";
 
-
 import { notifyShopAdmins, notifyCustomer } from "./notification.controller.js";
-
-
-
 
 import {
   getShopPlan,
@@ -49,12 +45,9 @@ const VALID_STATUSES = [
 
 const VALID_PAYMENT_STATUSES = ["paid", "unpaid", "partial"];
 
-
 /* ============================================================
    HELPERS
 ============================================================ */
-
-
 
 const getShopId = (req) => {
   return req.user?.shopId ? Number(req.user.shopId) : null;
@@ -83,9 +76,6 @@ const ORDER_INCLUDES = [
     model: OrderItem,
     as: "items",
   },
-
-
-
 
   {
     model: Shop,
@@ -130,8 +120,7 @@ export const createOrder = async (req, res) => {
       items,
     } = req.body;
 
-
-    //reorder 
+    //reorder
 
     // export const reorderOrder = async(req,res)=>{
 
@@ -173,19 +162,15 @@ export const createOrder = async (req, res) => {
     if (!customer) {
       await transaction.rollback();
 
-
-
       return res.status(404).json({
         success: false,
         message: "Customer profile not found. Please contact support.",
       });
     }
 
-
     /* --------------------------------------------------------
        SHOP
     -------------------------------------------------------- */
-
 
     const shop = await Shop.findOne({
       where: {
@@ -207,8 +192,17 @@ export const createOrder = async (req, res) => {
     // --------------------------------------------------------
     // Subscription
     // --------------------------------------------------------
+    const shopPlan = await getShopPlan(shop.id);
 
-   
+    if (!shopPlan.allowed) {
+      await transaction.rollback();
+
+      return res.status(403).json({
+        success: false,
+        message:
+          shopPlan?.message || "No active subscription found for this shop.",
+      });
+    }
 
     // --------------------------------------------------------
     // Monthly order limit
@@ -231,7 +225,9 @@ export const createOrder = async (req, res) => {
     // Services — STRICT SHOP SCOPE
     // --------------------------------------------------------
 
-    const serviceIds = [...new Set(items.map((item) => Number(item.serviceId)))];
+    const serviceIds = [
+      ...new Set(items.map((item) => Number(item.serviceId))),
+    ];
 
     if (serviceIds.some((id) => !id || Number.isNaN(id))) {
       await transaction.rollback();
@@ -256,7 +252,9 @@ export const createOrder = async (req, res) => {
       transaction,
     });
 
-    const catalogById = new Map(catalog.map((service) => [Number(service.id), service]));
+    const catalogById = new Map(
+      catalog.map((service) => [Number(service.id), service]),
+    );
 
     // --------------------------------------------------------
     // Build order items
@@ -271,8 +269,6 @@ export const createOrder = async (req, res) => {
 
       if (!service) {
         await transaction.rollback();
-
-
 
         return res.status(400).json({
           success: false,
@@ -298,7 +294,10 @@ export const createOrder = async (req, res) => {
         quantity,
 
         lineTotal,
-        item_label: String(item.itemLabel || "").trim().slice(0, 150) || null,
+        item_label:
+          String(item.itemLabel || "")
+            .trim()
+            .slice(0, 150) || null,
       });
     }
 
@@ -343,7 +342,7 @@ export const createOrder = async (req, res) => {
 
         delivery_note: String(deliveryNote || "").trim() || null,
       },
-      { transaction }
+      { transaction },
     );
 
     // --------------------------------------------------------
@@ -352,7 +351,7 @@ export const createOrder = async (req, res) => {
 
     await OrderItem.bulkCreate(
       lineItems.map((line) => ({ ...line, orderId: order.id })),
-      { transaction }
+      { transaction },
     );
 
     await transaction.commit();
@@ -374,7 +373,7 @@ export const createOrder = async (req, res) => {
       await notifyShopAdmins(shop.id, {
         title: "New order received",
         message: `${customer.name} placed order #${order.id} for ${totalAmount.toLocaleString(
-          "en-IN"
+          "en-IN",
         )} — pending pickup.`,
         type: "order",
         link: "/admin/orders",
@@ -382,7 +381,6 @@ export const createOrder = async (req, res) => {
     } catch (notificationError) {
       console.error("Admin notification error:", notificationError.message);
     }
-
 
     return res.status(201).json({
       success: true,
@@ -461,13 +459,17 @@ export const getMyOrderById = async (req, res) => {
     const shopId = getShopId(req);
 
     if (!shopId) {
-      return res.status(404).json({ success: false, message: "Order not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found." });
     }
 
     const customer = await getCustomerForUser(req.user.id, shopId);
 
     if (!customer) {
-      return res.status(404).json({ success: false, message: "Order not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found." });
     }
 
     const order = await Order.findOne({
@@ -480,7 +482,9 @@ export const getMyOrderById = async (req, res) => {
     });
 
     if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found." });
     }
 
     return res.status(200).json({
@@ -503,13 +507,17 @@ export const cancelMyOrder = async (req, res) => {
     const shopId = getShopId(req);
 
     if (!shopId) {
-      return res.status(404).json({ success: false, message: "Order not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found." });
     }
 
     const customer = await getCustomerForUser(req.user.id, shopId);
 
     if (!customer) {
-      return res.status(404).json({ success: false, message: "Order not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found." });
     }
 
     const order = await Order.findOne({
@@ -521,7 +529,9 @@ export const cancelMyOrder = async (req, res) => {
     });
 
     if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found." });
     }
 
     if (order.status !== "pending") {
@@ -563,6 +573,37 @@ export const cancelMyOrder = async (req, res) => {
   }
 };
 
+//reorder
+
+
+export const reorderOrder = async(req,res)=>{
+
+const transaction = await sequelize.transaction();
+const oldOrder = await Order.findOne({
+  where:{
+    id:Number(req.params.id)
+  },
+  include:[
+    {
+      model:OrderItem,
+      as:"items"
+    }
+  ]
+
+
+
+})
+
+if(!oldOrder){
+  await transaction.rollback();
+  
+  return res.status(404).json({
+    success:false,
+    message:"Order not found"
+  });
+}
+}
+
 // ============================================================
 // ADMIN — SHOP ORDERS
 // GET /api/orders
@@ -579,7 +620,6 @@ export const getShopOrders = async (req, res) => {
     const where = {};
 
     const shopId = getShopId(req);
-
 
     /*
      * Shop admin:
@@ -664,10 +704,10 @@ export const updateOrderStatus = async (req, res) => {
       where.shop_id = shopId;
     }
 
-  
-
     if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found." });
     }
 
     const order = await Order.findOne({
@@ -724,7 +764,10 @@ export const updateOrderStatus = async (req, res) => {
           });
         }
       } catch (notificationError) {
-        console.error("Customer notification error:", notificationError.message);
+        console.error(
+          "Customer notification error:",
+          notificationError.message,
+        );
       }
     }
 
@@ -776,10 +819,15 @@ export const updateOrderStatus = async (req, res) => {
             itemLabel: item.item_label || null,
           }));
 
-          const subtotal = itemsSnapshot.reduce((sum, item) => sum + Number(item.lineTotal), 0);
+          const subtotal = itemsSnapshot.reduce(
+            (sum, item) => sum + Number(item.lineTotal),
+            0,
+          );
 
           // Generate invoice number with shop code prefix
-          const shopPrefix = shopObj?.shopCode ? shopObj.shopCode.toUpperCase().slice(0, 2) : "INV";
+          const shopPrefix = shopObj?.shopCode
+            ? shopObj.shopCode.toUpperCase().slice(0, 2)
+            : "INV";
           const seqPrefix = `${shopPrefix}-INV-`;
 
           const lastInv = await Invoice.findOne({
@@ -932,10 +980,10 @@ export const updatePaymentStatus = async (req, res) => {
       where.shop_id = shopId;
     }
 
-   
-
     if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found." });
     }
 
     const order = await Order.findOne({
@@ -993,7 +1041,7 @@ export const getOrderStats = async (req, res) => {
       VALID_STATUSES.map(async (status) => ({
         status,
         count: await Order.count({ where: { ...where, status } }),
-      }))
+      })),
     );
 
     /* --------------------------------------------------------
