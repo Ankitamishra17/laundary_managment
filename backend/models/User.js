@@ -72,8 +72,6 @@ const User = sequelize.define(
     avatar: {
       type: DataTypes.STRING,
       allowNull: true,
-<<<<<<< Updated upstream
-=======
     },
 
     // Soft-delete gate — "deleted" users are blocked from login and API
@@ -92,7 +90,6 @@ const User = sequelize.define(
     resetOtpExpires: {
       type: DataTypes.DATE,
       allowNull: true,
->>>>>>> Stashed changes
     },
   },
 

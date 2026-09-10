@@ -173,12 +173,8 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
     if (result.ok) {
       setCreated({
         name: result.employee?.name,
-<<<<<<< Updated upstream
-        tempPassword: autoPassword ? result.tempPassword : form.password,
-=======
         email: capturedEmail,
         tempPassword: autoPassword ? result.tempPassword : capturedPassword,
->>>>>>> Stashed changes
       });
     } else {
       setError(result.error || "Failed to create employee");
