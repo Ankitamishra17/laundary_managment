@@ -30,12 +30,12 @@ const COLORS = {
   primary: "#028090",
   accent: "#02C39A",
 
-  bg: "#F7FBFA",
+  bg: "#EEF7F6",
   light: "#EEF7F6",
   border: "#D8ECEA",
 
-  text: "#244846",
-  muted: "#5C7A78",
+  text: "#0F2C2E",
+  muted: "#51787C",
 
   success: "#16A34A",
   successBg: "#F0FDF4",
@@ -568,7 +568,7 @@ export default function StockInOut() {
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div
-            className="flex h-12 w-12 items-center justify-center rounded-xl"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl sm:h-12 sm:w-12"
             style={{
               backgroundColor:
                 mode === "IN" ? COLORS.successBg : COLORS.dangerBg,
@@ -576,14 +576,14 @@ export default function StockInOut() {
           >
             {mode === "IN" ? (
               <ArrowDownToLine
-                size={24}
+                size={22}
                 style={{
                   color: COLORS.success,
                 }}
               />
             ) : (
               <ArrowUpFromLine
-                size={24}
+                size={22}
                 style={{
                   color: COLORS.danger,
                 }}
@@ -593,7 +593,7 @@ export default function StockInOut() {
 
           <div>
             <h1
-              className="text-2xl font-semibold sm:text-3xl"
+              className="text-xl font-semibold sm:text-2xl lg:text-3xl"
               style={{
                 color: COLORS.dark,
 
@@ -637,7 +637,7 @@ export default function StockInOut() {
       ================================================= */}
 
       <div
-        className="mb-6 inline-flex rounded-xl border bg-white p-1"
+        className="mb-6 flex w-full rounded-xl border bg-white p-1 sm:inline-flex sm:w-auto"
         style={{
           borderColor: COLORS.border,
         }}
@@ -645,7 +645,7 @@ export default function StockInOut() {
         <button
           type="button"
           onClick={() => handleModeChange("IN")}
-          className="flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition"
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition sm:flex-none sm:px-5"
           style={{
             backgroundColor: mode === "IN" ? COLORS.success : "transparent",
 
@@ -659,7 +659,7 @@ export default function StockInOut() {
         <button
           type="button"
           onClick={() => handleModeChange("OUT")}
-          className="flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition"
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition sm:flex-none sm:px-5"
           style={{
             backgroundColor: mode === "OUT" ? COLORS.danger : "transparent",
 
@@ -1289,7 +1289,7 @@ export default function StockInOut() {
                 BUTTONS
             ============================================= */}
 
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 type="button"
                 onClick={handleReset}

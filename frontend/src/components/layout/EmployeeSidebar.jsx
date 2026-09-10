@@ -123,11 +123,6 @@ const NAV_SECTIONS = [
         to: "complaints",
       },
 
-      { icon: Users, label: "Customers", to: "/employee/customers" },
-      { icon: Clock, label: "My Attendance", to: "/employee/attendance" },
-      { icon: CalendarDays, label: "My Leaves", to: "/employee/leaves" },
-      { icon: Wallet, label: "My Payroll", to: "/employee/payroll" },
-      { icon: ShieldCheck, label: "Complaints", to: "/employee/complaints" },
 
     ],
   },

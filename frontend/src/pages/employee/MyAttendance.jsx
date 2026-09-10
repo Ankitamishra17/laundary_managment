@@ -12,7 +12,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { attendanceApi } from "../../api/attendanceApi";
 import { applyLeave, getMyLeaves } from "../../api/leaveApi";
@@ -238,6 +238,7 @@ export default function MyAttendance() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState("");
+  const {slug} = useParams()
 
   // Leave state
   const [leaves, setLeaves] = useState([]);
@@ -349,7 +350,7 @@ export default function MyAttendance() {
               <CalendarDays size={16} /> Apply Leave
             </button>
             <Link
-              to="/employee/leaves"
+              to={`/${slug}/employee/leaves`}
               className="flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all border"
               style={{ borderColor: "#D8ECEA", color: "#028090", backgroundColor: "#FFFFFF" }}
             >

@@ -194,71 +194,10 @@ export default function ShopDashboard() {
   // ===================================================
 
   const stats = [
-    {
-<<<<<<< HEAD
-      label: "Total Orders",
-      value: dashboard?.orders?.total ?? orderStats?.totalOrders ?? orders.length,
-      delta: dashboard?.summary?.todayOrders
-        ? `+${dashboard.summary.todayOrders} today`
-        : `${byStatus.pending || 0} pending`,
-=======
-      label: "Today's Orders",
-      value: dashboard?.summary?.todayOrders || 0,
-      delta: dashboard?.summary?.todayOrders
-        ? `+${dashboard.summary.todayOrders}`
-        : "0",
->>>>>>> origin/amisha
-      icon: ClipboardList,
-      color: colors.primaryTeal,
-    },
-    {
-<<<<<<< HEAD
-      label: "Revenue",
-      value: formatINR(
-        dashboard?.summary?.totalRevenue ||
-          orders.filter((o) => o.status === "delivered").reduce((s, o) => s + (Number(o.total_amount) || 0), 0)
-      ),
-      delta: dashboard?.summary?.todayRevenue
-        ? `+${formatINR(dashboard.summary.todayRevenue)} today`
-        : `${orders.length} orders`,
-=======
-      label: "Total Revenue",
-      value: formatCurrency(dashboard?.summary?.totalRevenue || 0),
-      delta: dashboard?.summary?.todayRevenue
-        ? `Today: ${formatCurrency(dashboard.summary.todayRevenue)}`
-        : "₹0 today",
->>>>>>> origin/amisha
-      icon: IndianRupee,
-      color: colors.mint,
-    },
-    {
-      label: "Customers",
-<<<<<<< HEAD
-      value: dashboard?.customers?.total ?? customers.length,
-      delta: dashboard?.customers?.newToday
-        ? `+${dashboard.customers.newToday} today`
-        : `${customers.filter((c) => c.city).length} with city`,
-=======
-      value: dashboard?.customers?.total || 0,
-      delta: dashboard?.customers?.newToday
-        ? `+${dashboard.customers.newToday}`
-        : "0",
->>>>>>> origin/amisha
-      icon: Users,
-      color: colors.seafoam,
-    },
-    {
-      label: "Employees",
-<<<<<<< HEAD
-      value: dashboard?.business?.totalEmployees ?? employees.length,
-      delta: `${dashboard?.business?.presentToday ?? activeEmployees.length} present`,
-=======
-      value: dashboard?.business?.totalEmployees || 0,
-      delta: `${dashboard?.business?.presentToday || 0} present`,
->>>>>>> origin/amisha
-      icon: UserCog,
-      color: colors.primaryTeal,
-    },
+    { label: "Total Orders", value: dashboard?.orders?.total ?? 0, delta: dashboard?.summary?.todayOrders ? `+${dashboard.summary.todayOrders} today` : `${dashboard?.orders?.pending ?? 0} pending`, icon: ClipboardList, color: colors.primaryTeal },
+    { label: "Total Revenue", value: formatCurrency(dashboard?.summary?.totalRevenue ?? 0), delta: dashboard?.summary?.todayRevenue ? `Today: ${formatCurrency(dashboard.summary.todayRevenue)}` : "₹0 today", icon: IndianRupee, color: colors.mint },
+    { label: "Customers", value: dashboard?.customers?.total ?? 0, delta: dashboard?.customers?.newToday ? `+${dashboard.customers.newToday} today` : "0 today", icon: Users, color: colors.seafoam },
+    { label: "Employees", value: dashboard?.business?.totalEmployees ?? 0, delta: `${dashboard?.business?.presentToday ?? 0} present`, icon: UserCog, color: colors.primaryTeal },
   ];
 
   // ===================================================
@@ -266,39 +205,11 @@ export default function ShopDashboard() {
   // ===================================================
 
   const orderStatus = [
-<<<<<<< HEAD
-    { label: "Pending", count: (dashboard?.orders?.pending ?? byStatus.pending) || 0, color: colors.amber },
-    { label: "Processing", count: dashboard?.orders?.processing ?? inProgressCount, color: colors.seafoam },
-    { label: "Ready", count: (dashboard?.orders?.ready ?? byStatus.ready_for_delivery) || 0, color: colors.mint },
-    { label: "Delivered", count: (dashboard?.orders?.delivered ?? byStatus.delivered) || 0, color: "#0B6E63" },
-    { label: "Cancelled", count: (dashboard?.orders?.cancelled ?? byStatus.cancelled) || 0, color: colors.danger },
-=======
-    {
-      label: "New",
-      count: Number(dashboard?.orders?.pending || 0),
-      color: colors.primaryTeal,
-    },
-    {
-      label: "Processing",
-      count: Number(dashboard?.orders?.processing || 0),
-      color: colors.seafoam,
-    },
-    {
-      label: "Ready",
-      count: Number(dashboard?.orders?.ready || 0),
-      color: colors.mint,
-    },
-    {
-      label: "Delivered",
-      count: Number(dashboard?.orders?.delivered || 0),
-      color: "#0B6E63",
-    },
-    {
-      label: "Cancelled",
-      count: Number(dashboard?.orders?.cancelled || 0),
-      color: colors.danger,
-    },
->>>>>>> origin/amisha
+    { label: "Pending", count: Number(dashboard?.orders?.pending ?? 0), color: colors.amber },
+    { label: "Processing", count: Number(dashboard?.orders?.processing ?? 0), color: colors.seafoam },
+    { label: "Ready", count: Number(dashboard?.orders?.ready ?? 0), color: colors.mint },
+    { label: "Delivered", count: Number(dashboard?.orders?.delivered ?? 0), color: "#0B6E63" },
+    { label: "Cancelled", count: Number(dashboard?.orders?.cancelled ?? 0), color: colors.danger },
   ];
 
   const maxStatus = Math.max(
