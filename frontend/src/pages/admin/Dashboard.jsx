@@ -406,7 +406,7 @@ export default function ShopDashboard() {
       <CardShell className="mt-5">
         <SectionTitle
           action={
-            <a
+           <a 
               href="/admin/orders"
               className="flex items-center gap-1 text-xs font-medium"
               style={{ color: colors.primaryTeal }}
@@ -786,7 +786,7 @@ export default function ShopDashboard() {
       <CardShell className="mt-5">
         <SectionTitle
           action={
-            <a
+        <a    
               href="/admin/payments"
               className="flex items-center gap-2 text-xs font-medium"
               style={{ color: colors.primaryTeal }}

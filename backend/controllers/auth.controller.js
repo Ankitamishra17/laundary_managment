@@ -1330,11 +1330,20 @@ export const resetPassword = async (req, res) => {
     // ========================================================
     // UPDATE PASSWORD
     //
+
     // Prefer model hook if User model hashes automatically.
     // Otherwise bcrypt hash manually.
     // ========================================================
 
     user.password = newPassword;
+
+    // User model has no beforeUpdate hook — hash manually.
+    // ========================================================
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    user.password = hashedPassword;
+
 
     user.resetOtp = null;
     user.resetOtpExpires = null;

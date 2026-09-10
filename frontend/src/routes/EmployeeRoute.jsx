@@ -117,14 +117,16 @@ const EmployeeRoute = (
 
     <Route path="complaints" element={<MyComplaints />} />
 
+    {/* ========================================================
+        PAYROLL
+       ======================================================== */}
+
+    <Route path="payroll" element={<MyPayroll />} />
+    <Route path="payroll/:id" element={<MyPayroll />} />
 
     {/* ========================================================
         PROFILE
        ======================================================== */}
-
-
-    <Route path="payroll" element={<MyPayroll />} />
-    <Route path="payroll/:id" element={<MyPayroll />} />
 
     <Route path="profile" element={<MyProfile />} />
 

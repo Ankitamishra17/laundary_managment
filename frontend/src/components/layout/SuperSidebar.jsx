@@ -24,7 +24,7 @@ const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "dashboard" },
   { label: "Shops", icon: Store, path: "shops" },
   { label: "Subscriptions", icon: Repeat, path: "subscriptions" },
-  { label: "Invoices", icon: FileText, path: "invoices" },
+  // { label: "Invoices", icon: FileText, path: "invoices" },
   { label: "Reports", icon: BarChart3, path: "reports" },
   { label: "Settings", icon: Settings, path: "settings" },
 ];

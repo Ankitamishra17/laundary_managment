@@ -58,10 +58,11 @@ export default function CustomerNavbar() {
 
   const profileRef = useRef(null);
 
-  /* ---------------------------------------------------------
-     CLOSE PROFILE DROPDOWN ON OUTSIDE CLICK
-  --------------------------------------------------------- */
-
+  /*
+   * -----------------------------------------
+   * CLOSE PROFILE DROPDOWN ON OUTSIDE CLICK
+   * -----------------------------------------
+   */
   useEffect(() => {
     const onClick = (e) => {
       if (
@@ -75,32 +76,32 @@ export default function CustomerNavbar() {
     document.addEventListener("mousedown", onClick);
 
     return () => {
-      document.removeEventListener(
-        "mousedown",
-        onClick
-      );
+      document.removeEventListener("mousedown", onClick);
     };
   }, []);
 
-  /* ---------------------------------------------------------
-     CLOSE MENUS
-  --------------------------------------------------------- */
-
+  /*
+   * -----------------------------------------
+   * CLOSE MENUS
+   * -----------------------------------------
+   */
   const closeMenus = () => {
     setProfileOpen(false);
     setMenuOpen(false);
   };
 
-  /* ---------------------------------------------------------
-     LOGOUT
-     
-     Example:
-     
-     /abc/dashboard
-          ↓
-     /abc
-  --------------------------------------------------------- */
-
+  /*
+   * -----------------------------------------
+   * LOGOUT
+   * -----------------------------------------
+   *
+   * Customer logout ke baad same shop ke
+   * landing page par jayega.
+   *
+   * /abc/dashboard
+   *      ↓
+   * /abc
+   */
   const handleLogout = () => {
     closeMenus();
 
@@ -113,10 +114,11 @@ export default function CustomerNavbar() {
     }
   };
 
-  /* ---------------------------------------------------------
-     TRACK ORDER
-  --------------------------------------------------------- */
-
+  /*
+   * -----------------------------------------
+   * TRACK ORDER
+   * -----------------------------------------
+   */
   const handleTrackOrder = async () => {
     closeMenus();
     setTracking(true);
@@ -131,17 +133,12 @@ export default function CustomerNavbar() {
       );
 
       if (active.length > 0) {
-        navigate(
-          `/${slug}/orders/${active[0].id}`
-        );
+        navigate(`/${slug}/orders/${active[0].id}`);
       } else {
         navigate(`/${slug}/orders`);
       }
     } catch (error) {
-      console.error(
-        "Track order error:",
-        error
-      );
+      console.error("Track order error:", error);
 
       navigate(`/${slug}/orders`);
     } finally {
@@ -149,54 +146,51 @@ export default function CustomerNavbar() {
     }
   };
 
-  /* ---------------------------------------------------------
-     BRAND
-  --------------------------------------------------------- */
+  /*
+   * -----------------------------------------
+   * BRAND
+   * -----------------------------------------
+   */
+  const userName = user?.name || "Customer";
 
-  const userName =
-    user?.name || "Customer";
-
-  const brandName =
-    brand?.name || "WashFlow";
+  const brandName = brand?.name || "WashFlow";
 
   const brandPrimary =
-    brand?.primaryColor ||
-    "#028090";
+    brand?.primaryColor || "#028090";
 
   const brandSecondary =
-    brand?.secondaryColor ||
-    "#02C39A";
+    brand?.secondaryColor || "#02C39A";
 
-  const brandLogo =
-    brand?.logo || null;
+  const brandLogo = brand?.logo || null;
 
-  /* ---------------------------------------------------------
-     NAVIGATION LINKS
-     
-     IMPORTANT:
-     Never use /customer/... here.
-     
-     Everything is slug based.
-     
-     Example:
-     /abc
-     /abc/services
-     /abc/orders
-  --------------------------------------------------------- */
-
+  /*
+   * -----------------------------------------
+   * NAVIGATION LINKS
+   * -----------------------------------------
+   *
+   * IMPORTANT:
+   * Never use /customer/... here.
+   *
+   * Current shop slug is used.
+   *
+   * Example:
+   * slug = abc
+   *
+   * /abc
+   * /abc/services
+   * /abc/orders
+   */
   const NAV_LINKS = [
     {
       label: "Home",
       to: `/${slug}`,
       icon: HomeIcon,
     },
-
     {
       label: "Services",
       to: `/${slug}/services`,
       icon: Sparkles,
     },
-
     {
       label: "My Orders",
       to: `/${slug}/orders`,
@@ -204,53 +198,47 @@ export default function CustomerNavbar() {
     },
   ];
 
-  /* ---------------------------------------------------------
-     PROFILE DROPDOWN
-  --------------------------------------------------------- */
-
+  /*
+   * -----------------------------------------
+   * PROFILE DROPDOWN
+   * -----------------------------------------
+   */
   const dropdownItems = [
     {
       label: "My Profile",
       icon: User,
       to: `/${slug}/profile`,
     },
-
     {
       label: "My Orders",
       icon: ClipboardList,
       to: `/${slug}/orders`,
     },
-
     {
       label: "Track Order",
       icon: PackageSearch,
       action: "track",
     },
-
     {
       label: "My Reviews",
       icon: Star,
       to: `/${slug}/reviews`,
     },
-
     {
       label: "My Complaints",
       icon: ShieldAlert,
       to: `/${slug}/complaints`,
     },
-
     {
       label: "My Invoices",
       icon: FileText,
       to: `/${slug}/invoices`,
     },
-
     {
       label: "Addresses",
       icon: MapPin,
       to: `/${slug}/addresses`,
     },
-
     {
       label: "Order History",
       icon: History,
@@ -258,10 +246,11 @@ export default function CustomerNavbar() {
     },
   ];
 
-  /* ---------------------------------------------------------
-     NAV LINK CLASS
-  --------------------------------------------------------- */
-
+  /*
+   * -----------------------------------------
+   * NAV LINK CLASS
+   * -----------------------------------------
+   */
   const linkClass = ({ isActive }) =>
     `flex items-center gap-2 text-sm font-medium rounded-lg px-3.5 py-2 transition-colors ${
       isActive
@@ -292,13 +281,11 @@ export default function CustomerNavbar() {
 
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 h-16">
 
-        {/* =================================================
+        {/* =====================================
             LEFT: MOBILE MENU + LOGO
-        ================================================= */}
+           ===================================== */}
 
         <div className="flex items-center gap-2 min-w-0">
-
-          {/* MOBILE MENU BUTTON */}
 
           <button
             className="lg:hidden text-white/80 hover:text-white flex-shrink-0"
@@ -315,7 +302,6 @@ export default function CustomerNavbar() {
           </button>
 
           {/* SHOP HOME */}
-
           <Link
             to={`/${slug}`}
             onClick={closeMenus}
@@ -331,8 +317,7 @@ export default function CustomerNavbar() {
               <div
                 className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{
-                  background:
-                    `linear-gradient(135deg, ${brandPrimary}, ${brandSecondary})`,
+                  background: `linear-gradient(135deg, ${brandPrimary}, ${brandSecondary})`,
                 }}
               >
                 <Shirt
@@ -345,8 +330,7 @@ export default function CustomerNavbar() {
             <span
               className="text-lg tracking-tight text-white truncate"
               style={{
-                fontFamily:
-                  "'Libre Baskerville', serif",
+                fontFamily: "'Libre Baskerville', serif",
               }}
             >
               {brandName}
@@ -354,9 +338,9 @@ export default function CustomerNavbar() {
           </Link>
         </div>
 
-        {/* =================================================
+        {/* =====================================
             CENTER DESKTOP NAV
-        ================================================= */}
+           ===================================== */}
 
         <nav className="hidden lg:flex items-center gap-1">
 
@@ -388,26 +372,26 @@ export default function CustomerNavbar() {
               }`
             }
             style={{
-              background:
-                `linear-gradient(95deg, ${brandPrimary}, ${brandSecondary})`,
+              background: `linear-gradient(95deg, ${brandPrimary}, ${brandSecondary})`,
             }}
           >
             <Sparkles size={15} />
+
             New order
           </NavLink>
         </nav>
 
-        {/* =================================================
+        {/* =====================================
             RIGHT SIDE
-        ================================================= */}
+           ===================================== */}
 
         <div className="flex items-center gap-2">
 
-          {/* NOTIFICATION */}
+          {/* Notification */}
 
           <NotificationBell dark />
 
-          {/* PROFILE */}
+          {/* Profile */}
 
           <div
             className="relative flex-shrink-0"
@@ -447,28 +431,23 @@ export default function CustomerNavbar() {
                 size={15}
                 className="hidden sm:block transition-transform text-white/60"
                 style={{
-                  transform:
-                    profileOpen
-                      ? "rotate(180deg)"
-                      : "none",
+                  transform: profileOpen
+                    ? "rotate(180deg)"
+                    : "none",
                 }}
               />
             </button>
 
-            {/* =================================================
+            {/* =================================
                 PROFILE DROPDOWN
-            ================================================= */}
+               ================================= */}
 
             {profileOpen && (
               <div
                 className="absolute right-0 mt-2 w-64 z-50 rounded-2xl overflow-hidden"
                 style={{
-                  backgroundColor:
-                    "#FFFFFF",
-
-                  border:
-                    `1px solid ${colors.cardBorder}`,
-
+                  backgroundColor: "#FFFFFF",
+                  border: `1px solid ${colors.cardBorder}`,
                   boxShadow:
                     "0 24px 60px -12px rgba(5,40,42,0.35)",
                 }}
@@ -479,11 +458,8 @@ export default function CustomerNavbar() {
                 <div
                   className="px-4 py-3 border-b"
                   style={{
-                    borderColor:
-                      colors.cardBorder,
-
-                    backgroundColor:
-                      colors.bgLight,
+                    borderColor: colors.cardBorder,
+                    backgroundColor: colors.bgLight,
                   }}
                 >
                   <div className="flex items-center gap-3">
@@ -498,8 +474,7 @@ export default function CustomerNavbar() {
                       <div
                         className="text-sm font-semibold truncate"
                         style={{
-                          color:
-                            colors.textDark,
+                          color: colors.textDark,
                         }}
                       >
                         {userName}
@@ -508,8 +483,7 @@ export default function CustomerNavbar() {
                       <div
                         className="text-[11px] truncate"
                         style={{
-                          color:
-                            colors.textMuted,
+                          color: colors.textMuted,
                         }}
                       >
                         {user?.email ||
@@ -524,105 +498,77 @@ export default function CustomerNavbar() {
 
                 <div className="py-1.5">
 
-                  {dropdownItems.map(
-                    (item) => {
-                      const Icon =
-                        item.icon;
+                  {dropdownItems.map((item) => {
 
-                      {/* TRACK ORDER */}
+                    const Icon = item.icon;
 
-                      if (
-                        item.action ===
-                        "track"
-                      ) {
-                        return (
-                          <button
-                            key={
-                              item.label
-                            }
-                            className="cn-menu-item w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors text-left"
-                            style={{
-                              color:
-                                colors.textDark,
-                            }}
-                            onClick={
-                              handleTrackOrder
-                            }
-                            disabled={
-                              tracking
-                            }
-                          >
-                            <span
-                              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                              style={{
-                                backgroundColor:
-                                  `${colors.seafoam}12`,
-                              }}
-                            >
-                              <Icon
-                                size={15}
-                                style={{
-                                  color:
-                                    colors.seafoam,
-                                }}
-                              />
-                            </span>
-
-                            {item.label}
-
-                            {tracking && (
-                              <Loader2
-                                size={14}
-                                className="animate-spin ml-auto"
-                              />
-                            )}
-                          </button>
-                        );
-                      }
-
-                      {/* NORMAL DROPDOWN ITEM */}
-
+                    if (item.action === "track") {
                       return (
                         <button
-                          key={
-                            item.label
-                          }
+                          key={item.label}
                           className="cn-menu-item w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors text-left"
                           style={{
-                            color:
-                              colors.textDark,
+                            color: colors.textDark,
                           }}
-                          onClick={() => {
-                            setProfileOpen(
-                              false
-                            );
-
-                            navigate(
-                              item.to
-                            );
-                          }}
+                          onClick={handleTrackOrder}
+                          disabled={tracking}
                         >
                           <span
                             className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
                             style={{
-                              backgroundColor:
-                                `${colors.primaryTeal}12`,
+                              backgroundColor: `${colors.seafoam}12`,
                             }}
                           >
                             <Icon
                               size={15}
                               style={{
-                                color:
-                                  colors.primaryTeal,
+                                color: colors.seafoam,
                               }}
                             />
                           </span>
 
                           {item.label}
+
+                          {tracking && (
+                            <Loader2
+                              size={14}
+                              className="animate-spin ml-auto"
+                            />
+                          )}
                         </button>
                       );
                     }
-                  )}
+
+                    return (
+                      <button
+                        key={item.label}
+                        className="cn-menu-item w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors text-left"
+                        style={{
+                          color: colors.textDark,
+                        }}
+                        onClick={() => {
+                          setProfileOpen(false);
+                          navigate(item.to);
+                        }}
+                      >
+                        <span
+                          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{
+                            backgroundColor: `${colors.primaryTeal}12`,
+                          }}
+                        >
+                          <Icon
+                            size={15}
+                            style={{
+                              color: colors.primaryTeal,
+                            }}
+                          />
+                        </span>
+
+                        {item.label}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* SEPARATOR */}
@@ -640,27 +586,22 @@ export default function CustomerNavbar() {
                 <div className="py-1.5">
 
                   <button
-                    onClick={
-                      handleLogout
-                    }
+                    onClick={handleLogout}
                     className="cn-menu-item w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors text-left"
                     style={{
-                      color:
-                        "#C0392B",
+                      color: "#C0392B",
                     }}
                   >
                     <span
                       className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
                       style={{
-                        backgroundColor:
-                          "#FBE9E8",
+                        backgroundColor: "#FBE9E8",
                       }}
                     >
                       <LogOut
                         size={15}
                         style={{
-                          color:
-                            "#E0645C",
+                          color: "#E0645C",
                         }}
                       />
                     </span>
@@ -675,20 +616,19 @@ export default function CustomerNavbar() {
         </div>
       </div>
 
-      {/* =====================================================
+      {/* =====================================
           MOBILE DRAWER
-      ===================================================== */}
+         ===================================== */}
 
       {menuOpen && (
         <div
           className="lg:hidden px-4 pb-5 pt-2 space-y-1"
           style={{
-            backgroundColor:
-              colors.bgDark,
+            backgroundColor: colors.bgDark,
           }}
         >
 
-          {/* MAIN LINKS */}
+          {/* Main links */}
 
           {NAV_LINKS.map((link) => {
             const Icon = link.icon;
@@ -698,12 +638,8 @@ export default function CustomerNavbar() {
                 key={link.label}
                 to={link.to}
                 end
-                onClick={
-                  closeMenus
-                }
-                className={({
-                  isActive,
-                }) =>
+                onClick={closeMenus}
+                className={({ isActive }) =>
                   `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
                     isActive
                       ? "bg-[#028090] text-white font-medium"
@@ -721,12 +657,8 @@ export default function CustomerNavbar() {
 
           <NavLink
             to={`/${slug}/new-order`}
-            onClick={
-              closeMenus
-            }
-            className={({
-              isActive,
-            }) =>
+            onClick={closeMenus}
+            className={({ isActive }) =>
               `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-white transition-all ${
                 isActive
                   ? "ring-2 ring-[#02C39A]/60"
@@ -734,8 +666,7 @@ export default function CustomerNavbar() {
               }`
             }
             style={{
-              background:
-                `linear-gradient(95deg, ${brandPrimary}, ${brandSecondary})`,
+              background: `linear-gradient(95deg, ${brandPrimary}, ${brandSecondary})`,
             }}
           >
             <Sparkles size={17} />
@@ -743,29 +674,21 @@ export default function CustomerNavbar() {
             New order
           </NavLink>
 
-          {/* =================================================
-              MOBILE PROFILE LINKS
-          ================================================= */}
+          {/* MOBILE PROFILE LINKS */}
 
           <div
             className="pt-3 mt-2 border-t"
             style={{
-              borderColor:
-                `${colors.primaryTeal}44`,
+              borderColor: `${colors.primaryTeal}44`,
             }}
           >
 
-            {/* PROFILE */}
+            {/* Profile */}
 
             <button
               onClick={() => {
-                setMenuOpen(
-                  false
-                );
-
-                navigate(
-                  `/${slug}/profile`
-                );
+                setMenuOpen(false);
+                navigate(`/${slug}/profile`);
               }}
               className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/80 hover:bg-white/10"
             >
@@ -774,28 +697,21 @@ export default function CustomerNavbar() {
               My Profile
             </button>
 
-            {/* ORDERS */}
+            {/* Orders */}
 
             <button
               onClick={() => {
-                setMenuOpen(
-                  false
-                );
-
-                navigate(
-                  `/${slug}/orders`
-                );
+                setMenuOpen(false);
+                navigate(`/${slug}/orders`);
               }}
               className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/80 hover:bg-white/10"
             >
-              <ClipboardList
-                size={17}
-              />
+              <ClipboardList size={17} />
 
               My Orders
             </button>
 
-            {/* TRACK */}
+            {/* Track */}
 
             <button
               onClick={
@@ -806,31 +722,17 @@ export default function CustomerNavbar() {
               }
               className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/80 hover:bg-white/10"
             >
-              {tracking ? (
-                <Loader2
-                  size={17}
-                  className="animate-spin"
-                />
-              ) : (
-                <PackageSearch
-                  size={17}
-                />
-              )}
+              <PackageSearch size={17} />
 
               Track Order
             </button>
 
-            {/* REVIEWS */}
+            {/* Reviews */}
 
             <button
               onClick={() => {
-                setMenuOpen(
-                  false
-                );
-
-                navigate(
-                  `/${slug}/reviews`
-                );
+                setMenuOpen(false);
+                navigate(`/${slug}/reviews`);
               }}
               className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/80 hover:bg-white/10"
             >
@@ -839,59 +741,40 @@ export default function CustomerNavbar() {
               My Reviews
             </button>
 
-            {/* COMPLAINTS */}
+            {/* Complaints */}
 
             <button
               onClick={() => {
-                setMenuOpen(
-                  false
-                );
-
-                navigate(
-                  `/${slug}/complaints`
-                );
+                setMenuOpen(false);
+                navigate(`/${slug}/complaints`);
               }}
               className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/80 hover:bg-white/10"
             >
-              <ShieldAlert
-                size={17}
-              />
+              <ShieldAlert size={17} />
 
               My Complaints
             </button>
 
-            {/* INVOICES */}
+            {/* Invoices */}
 
             <button
               onClick={() => {
-                setMenuOpen(
-                  false
-                );
-
-                navigate(
-                  `/${slug}/invoices`
-                );
+                setMenuOpen(false);
+                navigate(`/${slug}/invoices`);
               }}
               className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/80 hover:bg-white/10"
             >
-              <FileText
-                size={17}
-              />
+              <FileText size={17} />
 
               My Invoices
             </button>
 
-            {/* ADDRESSES */}
+            {/* Addresses */}
 
             <button
               onClick={() => {
-                setMenuOpen(
-                  false
-                );
-
-                navigate(
-                  `/${slug}/addresses`
-                );
+                setMenuOpen(false);
+                navigate(`/${slug}/addresses`);
               }}
               className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/80 hover:bg-white/10"
             >
@@ -900,17 +783,12 @@ export default function CustomerNavbar() {
               Addresses
             </button>
 
-            {/* ORDER HISTORY */}
+            {/* Order History */}
 
             <button
               onClick={() => {
-                setMenuOpen(
-                  false
-                );
-
-                navigate(
-                  `/${slug}/orders`
-                );
+                setMenuOpen(false);
+                navigate(`/${slug}/orders`);
               }}
               className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/80 hover:bg-white/10"
             >
@@ -919,7 +797,7 @@ export default function CustomerNavbar() {
               Order History
             </button>
 
-            {/* LOGOUT */}
+            {/* Logout */}
 
             <button
               onClick={
@@ -927,14 +805,14 @@ export default function CustomerNavbar() {
               }
               className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-white/10"
               style={{
-                color:
-                  "#E0645C",
+                color: "#E0645C",
               }}
             >
               <LogOut size={17} />
 
               Logout
             </button>
+
           </div>
         </div>
       )}

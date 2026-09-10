@@ -21,9 +21,13 @@ import {
   X,
   Check,
   Info,
+  Star,
+  PlusCircle,
 } from "lucide-react";
 import { getMyShopContext } from "../../api/shopApi";
 import { createOrder } from "../../api/orderApi";
+import { getAddresses } from "../../api/customerApi";
+import AddAddressModal from "../../components/customer/AddAddressModal";
 import { useAuth } from "../../context/AuthContext";
 import { formatINR, formatDate } from "../../utils/orderStatus";
 
@@ -163,21 +167,62 @@ export default function NewOrder() {
   const [deliveryDate, setDeliveryDate] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
 
+  // Saved addresses for address selection
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedPickupAddressId, setSelectedPickupAddressId] = useState(null);
+  const [selectedDeliveryAddressId, setSelectedDeliveryAddressId] = useState(null);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [addressModalContext, setAddressModalContext] = useState("pickup"); // "pickup" or "delivery"
+
   const [step, setStep] = useState(0);
   const [placing, setPlacing] = useState(false);
   const [placedOrder, setPlacedOrder] = useState(null);
 
+  // Format a saved address into a single-line string
+  const formatAddress = (addr) => {
+    const parts = [
+      addr.addressLine1,
+      addr.addressLine2,
+      addr.landmark,
+      `${addr.city}, ${addr.state} - ${addr.postalCode}`,
+    ].filter(Boolean);
+    return parts.join(", ");
+  };
+
   useEffect(() => {
     (async () => {
       try {
-        const res = await getMyShopContext();
-        if (res.success) {
-          setShop(res.data?.shop || null);
-          const svcs = res.data?.services || [];
+        const [shopRes, addrRes] = await Promise.allSettled([
+          getMyShopContext(),
+          getAddresses(),
+        ]);
+
+        if (shopRes.status === "fulfilled" && shopRes.value.success) {
+          setShop(shopRes.value.data?.shop || null);
+          const svcs = shopRes.value.data?.services || [];
           setServices(svcs);
           if (svcs.length > 0) setSelectedServiceId(svcs[0].id);
         } else {
           setContextError(true);
+        }
+
+        if (addrRes.status === "fulfilled" && addrRes.value.success) {
+          const addrs = addrRes.value.data || [];
+          setSavedAddresses(addrs);
+          // Auto-select default address for pickup
+          const defaultAddr = addrs.find((a) => a.isDefault);
+          if (defaultAddr) {
+            setSelectedPickupAddressId(defaultAddr.id);
+            setPickupAddress(formatAddress(defaultAddr));
+            setSelectedDeliveryAddressId(defaultAddr.id);
+            setDeliveryAddress(formatAddress(defaultAddr));
+          } else if (addrs.length > 0) {
+            // Select the first address if no default
+            setSelectedPickupAddressId(addrs[0].id);
+            setPickupAddress(formatAddress(addrs[0]));
+            setSelectedDeliveryAddressId(addrs[0].id);
+            setDeliveryAddress(formatAddress(addrs[0]));
+          }
         }
       } catch (error) {
         toast.error(error.response?.data?.message || "Could not load services.");
@@ -242,6 +287,45 @@ export default function NewOrder() {
   };
 
   const hasItems = cartItems.length > 0;
+
+  // ---------- Address selection ----------
+  const handleSelectPickupAddress = (addr) => {
+    setSelectedPickupAddressId(addr.id);
+    setPickupAddress(formatAddress(addr));
+  };
+
+  const handleSelectDeliveryAddress = (addr) => {
+    setSelectedDeliveryAddressId(addr.id);
+    setDeliveryAddress(formatAddress(addr));
+  };
+
+  const handleOpenAddressModal = (context) => {
+    setAddressModalContext(context);
+    setShowAddressModal(true);
+  };
+
+  const handleAddressAdded = async () => {
+    try {
+      const res = await getAddresses();
+      if (res.success) {
+        const addrs = res.data || [];
+        setSavedAddresses(addrs);
+        // If this was the first address, auto-select it
+        if (addrs.length === 1) {
+          const newAddr = addrs[0];
+          if (addressModalContext === "pickup") {
+            setSelectedPickupAddressId(newAddr.id);
+            setPickupAddress(formatAddress(newAddr));
+          } else {
+            setSelectedDeliveryAddressId(newAddr.id);
+            setDeliveryAddress(formatAddress(newAddr));
+          }
+        }
+      }
+    } catch {
+      /* silent */
+    }
+  };
 
   // ---------- Navigation ----------
   const goNext = () => {
@@ -569,52 +653,135 @@ export default function NewOrder() {
           {step === 1 && (
             <Card>
               <CardTitle icon={Home}>Pickup address</CardTitle>
-              <div className="mt-4 space-y-4">
+
+              {/* Saved addresses with radio buttons */}
+              {savedAddresses.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium uppercase tracking-wide" style={{ color: colors.textMuted }}>
+                      Choose from saved addresses
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAddressModal("pickup")}
+                      className="inline-flex items-center gap-1 text-xs font-medium"
+                      style={{ color: colors.primaryTeal }}
+                    >
+                      <PlusCircle size={13} /> Add new
+                    </button>
+                  </div>
+
+                  {savedAddresses.map((addr) => (
+                    <label
+                      key={addr.id}
+                      className="flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition-all"
+                      style={{
+                        backgroundColor: selectedPickupAddressId === addr.id ? `${colors.mint}0D` : colors.bgLight,
+                        borderColor: selectedPickupAddressId === addr.id ? colors.mint : colors.cardBorder,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="pickupAddress"
+                        checked={selectedPickupAddressId === addr.id}
+                        onChange={() => handleSelectPickupAddress(addr)}
+                        className="mt-0.5"
+                        style={{ accentColor: colors.primaryTeal }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold" style={{ color: colors.textDark }}>
+                            {addr.label}
+                          </span>
+                          {addr.isDefault && (
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                              style={{ background: `${colors.mint}20`, color: colors.primaryTeal }}
+                            >
+                              <Star size={9} className="inline mr-0.5" /> Default
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs mt-0.5" style={{ color: colors.textMuted }}>
+                          {addr.fullName} · {addr.phone}
+                        </p>
+                        <p className="text-xs mt-1 leading-relaxed" style={{ color: colors.textMuted }}>
+                          {formatAddress(addr)}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {savedAddresses.length === 0 && (
+                <div
+                  className="mt-4 rounded-xl p-4 text-center"
+                  style={{ backgroundColor: colors.cardTint, border: `1px dashed ${colors.cardBorder}` }}
+                >
+                  <MapPin size={18} style={{ color: colors.textMuted }} className="mx-auto mb-2" />
+                  <p className="text-xs" style={{ color: colors.textMuted }}>No saved addresses yet.</p>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddressModal("pickup")}
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-semibold"
+                    style={{ color: colors.primaryTeal }}
+                  >
+                    <PlusCircle size={13} /> Add your first address
+                  </button>
+                </div>
+              )}
+
+              {/* Manual address input */}
+              <div className="mt-4">
+                <label className="block text-xs font-medium mb-1.5" style={{ color: colors.textDark }}>
+                  {savedAddresses.length > 0 ? "Or enter address manually" : "Pickup address *"}
+                </label>
+                <div className="relative">
+                  <MapPin size={16} className="absolute left-3.5 top-3" style={{ color: colors.textMuted }} />
+                  <textarea
+                    rows={3}
+                    value={pickupAddress}
+                    onChange={(e) => {
+                      setPickupAddress(e.target.value);
+                      setSelectedPickupAddressId(null);
+                    }}
+                    placeholder="Flat / house no, street, area, landmark, city"
+                    className="no-input w-full rounded-xl border pl-10 pr-4 py-2.5 text-sm resize-none"
+                    style={{ backgroundColor: colors.cardTint, color: colors.textDark, borderColor: colors.cardBorder }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4 mt-4">
                 <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: colors.textDark }}>Pickup address *</label>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: colors.textDark }}>Pickup date *</label>
                   <div className="relative">
-                    <MapPin size={16} className="absolute left-3.5 top-3" style={{ color: colors.textMuted }} />
-                    <textarea
-                      rows={3}
-                      value={pickupAddress}
-                      onChange={(e) => setPickupAddress(e.target.value)}
-                      placeholder="Flat / house no, street, area, landmark, city"
-                      className="no-input w-full rounded-xl border pl-10 pr-4 py-2.5 text-sm resize-none"
+                    <CalendarDays size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: colors.textMuted }} />
+                    <input
+                      type="date"
+                      min={todayISO()}
+                      value={pickupDate}
+                      onChange={(e) => setPickupDate(e.target.value)}
+                      className="no-input w-full rounded-xl border pl-10 pr-4 py-2.5 text-sm"
                       style={{ backgroundColor: colors.cardTint, color: colors.textDark, borderColor: colors.cardBorder }}
                     />
                   </div>
                 </div>
-
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: colors.textDark }}>Pickup date *</label>
-                    <div className="relative">
-                      <CalendarDays size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: colors.textMuted }} />
-                      <input
-                        type="date"
-                        min={todayISO()}
-                        value={pickupDate}
-                        onChange={(e) => setPickupDate(e.target.value)}
-                        className="no-input w-full rounded-xl border pl-10 pr-4 py-2.5 text-sm"
-                        style={{ backgroundColor: colors.cardTint, color: colors.textDark, borderColor: colors.cardBorder }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: colors.textDark }}>Pickup time slot *</label>
-                    <div className="relative">
-                      <Clock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: colors.textMuted }} />
-                      <select
-                        value={pickupTime}
-                        onChange={(e) => setPickupTime(e.target.value)}
-                        className="no-input w-full rounded-xl border pl-10 pr-4 py-2.5 text-sm appearance-none"
-                        style={{ backgroundColor: colors.cardTint, color: colors.textDark, borderColor: colors.cardBorder }}
-                      >
-                        {TIME_SLOTS.map((t) => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
-                      </select>
-                    </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: colors.textDark }}>Pickup time slot *</label>
+                  <div className="relative">
+                    <Clock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: colors.textMuted }} />
+                    <select
+                      value={pickupTime}
+                      onChange={(e) => setPickupTime(e.target.value)}
+                      className="no-input w-full rounded-xl border pl-10 pr-4 py-2.5 text-sm appearance-none"
+                      style={{ backgroundColor: colors.cardTint, color: colors.textDark, borderColor: colors.cardBorder }}
+                    >
+                      {TIME_SLOTS.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
@@ -644,18 +811,86 @@ export default function NewOrder() {
               </label>
 
               {!sameAsPickup && (
-                <div className="mt-4">
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: colors.textDark }}>Delivery address *</label>
-                  <div className="relative">
-                    <MapPin size={16} className="absolute left-3.5 top-3" style={{ color: colors.textMuted }} />
-                    <textarea
-                      rows={3}
-                      value={deliveryAddress}
-                      onChange={(e) => setDeliveryAddress(e.target.value)}
-                      placeholder="Flat / house no, street, area, landmark, city"
-                      className="no-input w-full rounded-xl border pl-10 pr-4 py-2.5 text-sm resize-none"
-                      style={{ backgroundColor: colors.cardTint, color: colors.textDark, borderColor: colors.cardBorder }}
-                    />
+                <div className="mt-4 space-y-3">
+                  {/* Saved addresses with radio buttons for delivery */}
+                  {savedAddresses.length > 0 && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium uppercase tracking-wide" style={{ color: colors.textMuted }}>
+                          Choose from saved addresses
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAddressModal("delivery")}
+                          className="inline-flex items-center gap-1 text-xs font-medium"
+                          style={{ color: colors.primaryTeal }}
+                        >
+                          <PlusCircle size={13} /> Add new
+                        </button>
+                      </div>
+
+                      {savedAddresses.map((addr) => (
+                        <label
+                          key={addr.id}
+                          className="flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition-all"
+                          style={{
+                            backgroundColor: selectedDeliveryAddressId === addr.id ? `${colors.mint}0D` : colors.bgLight,
+                            borderColor: selectedDeliveryAddressId === addr.id ? colors.mint : colors.cardBorder,
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="deliveryAddress"
+                            checked={selectedDeliveryAddressId === addr.id}
+                            onChange={() => handleSelectDeliveryAddress(addr)}
+                            className="mt-0.5"
+                            style={{ accentColor: colors.primaryTeal }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold" style={{ color: colors.textDark }}>
+                                {addr.label}
+                              </span>
+                              {addr.isDefault && (
+                                <span
+                                  className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                  style={{ background: `${colors.mint}20`, color: colors.primaryTeal }}
+                                >
+                                  <Star size={9} className="inline mr-0.5" /> Default
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs mt-0.5" style={{ color: colors.textMuted }}>
+                              {addr.fullName} · {addr.phone}
+                            </p>
+                            <p className="text-xs mt-1 leading-relaxed" style={{ color: colors.textMuted }}>
+                              {formatAddress(addr)}
+                            </p>
+                          </div>
+                        </label>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Manual delivery address input */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: colors.textDark }}>
+                      {savedAddresses.length > 0 ? "Or enter delivery address manually" : "Delivery address *"}
+                    </label>
+                    <div className="relative">
+                      <MapPin size={16} className="absolute left-3.5 top-3" style={{ color: colors.textMuted }} />
+                      <textarea
+                        rows={3}
+                        value={deliveryAddress}
+                        onChange={(e) => {
+                          setDeliveryAddress(e.target.value);
+                          setSelectedDeliveryAddressId(null);
+                        }}
+                        placeholder="Flat / house no, street, area, landmark, city"
+                        className="no-input w-full rounded-xl border pl-10 pr-4 py-2.5 text-sm resize-none"
+                        style={{ backgroundColor: colors.cardTint, color: colors.textDark, borderColor: colors.cardBorder }}
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -862,6 +1097,13 @@ export default function NewOrder() {
           </Card>
         </div>
       </div>
+
+      {/* Address Modal */}
+      <AddAddressModal
+        open={showAddressModal}
+        onClose={() => setShowAddressModal(false)}
+        onSuccess={handleAddressAdded}
+      />
     </div>
   );
 }

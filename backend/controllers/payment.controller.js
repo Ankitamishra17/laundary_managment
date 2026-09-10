@@ -203,7 +203,7 @@ export const createPayment = async (req, res) => {
         });
       }
 
-      const employee = await User.findByPk(employeeId, {
+      const employee = await Employee.findByPk(employeeId, {
         transaction,
       });
 

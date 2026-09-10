@@ -165,11 +165,20 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
       auto_generate_password: autoPassword,
       ...(autoPassword ? {} : { password: form.password }),
     };
+    // Capture password BEFORE any state updates so it's never lost
+    const capturedPassword = autoPassword ? null : form.password;
+    const capturedEmail = form.email;
+
     const result = await onCreate(payload);
     if (result.ok) {
       setCreated({
         name: result.employee?.name,
+<<<<<<< Updated upstream
         tempPassword: autoPassword ? result.tempPassword : form.password,
+=======
+        email: capturedEmail,
+        tempPassword: autoPassword ? result.tempPassword : capturedPassword,
+>>>>>>> Stashed changes
       });
     } else {
       setError(result.error || "Failed to create employee");
@@ -178,13 +187,14 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
   };
 
   const handleCopy = async () => {
+    if (!created) return;
     try {
       await navigator.clipboard.writeText(
-        `Email: ${form.email}\nPassword: ${created.tempPassword}`,
+        `Email: ${created.email}\nPassword: ${created.tempPassword}`,
       );
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
-    } catch {
+    } catch (err) {
       setError("Could not copy to clipboard");
     }
   };
@@ -377,7 +387,7 @@ function CreateEmployeeModal({ isOpen, onClose, onCreate }) {
                   Email
                 </span>
                 <span className="text-sm font-semibold text-[#0F2C2E]">
-                  {form.email}
+                  {created.email}
                 </span>
               </div>
               <div className="flex items-center justify-between py-2.5 border-t border-[#D8ECEA]">

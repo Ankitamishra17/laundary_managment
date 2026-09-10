@@ -8,6 +8,12 @@ const REQUIRED_COLUMNS = {
   users: [
     // Customer / admin profile image (uploads/avatars/...)
     { name: "avatar", ddl: "VARCHAR(255) NULL" },
+    // Soft-delete gate — "deleted" users are blocked from login and API
+    { name: "isDeleted", ddl: "TINYINT(1) NOT NULL DEFAULT 0" },
+    // Password reset OTP (stored in plain — verified server-side only)
+    { name: "resetOtp", ddl: "VARCHAR(255) NULL" },
+    // OTP expiry timestamp
+    { name: "resetOtpExpires", ddl: "DATETIME NULL" },
   ],
   employees: [
     // Soft-delete gate — "inactive" employees are blocked from login and API
@@ -129,18 +135,19 @@ export async function ensureSchema() {
 
   // ============================================================
   // Tasks — unique constraint to prevent duplicate assignments
+  // Must include shop_id for multi-tenant isolation.
   // ============================================================
   const [taskIdxRows] = await sequelize.query(
     `SELECT INDEX_NAME FROM information_schema.STATISTICS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks'
-       AND INDEX_NAME = 'uniq_task_order_type_employee'`
+       AND INDEX_NAME = 'unique_shop_order_task_employee'`
   );
   if (taskIdxRows.length === 0) {
     await sequelize.query(
       `ALTER TABLE tasks
-       ADD UNIQUE INDEX uniq_task_order_type_employee
-       (order_id, task_type, employee_id)`
+       ADD UNIQUE INDEX unique_shop_order_task_employee
+       (shop_id, order_id, task_type, employee_id)`
     );
-    console.log("  + added unique index tasks(order_id, task_type, employee_id)");
+    console.log("  + added unique index tasks(shop_id, order_id, task_type, employee_id)");
   }
 }

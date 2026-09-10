@@ -28,6 +28,7 @@ import Complaint from "./Complaint.js";
 import ComplaintReply from "./ComplaintReply.js";
 import Review from "./Review.js";
 import Invoice from "./Invoice.js";
+import CustomerAddress from "./CustomerAddress.js";
 
 // =====================================================
 // SHOP ↔ USER
@@ -381,6 +382,22 @@ Payment.belongsTo(Shop, {
   foreignKey: "shopId",
   as: "shop",
 });
+
+
+// =====================================================
+// CUSTOMER ↔ Address
+// =====================================================
+Customer.hasMany(CustomerAddress,{
+  foreignKey:"customerId",
+  as:"addresses",
+});
+
+CustomerAddress.belongsTo(Customer,{
+  foreignKey:"customerId",
+  as:"customer"
+});
+
+
 
 // =====================================================
 // CUSTOMER ↔ PAYMENT

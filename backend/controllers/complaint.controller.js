@@ -240,7 +240,9 @@ export const assignComplaint = async (req, res) => {
       return res.status(404).json({ success: false, message: "Complaint not found." });
     }
 
-    const employee = await Employee.findByPk(employee_id);
+    const employeeWhere = { id: employee_id };
+    if (req.user.shopId) employeeWhere.shop_id = req.user.shopId;
+    const employee = await Employee.findOne({ where: employeeWhere });
     if (!employee) {
       return res.status(404).json({ success: false, message: "Employee not found." });
     }

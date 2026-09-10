@@ -35,6 +35,8 @@ import customerRoutes from "./routes/customer.routes.js";
 import leaveRoutes from "./routes/leave.routes.js";
 import invoiceRoutes from "./routes/invoice.routes.js";
 
+import customerAddressRoutes  from "./routes/customerAddressRoutes.js"
+
 const app = express();
 
 app.use(cors());
@@ -94,6 +96,10 @@ app.use("/api/leaves", leaveRoutes);
 
 // Invoices
 app.use("/api/invoices", invoiceRoutes);
+
+
+//Address
+app.use("/api/customer/address",customerAddressRoutes)
 
 app.get("/", (req, res) => {
   res.json({

@@ -8,6 +8,7 @@ import {
   updateOrderStatus,
   updatePaymentStatus,
   getOrderStats,
+  // reorderOrder,
   
 } from "../controllers/order.controller.js";
 
@@ -22,6 +23,11 @@ const router = express.Router();
 // ---- Customer (own orders) ----
 router.post("/", protect, allowRoles("customer"), createOrder);
 router.get("/mine", protect, allowRoles("customer"), getMyOrders);
+
+
+//reorder
+
+// router.post("/:id/reorder",protect,allowRoles("customer"),reorderOrder)
 
 // ---- Admin (shop orders) ----
 router.get("/", protect, allowRoles("admin", "super_admin"), getShopOrders);

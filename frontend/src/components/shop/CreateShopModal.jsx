@@ -584,9 +584,12 @@ export default function CreateShopModal({
       // SAVE SHOP + ADMIN DETAILS
       // ========================================================
 
+      const adminEmail = data.admin?.email || "";
+      const adminPassword = data.admin?.temporaryPassword || "";
+
       setCredentials({
-        email: data.admin?.email || "",
-        password: data.admin?.temporaryPassword || "",
+        email: adminEmail,
+        password: adminPassword,
         shopCode: data.shop?.shopCode || "",
         shopName: data.shop?.name || "",
         slug: data.shop?.slug || "",

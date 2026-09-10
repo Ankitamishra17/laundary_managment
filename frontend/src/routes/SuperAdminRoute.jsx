@@ -7,7 +7,7 @@ import Shops from "../pages/superAdmin/Shops";
 import Subscriptions from "../pages/superAdmin/Subscriptions";
 import Reports from "../pages/superAdmin/Reports";
 import Settings from "../pages/superAdmin/Settings";
-import Invoices from "../pages/superAdmin/Invoices";
+// import Invoices from "../pages/superAdmin/Invoices";
 
 const SuperAdminRoute = (
   <Route path="/super" element={<SuperAdminLayout />}>
@@ -16,7 +16,7 @@ const SuperAdminRoute = (
     <Route path="dashboard" element={<Dashboard />} />
     <Route path="shops" element={<Shops />} />
     <Route path="subscriptions" element={<Subscriptions />} />
-    <Route path="invoices" element={<Invoices />} />
+    {/* <Route path="invoices" element={<Invoices />} /> */}
     <Route path="reports" element={<Reports />} />
     <Route path="settings" element={<Settings />} />
   </Route>

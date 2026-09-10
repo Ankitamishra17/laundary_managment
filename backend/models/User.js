@@ -72,6 +72,27 @@ const User = sequelize.define(
     avatar: {
       type: DataTypes.STRING,
       allowNull: true,
+<<<<<<< Updated upstream
+=======
+    },
+
+    // Soft-delete gate — "deleted" users are blocked from login and API
+    isDeleted: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+
+    // Password reset OTP (stored in plain — verified server-side only)
+    resetOtp: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
+    // OTP expiry timestamp
+    resetOtpExpires: {
+      type: DataTypes.DATE,
+      allowNull: true,
+>>>>>>> Stashed changes
     },
   },
 

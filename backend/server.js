@@ -9,6 +9,8 @@ import superAdminSeeder from "./seeders/superAdminSeeder.js";
 import seedDefaultServices from "./seeders/defaultServicesSeeder.js";
 import { startSubscriptionExpiryJob } from "./jobs/subscriptionExpiry.job.js";
 
+
+
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {

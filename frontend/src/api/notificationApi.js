@@ -74,7 +74,10 @@ export const markAllNotificationsAsRead = async () => {
 };
 
 // =====================================================
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
 // LOW-STOCK NOTIFICATIONS
 // =====================================================
 
@@ -110,8 +113,11 @@ export const markAllLowStockNotificationsAsRead = async () => {
 
 // =====================================================
 // NOTIFICATION API OBJECT
+<<<<<<< Updated upstream
 
 
+=======
+>>>>>>> Stashed changes
 // =====================================================
 
 export const notificationApi = {
@@ -134,4 +140,12 @@ export const notificationApi = {
     return response.data;
   },
 
+<<<<<<< Updated upstream
+=======
+  getLowStockNotifications,
+  getLowStockNotificationCount,
+  getNotificationHistory,
+  markLowStockRead: markLowStockNotificationAsRead,
+  markAllLowStockNotificationsAsRead,
+>>>>>>> Stashed changes
 };

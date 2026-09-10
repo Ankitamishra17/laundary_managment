@@ -28,7 +28,11 @@ export function handleSessionExpired() {
 
   localStorage.removeItem("token");
   localStorage.removeItem("user");
-  window.location.assign("/login?session=expired");
+
+  // Detect slug-based routes (e.g. /neha-laundry/dashboard → /neha-laundry/login)
+  const slugMatch = path.match(/^\/([^/]+)\/dashboard/);
+  const slugLogin = slugMatch ? `/${slugMatch[1]}/login` : "/login";
+  window.location.assign(slugLogin + "?session=expired");
 }
 
 /**
