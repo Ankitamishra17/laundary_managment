@@ -1,4 +1,3 @@
-
 import { Op, literal } from "sequelize";
 
 import Task from "../models/Tasks.js";
@@ -53,6 +52,29 @@ const TASK_TYPE_LABELS = {
   delivery: "Delivery",
 };
 
+// Validate a task type value coming from query/body.
+function isValidTaskType(type) {
+  return TASK_TYPES.includes(type);
+}
+
+/**
+ * Tenant scope helper — builds the `where` clause for admin task listings.
+ * Shop admins (req.user.shopId set) only ever see their own shop's tasks,
+ * scoped through the assigned employee's shop_id. Super admins (no shopId)
+ * see every shop's tasks.
+ */
+function buildTaskWhereForAdmin(req) {
+  const where = {};
+
+  if (req.user?.shopId) {
+    where["$employee.shop_id$"] = {
+      [Op.or]: [req.user.shopId, null],
+    };
+  }
+
+  return where;
+}
+
 
 const ORDER_STATUS_LABELS = {
   pending: "Pending",
@@ -73,6 +95,8 @@ const ORDER_STATUS_RANK = {
   delivered: 5,
   cancelled: 6,
 };
+
+
 
 // The order status implied by a task's type + status. Returns null when
 // the change shouldn't touch the order (e.g. a task reset to pending).
@@ -111,7 +135,7 @@ async function getOrderTasksSorted(orderId) {
 function latestTasksByType(allOrderTasks) {
   const map = {};
 
-  for (const task of tasks) {
+  for (const task of allOrderTasks) {
     if (
       !map[task.task_type] ||
       Number(task.id) > Number(map[task.task_type].id)
@@ -148,6 +172,245 @@ function findNextTask(currentType, allOrderTasks) {
   return null;
 }
 
+/* ============================================================
+   NEW: Handles the `tasks: [{ task_type, employee_id,
+   scheduled_time, priority }]` format sent by the Assign Tasks
+   modal, where every task row can go to a DIFFERENT employee at
+   a DIFFERENT time. This is what fixes the
+   "employee_id and scheduled_time are required" error — the old
+   code only ever looked at req.body.employee_id /
+   req.body.scheduled_time (top level), which the modal never
+   sends.
+============================================================ */
+async function assignMultipleTasks(req, res, { order_id, customer_name, customer_phone, customer_address, notes, tasks }) {
+  // ---- Per-row validation ----
+  for (const t of tasks) {
+    if (!t.task_type || !TASK_TYPES.includes(t.task_type)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid task_type: ${t.task_type}`,
+      });
+    }
+    if (!t.employee_id || !t.scheduled_time) {
+      return res.status(400).json({
+        success: false,
+        message: `employee_id and scheduled_time are required for ${TASK_TYPE_LABELS[t.task_type] || t.task_type}`,
+      });
+    }
+    if (new Date(t.scheduled_time) < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: `Scheduled time for ${TASK_TYPE_LABELS[t.task_type] || t.task_type} cannot be in the past.`,
+      });
+    }
+    if (t.priority && !["normal", "urgent"].includes(t.priority)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid priority for ${TASK_TYPE_LABELS[t.task_type] || t.task_type}.`,
+      });
+    }
+  }
+
+  const adminShopId = req.user.shopId || null;
+
+  let resolvedOrderId = order_id ? Number(order_id) : null;
+  let resolvedName = String(customer_name || "").trim();
+  let resolvedPhone = String(customer_phone || "").trim() || null;
+  let resolvedAddress = String(customer_address || "").trim() || null;
+  let order = null;
+
+  if (resolvedOrderId) {
+    const orderWhere = { id: resolvedOrderId };
+    if (adminShopId) orderWhere.shop_id = adminShopId;
+
+    order = await Order.findOne({
+      where: orderWhere,
+      include: [
+        {
+          model: Customer,
+          as: "customer",
+          attributes: ["name", "phone", "address", "city"],
+          required: false,
+        },
+      ],
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found in your shop.",
+      });
+    }
+
+    if (order.status === "delivered" || order.status === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot assign tasks to a ${order.status} order.`,
+      });
+    }
+
+    resolvedOrderId = order.id;
+
+    // Business rule: Same Order + Same Task + Same Employee = BLOCKED
+    const existingTasks = await Task.findAll({
+      where: { order_id: resolvedOrderId },
+      attributes: ["task_type", "employee_id"],
+    });
+
+    const empDuplicates = tasks.filter((t) =>
+      existingTasks.some(
+        (et) => et.task_type === t.task_type && et.employee_id === Number(t.employee_id)
+      )
+    );
+    if (empDuplicates.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `This task is already assigned to this employee: ${empDuplicates
+          .map((t) => TASK_TYPE_LABELS[t.task_type] || t.task_type)
+          .join(", ")}. Assign a different task type or a different employee.`,
+      });
+    }
+
+    // Record the first assigned employee on the order only when no
+    // employee is set yet.
+    if (!order.employee_id) {
+      order.employee_id = Number(tasks[0].employee_id);
+      await order.save();
+    }
+
+    if (!resolvedName) {
+      resolvedName =
+        order.customer?.name ||
+        String(order.pickup_address || "").trim() ||
+        `Order #${order.id}`;
+    }
+    if (!resolvedPhone) resolvedPhone = order.customer?.phone || null;
+    if (!resolvedAddress) {
+      resolvedAddress =
+        String(
+          order.customer
+            ? [order.customer.address, order.customer.city].filter(Boolean).join(", ")
+            : ""
+        ).trim() ||
+        order.pickup_address ||
+        null;
+    }
+  }
+
+  if (!resolvedName) {
+    return res.status(400).json({
+      success: false,
+      message: "customer_name is required (or link the task to an order).",
+    });
+  }
+
+  // ---- Create one task per row, each with its own employee/time ----
+  const createdTasks = [];
+
+  for (const t of tasks) {
+    const employee = await Employee.findByPk(t.employee_id);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee not found for ${TASK_TYPE_LABELS[t.task_type] || t.task_type}`,
+      });
+    }
+
+    if (req.user.shopId && employee.shop_id && employee.shop_id !== req.user.shopId) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only assign tasks to employees of your shop.",
+      });
+    }
+
+    const task = await Task.create({
+      shop_id: adminShopId || employee.shop_id,
+      order_id: resolvedOrderId,
+      employee_id: Number(t.employee_id),
+      customer_name: resolvedName,
+      customer_phone: resolvedPhone,
+      customer_address: resolvedAddress,
+      task_type: t.task_type,
+      sequence: TASK_SEQUENCE_MAP[t.task_type] || 1,
+      scheduled_time: t.scheduled_time,
+      priority: t.priority || "normal",
+      status: "pending",
+      notes: notes || null,
+    });
+
+    const created = await Task.findByPk(task.id, {
+      include: [
+        {
+          model: Employee,
+          as: "employee",
+          attributes: ["id", "name", "email", "designation"],
+        },
+        {
+          model: Order,
+          as: "order",
+          attributes: ["id", "status", "total_amount"],
+          required: false,
+        },
+      ],
+    });
+    createdTasks.push(created);
+
+    const scheduledLabel = new Date(t.scheduled_time).toLocaleString([], {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    await createNotification({
+      employeeId: Number(t.employee_id),
+      orderId: resolvedOrderId,
+      title: "New task assigned",
+      message: `${TASK_TYPE_LABELS[t.task_type] || t.task_type} task for ${resolvedName}${
+        resolvedOrderId ? ` (order #${resolvedOrderId})` : ""
+      } starting ${scheduledLabel}.`,
+      type: "task",
+      link: "/employee/mytask",
+    });
+  }
+
+  // Notify the customer about the assignment.
+  if (resolvedOrderId) {
+    try {
+      const orderWithCustomer = await Order.findByPk(resolvedOrderId, {
+        include: [
+          {
+            model: Customer,
+            as: "customer",
+            attributes: ["id", "userId", "name"],
+            required: false,
+          },
+        ],
+      });
+      if (orderWithCustomer?.customer) {
+        await notifyCustomer(orderWithCustomer.customer, {
+          title: "Task assigned to your order",
+          message: `${tasks.length > 1 ? "Tasks have" : "A task has"} been assigned for your order #${resolvedOrderId}.`,
+          type: "task",
+          orderId: resolvedOrderId,
+          link: `/customer/orders/${resolvedOrderId}`,
+        });
+      }
+    } catch (notifErr) {
+      console.error("Customer notification error:", notifErr.message);
+    }
+  }
+
+  return res.status(201).json({
+    success: true,
+    message:
+      createdTasks.length > 1
+        ? `${createdTasks.length} tasks created successfully`
+        : "Task assigned successfully",
+    data: createdTasks.length === 1 ? createdTasks[0] : createdTasks,
+  });
+}
+
 // ============================================================
 // Admin side
 // ============================================================
@@ -155,7 +418,7 @@ function findNextTask(currentType, allOrderTasks) {
 // GET /api/tasks?employee_id=&status=&task_type= — Admin lists all tasks
 export const getAllTasks = async (req, res) => {
   try {
-    const { employee_id, status, task_type } = req.query;
+    const { employee_id, order_id, status, task_type } = req.query;
 
     const where = buildTaskWhereForAdmin(req);
 
@@ -221,12 +484,17 @@ export const getAllTasks = async (req, res) => {
 };
 
 // POST /api/tasks — Admin assigns tasks to an employee
-// Body: { order_id?, employee_id, customer_name?, customer_phone?,
-//         customer_address?, task_type?, task_types?: string[],
-//         scheduled_time, priority?, notes? }
-// task_types is an array — one task is created per selected type.
-// When order_id is given and task_types is omitted, defaults to all types.
-// When order_id is not given and task_types is omitted, uses task_type.
+// Body (single-employee / single-time form):
+//   { order_id?, employee_id, customer_name?, customer_phone?,
+//     customer_address?, task_type?, task_types?: string[],
+//     scheduled_time, priority?, notes? }
+//   task_types is an array — one task is created per selected type,
+//   all going to the SAME employee, spaced 30 min apart.
+//
+// Body (NEW per-task form used by the Assign Tasks modal):
+//   { order_id?, customer_name?, customer_phone?, customer_address?,
+//     notes?, tasks: [{ task_type, employee_id, scheduled_time, priority }] }
+//   Each task can have a DIFFERENT employee and a DIFFERENT time.
 export const assignTask = async (req, res) => {
   try {
     const {
@@ -237,10 +505,24 @@ export const assignTask = async (req, res) => {
       customer_address,
       task_type,
       task_types,
+      tasks, // NEW: [{ task_type, employee_id, scheduled_time, priority }]
       scheduled_time,
       priority,
       notes,
     } = req.body;
+
+    // ---- NEW: per-task employee/time assignment (what the modal sends) ----
+    if (Array.isArray(tasks) && tasks.length > 0) {
+      return await assignMultipleTasks(req, res, {
+        order_id,
+        customer_name,
+        customer_phone,
+        customer_address,
+        notes,
+        tasks,
+      });
+    }
+    // -------------------------------------------------------------------
 
     if (!employee_id || !scheduled_time) {
       return res.status(400).json({
@@ -294,6 +576,10 @@ export const assignTask = async (req, res) => {
       });
     }
 
+    // Tenant scope for order lookups — shop admins are restricted to their
+    // own shop; super admins (no shopId) can address any shop.
+    const adminShopId = req.user.shopId || null;
+
     // Resolve order context when the admin assigns from an order.
     let resolvedOrderId = order_id ? Number(order_id) : null;
     let resolvedName = String(customer_name || "").trim();
@@ -301,11 +587,16 @@ export const assignTask = async (req, res) => {
     let resolvedAddress = String(customer_address || "").trim() || null;
 
     if (resolvedOrderId) {
-      order = await Order.findOne({
-        where: {
-          id: resolvedOrderId,
-          shop_id: adminShopId,
-        },
+      const orderWhere = { id: resolvedOrderId };
+
+      // Only scope by shop when the caller is a shop admin. A super admin
+      // has no shopId, and `shop_id: null` would match nothing.
+      if (adminShopId) {
+        orderWhere.shop_id = adminShopId;
+      }
+
+      const order = await Order.findOne({
+        where: orderWhere,
 
         include: [
           {
@@ -404,12 +695,17 @@ export const assignTask = async (req, res) => {
       const spacedTime = new Date(baseTime.getTime() + i * 30 * 60 * 1000);
 
       const task = await Task.create({
+        // Tenant column — every task row is stamped with a shop. Shop
+        // admins stamp their own shop; a super admin's task inherits the
+        // assigned employee's shop (tasks.shop_id is NOT NULL).
+        shop_id: adminShopId || employee.shop_id,
         order_id: resolvedOrderId,
         employee_id,
         customer_name: resolvedName,
         customer_phone: resolvedPhone,
         customer_address: resolvedAddress,
         task_type: tType,
+        sequence: TASK_SEQUENCE_MAP[tType] || 1,
         scheduled_time: typesToCreate.length > 1 ? spacedTime : baseTime,
         priority: priority || "normal",
         status: "pending",
@@ -508,6 +804,10 @@ export const getMyTasks = async (req, res) => {
     const employeeId = req.user.id;
     const { status, type, date } = req.query;
 
+    // Tenant scope: the employee's own shop (req.user.shopId is set by the
+    // auth middleware from the employee record's shop_id).
+    const shopId = req.user.shopId;
+
     const where = {
       shop_id: shopId,
       employee_id: employeeId,
@@ -563,6 +863,9 @@ export const getMyTaskStats = async (req, res) => {
   try {
     const employeeId = req.user.id;
     const { date } = req.query;
+
+    // Tenant scope: same as getMyTasks — employee's own shop.
+    const shopId = req.user.shopId;
 
     const where = {
       shop_id: shopId,

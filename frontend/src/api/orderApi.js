@@ -53,3 +53,9 @@ export const updateOrderPaymentStatus = async (id, payment_status) => {
   const response = await api.patch(`/orders/${id}/payment`, { payment_status });
   return response.data;
 };
+
+/** Customer — reorder a delivered order. */
+export const reorderOrder = async (id) => {
+  const response = await api.post(`/orders/${id}/reorder`);
+  return response.data;
+};

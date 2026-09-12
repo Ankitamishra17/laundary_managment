@@ -34,11 +34,20 @@ export const submitReview = async (req, res) => {
       });
     }
 
+    // Tenant scope: the order must belong to the customer's own shop.
+    // Ordering by PK first so the error messages stay the same as before.
     const order = await Order.findByPk(order_id);
     if (!order) {
       return res.status(404).json({
         success: false,
         message: "Order not found.",
+      });
+    }
+
+    if (customer.shopId && order.shop_id !== customer.shopId) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only review orders from your own shop.",
       });
     }
 

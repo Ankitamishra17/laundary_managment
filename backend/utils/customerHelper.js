@@ -1,10 +1,14 @@
 import Customer from "../models/Customer.js";
 import User from "../models/User.js";
 
+/**
+ * Tenant-scoped: finds/creates the Customer profile for a user **within
+ * the user's own shop**. Customers are per-shop rows (unique on
+ * shopId + email / shopId + phone), so every dedup lookup below is
+ * constrained to the user's shopId — a user of Shop A can never be
+ * linked to a customer row of Shop B.
+ */
 export async function findOrCreateCustomer(userId) {
-  let customer = await Customer.findOne({ where: { userId } });
-  if (customer) return customer;
-
   const user = await User.findByPk(userId);
 
   if (!user) {
@@ -20,19 +24,45 @@ export async function findOrCreateCustomer(userId) {
     return null;
   }
 
-  try {
-    // Check if a Customer already exists with the same email (unique constraint)
-    const existingByEmail = user.email
-      ? await Customer.findOne({ where: { email: user.email } })
-      : null;
+  // ------------------------------------------------------------
+  // Tenant-scoped lookup: customer row already linked to this user
+  // in their own shop.
+  // ------------------------------------------------------------
+  const shopScopedWhere = { userId: Number(userId) };
+  if (user.shopId) {
+    shopScopedWhere.shopId = Number(user.shopId);
+  }
 
-    if (existingByEmail) {
-      existingByEmail.userId = user.id;
-      if (!existingByEmail.shopId && user.shopId) {
-        existingByEmail.shopId = user.shopId;
+  let customer = await Customer.findOne({ where: shopScopedWhere });
+  if (customer) return customer;
+
+  try {
+    // ----------------------------------------------------------
+    // Dedup within the SAME SHOP only (never across tenants).
+    // The unique indexes are (shopId, email) and (shopId, phone),
+    // so the fallback lookups must match that scoping.
+    // ----------------------------------------------------------
+    let existing = null;
+
+    if (user.email && user.shopId) {
+      existing = await Customer.findOne({
+        where: { shopId: user.shopId, email: user.email },
+      });
+    }
+
+    if (!existing && user.phone && user.shopId) {
+      existing = await Customer.findOne({
+        where: { shopId: user.shopId, phone: user.phone },
+      });
+    }
+
+    if (existing) {
+      existing.userId = user.id;
+      if (!existing.shopId && user.shopId) {
+        existing.shopId = user.shopId;
       }
-      await existingByEmail.save();
-      return existingByEmail;
+      await existing.save();
+      return existing;
     }
 
     customer = await Customer.create({
@@ -47,11 +77,16 @@ export async function findOrCreateCustomer(userId) {
     return customer;
   } catch (err) {
     if (err.name === "SequelizeUniqueConstraintError") {
-      if (user.email) {
-        customer = await Customer.findOne({ where: { email: user.email } });
+      // Retry the dedup lookup — still scoped to the user's shop.
+      if (user.email && user.shopId) {
+        customer = await Customer.findOne({
+          where: { shopId: user.shopId, email: user.email },
+        });
       }
-      if (!customer && user.phone) {
-        customer = await Customer.findOne({ where: { phone: user.phone } });
+      if (!customer && user.phone && user.shopId) {
+        customer = await Customer.findOne({
+          where: { shopId: user.shopId, phone: user.phone },
+        });
       }
       if (customer) {
         customer.userId = user.id;

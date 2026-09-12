@@ -18,7 +18,7 @@ import {
   Wrench,
   UserCheck,
 } from "lucide-react";
-import { getOrderById, cancelOrder } from "../../api/orderApi";
+import { getOrderById, cancelOrder, reorderOrder } from "../../api/orderApi";
 import OrderTimeline from "../../components/customer/OrderTimeline";
 import { statusMeta, formatINR, formatDateTime, formatDate } from "../../utils/orderStatus";
 
@@ -42,6 +42,7 @@ export default function OrderDetails() {
   const [notFound, setNotFound] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [reordering, setReordering] = useState(false);
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -88,6 +89,21 @@ export default function OrderDetails() {
       setConfirmCancel(false);
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const handleReorder = async () => {
+    setReordering(true);
+    try {
+      const res = await reorderOrder(id);
+      if (res.success) {
+        toast.success("Order placed successfully.");
+        navigate("/customer/orders");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Could not place reorder.");
+    } finally {
+      setReordering(false);
     }
   };
 
@@ -384,14 +400,29 @@ export default function OrderDetails() {
               <p className="mt-1.5 text-xs leading-relaxed" style={{ color: colors.textMuted }}>
                 Your order has been delivered. Share your feedback by writing a review!
               </p>
-              <Link
-                to="/customer/reviews"
-                className="mt-4 inline-flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg text-white transition-all hover:brightness-110"
-                style={{ background: "linear-gradient(95deg, #F5A623, #F7C948)" }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                Write a review
-              </Link>
+              <div className="mt-4 flex items-center gap-2.5">
+                <button
+                  onClick={handleReorder}
+                  disabled={reordering}
+                  className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg text-white transition-all hover:brightness-110 disabled:opacity-50"
+                  style={{ background: "linear-gradient(95deg, #028090, #02C39A)" }}
+                >
+                  {reordering ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <ShoppingBag size={13} />
+                  )}
+                  {reordering ? "Reordering..." : "Reorder"}
+                </button>
+                <Link
+                  to="/customer/reviews"
+                  className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg text-white transition-all hover:brightness-110"
+                  style={{ background: "linear-gradient(95deg, #F5A623, #F7C948)" }}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                  Write a review
+                </Link>
+              </div>
             </div>
           )}
 

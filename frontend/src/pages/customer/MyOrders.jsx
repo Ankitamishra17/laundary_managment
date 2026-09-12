@@ -16,7 +16,7 @@ import {
   Truck,
   Star,
 } from "lucide-react";
-import { getMyOrders, cancelOrder } from "../../api/orderApi";
+import { getMyOrders, cancelOrder, reorderOrder } from "../../api/orderApi";
 import OrderTimeline from "../../components/customer/OrderTimeline";
 import { statusMeta, formatINR, formatDateTime, formatDate } from "../../utils/orderStatus";
 
@@ -36,6 +36,7 @@ export default function MyOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirmCancel, setConfirmCancel] = useState(null);
+  const [reorderingId, setReorderingId] = useState(null);
 
   const load = async (silent = false) => {
     try {
@@ -69,6 +70,21 @@ export default function MyOrders() {
     } catch (error) {
       toast.error(error.response?.data?.message || "Could not cancel the order.");
       setConfirmCancel(null);
+    }
+  };
+
+  const handleReorder = async (id) => {
+    setReorderingId(id);
+    try {
+      const res = await reorderOrder(id);
+      if (res.success) {
+        toast.success("Order placed successfully.");
+        load();
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Could not place reorder.");
+    } finally {
+      setReorderingId(null);
     }
   };
 
@@ -284,7 +300,20 @@ export default function MyOrders() {
                 )}
 
                 {o.status === "delivered" && (
-                  <div className="px-5 sm:px-6 py-3.5 border-t flex justify-end" style={{ borderColor: colors.cardBorder }}>
+                  <div className="px-5 sm:px-6 py-3.5 border-t flex items-center justify-end gap-2.5" style={{ borderColor: colors.cardBorder }}>
+                    <button
+                      onClick={() => handleReorder(o.id)}
+                      disabled={reorderingId === o.id}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg text-white transition-all hover:brightness-110 disabled:opacity-50"
+                      style={{ background: "linear-gradient(95deg, #028090, #02C39A)" }}
+                    >
+                      {reorderingId === o.id ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <ShoppingBag size={13} />
+                      )} 
+                      {reorderingId === o.id ? "Reordering..." : "Reorder"}
+                    </button>
                     <Link
                       to="/customer/reviews"
                       className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg text-white transition-all hover:brightness-110"

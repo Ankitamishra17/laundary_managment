@@ -120,11 +120,6 @@ export const createOrder = async (req, res) => {
       items,
     } = req.body;
 
-    //reorder
-
-    // export const reorderOrder = async(req,res)=>{
-
-    // }
     // --------------------------------------------------------
     // Customer must have a shop
     // --------------------------------------------------------
@@ -573,36 +568,265 @@ export const cancelMyOrder = async (req, res) => {
   }
 };
 
-//reorder
+// ============================================================
+// CUSTOMER — REORDER
+// POST /api/orders/:id/reorder
+// ============================================================
 
+export const reorderOrder = async (req, res) => {
+  const transaction = await sequelize.transaction();
 
-export const reorderOrder = async(req,res)=>{
+  try {
+    const userShopId = getShopId(req);
 
-const transaction = await sequelize.transaction();
-const oldOrder = await Order.findOne({
-  where:{
-    id:Number(req.params.id)
-  },
-  include:[
-    {
-      model:OrderItem,
-      as:"items"
+    if (!userShopId) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Your account is not linked to a laundry shop.",
+      });
     }
-  ]
 
+    const shopId = Number(userShopId);
 
+    // --------------------------------------------------------
+    // Customer
+    // --------------------------------------------------------
 
-})
+    const customer = await getCustomerForUser(req.user.id, shopId);
 
-if(!oldOrder){
-  await transaction.rollback();
-  
-  return res.status(404).json({
-    success:false,
-    message:"Order not found"
-  });
-}
-}
+    if (!customer) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Customer profile not found. Please contact support.",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Shop
+    // --------------------------------------------------------
+
+    const shop = await Shop.findOne({
+      where: {
+        id: shopId,
+        isActive: true,
+        isDeleted: false,
+      },
+    });
+
+    if (!shop) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Laundry shop not found or inactive.",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Fetch the old order with its items
+    // --------------------------------------------------------
+
+    const oldOrder = await Order.findOne({
+      where: {
+        id: Number(req.params.id),
+        customer_id: customer.id,
+        shop_id: shopId,
+      },
+      include: [
+        {
+          model: OrderItem,
+          as: "items",
+        },
+      ],
+      transaction,
+    });
+
+    if (!oldOrder) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Order not found.",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Validate: only delivered orders can be reordered
+    // --------------------------------------------------------
+
+    if (oldOrder.status !== "delivered") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Only delivered orders can be reordered.",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Validate: order must have items
+    // --------------------------------------------------------
+
+    if (!oldOrder.items || oldOrder.items.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "This order has no items to reorder.",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Fetch current services and validate availability
+    // --------------------------------------------------------
+
+    const serviceIds = [
+      ...new Set(oldOrder.items.map((item) => Number(item.serviceId)).filter(Boolean)),
+    ];
+
+    if (serviceIds.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "No valid services found in the original order.",
+      });
+    }
+
+    const catalog = await Service.findAll({
+      where: {
+        id: { [Op.in]: serviceIds },
+        shopId: shop.id,
+        isDeleted: false,
+        status: "Active",
+      },
+      transaction,
+    });
+
+    const catalogById = new Map(
+      catalog.map((service) => [Number(service.id), service]),
+    );
+
+    // --------------------------------------------------------
+    // Check that ALL services from the old order are still available
+    // --------------------------------------------------------
+
+    const unavailableServices = [];
+    for (const item of oldOrder.items) {
+      if (!item.serviceId || !catalogById.has(Number(item.serviceId))) {
+        unavailableServices.push(item.name);
+      }
+    }
+
+    if (unavailableServices.length > 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `The following services are no longer available: ${unavailableServices.join(", ")}. Please update your order.`,
+      });
+    }
+
+    // --------------------------------------------------------
+    // Build new order items with current prices
+    // --------------------------------------------------------
+
+    const lineItems = [];
+    let totalAmount = 0;
+
+    for (const item of oldOrder.items) {
+      const service = catalogById.get(Number(item.serviceId));
+      if (!service) continue;
+
+      const quantity = Math.max(1, Number(item.quantity) || 1);
+      const price = Number(service.price) || 0;
+      const lineTotal = price * quantity;
+      totalAmount += lineTotal;
+
+      lineItems.push({
+        serviceId: service.id,
+        name: service.serviceName,
+        price,
+        quantity,
+        lineTotal,
+        item_label: item.item_label || null,
+      });
+    }
+
+    // --------------------------------------------------------
+    // Create new order
+    // --------------------------------------------------------
+
+    const resolvedDeliveryAddress =
+      String(oldOrder.delivery_address || "").trim() ||
+      String(oldOrder.pickup_address || "").trim() ||
+      null;
+
+    const newOrder = await Order.create(
+      {
+        customer_id: customer.id,
+        shop_id: shop.id,
+        status: "pending",
+        total_amount: totalAmount,
+        payment_status: "unpaid",
+        pickup_date: oldOrder.pickup_date || null,
+        pickup_time: oldOrder.pickup_time || null,
+        pickup_address: oldOrder.pickup_address || null,
+        delivery_address: resolvedDeliveryAddress,
+        delivery_date: oldOrder.delivery_date || null,
+        delivery_note: oldOrder.delivery_note || null,
+      },
+      { transaction },
+    );
+
+    // --------------------------------------------------------
+    // Create new order items
+    // --------------------------------------------------------
+
+    await OrderItem.bulkCreate(
+      lineItems.map((line) => ({ ...line, orderId: newOrder.id })),
+      { transaction },
+    );
+
+    await transaction.commit();
+
+    // --------------------------------------------------------
+    // Fetch the created order with all related data
+    // --------------------------------------------------------
+
+    const created = await Order.findOne({
+      where: { id: newOrder.id, shop_id: shop.id },
+      include: ORDER_INCLUDES,
+    });
+
+    // --------------------------------------------------------
+    // Admin notification (non-blocking)
+    // --------------------------------------------------------
+
+    try {
+      await notifyShopAdmins(shop.id, {
+        title: "Reorder placed",
+        message: `${customer.name} reordered from #${oldOrder.id} as order #${newOrder.id} for ${totalAmount.toLocaleString("en-IN")} — pending pickup.`,
+        type: "order",
+        link: "/admin/orders",
+      });
+    } catch (notificationError) {
+      console.error("Reorder notification error:", notificationError.message);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Order placed successfully. We'll pick it up soon!",
+      data: created,
+    });
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch {}
+
+    console.error("Reorder Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 
 // ============================================================
 // ADMIN — SHOP ORDERS
@@ -702,12 +926,6 @@ export const updateOrderStatus = async (req, res) => {
 
     if (shopId) {
       where.shop_id = shopId;
-    }
-
-    if (!order) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found." });
     }
 
     const order = await Order.findOne({
@@ -978,12 +1196,6 @@ export const updatePaymentStatus = async (req, res) => {
 
     if (shopId) {
       where.shop_id = shopId;
-    }
-
-    if (!order) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found." });
     }
 
     const order = await Order.findOne({
