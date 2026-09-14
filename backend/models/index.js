@@ -13,6 +13,7 @@ import Leave from "./Leave.js";
 import InventoryItem from "./InventoryItem.js";
 import Supplier from "./Supplier.js";
 import InventoryTransaction from "./InventoryTransaction.js";
+import TaskInventoryUsage from "./TaskInventoryUsage.js";
 
 import Payment from "./Payment.js";
 import Purchase from "./Purchase.js";
@@ -719,6 +720,50 @@ Review.belongsTo(Shop, {
   as: "shop",
 });
 
+// =====================================================
+// TASK ↔ INVENTORY USAGE
+// =====================================================
+
+Task.hasMany(TaskInventoryUsage, {
+  foreignKey: "taskId",
+  as: "inventoryUsages",
+});
+
+TaskInventoryUsage.belongsTo(Task, {
+  foreignKey: "taskId",
+  as: "task",
+});
+
+// =====================================================
+// INVENTORY ITEM ↔ TASK INVENTORY USAGE
+// =====================================================
+
+InventoryItem.hasMany(TaskInventoryUsage, {
+  foreignKey: "inventoryItemId",
+  as: "taskUsages",
+});
+
+TaskInventoryUsage.belongsTo(InventoryItem, {
+  foreignKey: "inventoryItemId",
+  as: "inventoryItem",
+});
+
+// =====================================================
+// EMPLOYEE ↔ TASK INVENTORY USAGE
+// =====================================================
+
+Employee.hasMany(TaskInventoryUsage, {
+  foreignKey: "employeeId",
+  as: "inventoryUsages",
+});
+
+TaskInventoryUsage.belongsTo(Employee, {
+  foreignKey: "employeeId",
+  as: "employee",
+});
+
+
+
 export {
   Shop,
   User,
@@ -743,6 +788,7 @@ export {
   ComplaintReply,
   Review,
   Invoice,
+  TaskInventoryUsage,
 };
 
 export default sequelize;

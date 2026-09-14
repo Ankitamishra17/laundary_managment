@@ -33,6 +33,22 @@ const InventoryTransaction = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+    //Task id related to task
+    taskId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    // Order related to the task
+    orderId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    //Employee who use the inventory
+    employeeId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
 
     // Type of stock movement
     type: {
@@ -97,6 +113,7 @@ const InventoryTransaction = sequelize.define(
       allowNull: false,
     },
   },
+  // User who performed transaction
   {
     tableName: "inventory_transactions",
     timestamps: true,

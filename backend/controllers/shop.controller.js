@@ -12,62 +12,62 @@ import Subscription from "../models/Subscription.js";
 // Every new shop gets these services automatically
 // ============================================================
 
-// const DEFAULT_SERVICES = [
-//   {
-//     serviceName: "Wash & Fold",
-//     category: "Washing",
-//     pricingType: "Per Kg",
-//     price: 80,
-//     estimatedTime: "24 hours",
-//     description:
-//       "Machine wash, tumble dry and neatly folded. Perfect for everyday clothes.",
-//   },
-//   {
-//     serviceName: "Wash & Iron",
-//     category: "Washing",
-//     pricingType: "Per Kg",
-//     price: 99,
-//     estimatedTime: "24 hours",
-//     description:
-//       "Washed and pressed to perfection — crisp lines on every shirt and trouser.",
-//   },
-//   {
-//     serviceName: "Dry Cleaning",
-//     category: "Dry Cleaning",
-//     pricingType: "Per Item",
-//     price: 149,
-//     estimatedTime: "48 hours",
-//     description:
-//       "Gentle chemical cleaning for suits, silk, wool and delicate fabrics.",
-//   },
-//   {
-//     serviceName: "Iron Only",
-//     category: "Ironing",
-//     pricingType: "Per Item",
-//     price: 25,
-//     estimatedTime: "12 hours",
-//     description:
-//       "Professional steam pressing that removes every wrinkle and crease.",
-//   },
-//   {
-//     serviceName: "Bedding & Household",
-//     category: "Household",
-//     pricingType: "Per Item",
-//     price: 120,
-//     estimatedTime: "48 hours",
-//     description:
-//       "Comforters, curtains and towels washed large-scale with extra care.",
-//   },
-//   {
-//     serviceName: "Premium Care",
-//     category: "Premium",
-//     pricingType: "Per Item",
-//     price: 199,
-//     estimatedTime: "48 hours",
-//     description:
-//       "Stain treatment, fabric softener and hand-finishing for special pieces.",
-//   },
-// ];
+const DEFAULT_SERVICES = [
+  {
+    serviceName: "Wash & Fold",
+    category: "Washing",
+    pricingType: "Per Kg",
+    price: 80,
+    estimatedTime: "24 hours",
+    description:
+      "Machine wash, tumble dry and neatly folded. Perfect for everyday clothes.",
+  },
+  {
+    serviceName: "Wash & Iron",
+    category: "Washing",
+    pricingType: "Per Kg",
+    price: 99,
+    estimatedTime: "24 hours",
+    description:
+      "Washed and pressed to perfection — crisp lines on every shirt and trouser.",
+  },
+  {
+    serviceName: "Dry Cleaning",
+    category: "Dry Cleaning",
+    pricingType: "Per Item",
+    price: 149,
+    estimatedTime: "48 hours",
+    description:
+      "Gentle chemical cleaning for suits, silk, wool and delicate fabrics.",
+  },
+  {
+    serviceName: "Iron Only",
+    category: "Ironing",
+    pricingType: "Per Item",
+    price: 25,
+    estimatedTime: "12 hours",
+    description:
+      "Professional steam pressing that removes every wrinkle and crease.",
+  },
+  {
+    serviceName: "Bedding & Household",
+    category: "Household",
+    pricingType: "Per Item",
+    price: 120,
+    estimatedTime: "48 hours",
+    description:
+      "Comforters, curtains and towels washed large-scale with extra care.",
+  },
+  {
+    serviceName: "Premium Care",
+    category: "Premium",
+    pricingType: "Per Item",
+    price: 199,
+    estimatedTime: "48 hours",
+    description:
+      "Stain treatment, fabric softener and hand-finishing for special pieces.",
+  },
+];
 
 // ============================================================
 // GENERATE UNIQUE SHOP SLUG
@@ -109,21 +109,21 @@ async function generateUniqueSlug(name, excludeShopId = null) {
 // SEED DEFAULT SERVICES
 // ============================================================
 
-// async function seedServicesForShop(shopId, createdBy) {
-//   try {
-//     await Service.bulkCreate(
-//       DEFAULT_SERVICES.map((service) => ({
-//         ...service,
-//         shopId,
-//         status: "Active",
-//         isDeleted: false,
-//         createdBy: createdBy || 0,
-//       })),
-//     );
-//   } catch (err) {
-//     console.error("Failed to seed default services:", err.message);
-//   }
-// }
+async function seedServicesForShop(shopId, createdBy) {
+  try {
+    await Service.bulkCreate(
+      DEFAULT_SERVICES.map((service) => ({
+        ...service,
+        shopId,
+        status: "Active",
+        isDeleted: false,
+        createdBy: createdBy || 0,
+      })),
+    );
+  } catch (err) {
+    console.error("Failed to seed default services:", err.message);
+  }
+}
 
 // ============================================================
 // PUBLIC — LIST ACTIVE SHOPS

@@ -24,7 +24,7 @@ export const taskApi = {
         force,
       })
       .then((r) => r.data.data),
-      
+
   getAdminTaskHistory: (params) =>
     api.get("/tasks/history", { params }).then((r) => r.data.data),
 
@@ -36,8 +36,13 @@ export const taskApi = {
   getMyTaskHistory: (params) =>
     api.get("/tasks/my-history", { params }).then((r) => r.data.data),
   getTaskById: (id) => api.get(`/tasks/${id}`).then((r) => r.data.data),
-  updateStatus: (id, status) =>
-    api.patch(`/tasks/${id}/status`, { status }).then((r) => r.data.data),
+  updateStatus: (id, status, materials = []) =>
+    api
+      .patch(`/tasks/${id}/status`, {
+        status,
+        materials,
+      })
+      .then((r) => r.data.data),
   updateNotes: (id, notes) =>
     api.patch(`/tasks/${id}/notes`, { notes }).then((r) => r.data.data),
   getMyCustomerTasks: () =>

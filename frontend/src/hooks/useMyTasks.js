@@ -122,7 +122,7 @@ export function useMyTasks(initialStatus = "all") {
   /* ---------------------------------------------------------------- */
 
   const updateStatus = useCallback(
-    async (taskId, newStatus) => {
+    async (taskId, newStatus, materials = []) => {
       const task = tasks.find((item) => item.id === taskId);
 
       if (!task) {
@@ -147,13 +147,15 @@ export function useMyTasks(initialStatus = "all") {
         return;
       }
 
+      /*
+       * Materials must always be an array.
+       */
+      const safeMaterials = Array.isArray(materials) ? materials : [];
+
       const previousTasks = tasks;
 
       /*
        * Optimistic UI update.
-       *
-       * This makes the button respond immediately.
-       * We will refetch from backend after success.
        */
       setTasks((currentTasks) =>
         currentTasks.map((item) =>
@@ -168,22 +170,27 @@ export function useMyTasks(initialStatus = "all") {
 
       try {
         /*
-         * Backend validates:
-         * - employee ownership
-         * - shop ownership
-         * - task sequence
-         * - current status
-         * - active task rules
-         */
-        await taskApi.updateStatus(taskId, newStatus);
-
-        /*
          * IMPORTANT:
          *
-         * After completing a task, the backend may
-         * change the next task's `isReady`.
+         * Send materials to backend.
          *
-         * Therefore we MUST fetch the task list again.
+         * For example:
+         *
+         * [
+         *   {
+         *     inventoryItemId: 10,
+         *     quantity: 5,
+         *     notes: "Used during washing"
+         *   }
+         * ]
+         */
+        await taskApi.updateStatus(taskId, newStatus, safeMaterials);
+
+        /*
+         * Refresh tasks after successful update.
+         *
+         * This is important because completing the current
+         * task can make the next workflow task ready.
          */
         await fetchAll(true);
 
@@ -193,7 +200,11 @@ export function useMyTasks(initialStatus = "all") {
         if (newStatus === "in_progress") {
           toast.success(`${typeLabel} task started`);
         } else if (newStatus === "completed") {
-          toast.success(`${typeLabel} task completed`);
+          if (safeMaterials.length > 0) {
+            toast.success(`${typeLabel} completed and inventory updated`);
+          } else {
+            toast.success(`${typeLabel} task completed`);
+          }
         }
       } catch (err) {
         /*

@@ -20,6 +20,7 @@ import toast from "react-hot-toast";
 import { taskApi } from "../../api/taskApi";
 import { useEmployees } from "../../hooks/useEmployees";
 import { getShopCustomers } from "../../api/customerApi";
+import { getShopOrders } from "../../api/orderApi";
 import StatusPill from "../../components/layout/StatusPill";
 import TaskFilterTabs from "../../components/layout/TaskFilterTabs";
 
@@ -141,416 +142,1217 @@ const EMPTY_FORM = {
   notes: "",
 };
 
-function AssignTaskModal({ isOpen, onClose, employees, employeesLoading, onAssigned }) {
+function AssignTaskModal({
+  isOpen,
+  onClose,
+  employees = [],
+  employeesLoading,
+  onAssigned,
+}) {
   const [form, setForm] = useState(EMPTY_FORM);
-  const [selectedTypes, setSelectedTypes] = useState(["pickup"]);
+
+  const [selectedTypes, setSelectedTypes] = useState([
+    "pickup",
+  ]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [customers, setCustomers] = useState([]);
-  const [customersLoading, setCustomersLoading] = useState(false);
-  const [orders, setOrders] = useState([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [orderTasks, setOrderTasks] = useState([]);
-  const [orderTasksLoading, setOrderTasksLoading] = useState(false);
 
-  // Minimum datetime — prevents selecting past dates/times.
+  const [customers, setCustomers] = useState([]);
+  const [customersLoading, setCustomersLoading] =
+    useState(false);
+
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] =
+    useState(false);
+
+  const [orderTasks, setOrderTasks] = useState([]);
+  const [orderTasksLoading, setOrderTasksLoading] =
+    useState(false);
+
+  // ----------------------------------------------------------
+  // Minimum allowed date/time
+  // ----------------------------------------------------------
+
   const minDateTime = useMemo(() => {
     const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+
+    now.setMinutes(
+      now.getMinutes() - now.getTimezoneOffset()
+    );
+
     return now.toISOString().slice(0, 16);
   }, []);
 
-  // Load the shop's customers so the admin can pick one instead of typing
-  // the customer details by hand.
+  // ----------------------------------------------------------
+  // IMPORTANT:
+  // This hook MUST be before `if (!isOpen) return null`
+  // ----------------------------------------------------------
+
+  const availableEmployees = useMemo(() => {
+    if (
+      !form.order_id ||
+      orderTasks.length === 0
+    ) {
+      return employees;
+    }
+
+    const blockedEmployeeIds = new Set(
+      orderTasks
+        .filter((task) =>
+          selectedTypes.includes(
+            task.task_type
+          )
+        )
+        .map((task) =>
+          Number(task.employee_id)
+        )
+    );
+
+    return employees.filter(
+      (employee) =>
+        !blockedEmployeeIds.has(
+          Number(employee.id)
+        )
+    );
+  }, [
+    employees,
+    orderTasks,
+    selectedTypes,
+    form.order_id,
+  ]);
+
+  // ----------------------------------------------------------
+  // Load customers and orders
+  // ----------------------------------------------------------
+
   useEffect(() => {
     if (!isOpen) return;
+
     let cancelled = false;
+
+    // -----------------------------
+    // Customers
+    // -----------------------------
+
     setCustomersLoading(true);
+
     getShopCustomers()
       .then((res) => {
-        if (!cancelled) setCustomers(res.data || []);
+        if (cancelled) return;
+
+        const data = Array.isArray(res?.data)
+          ? res.data
+          : [];
+
+        setCustomers(data);
       })
-      .catch(() => {
-        /* customers are optional — manual entry still works */
+      .catch((err) => {
+        console.error(
+          "Load customers error:",
+          err
+        );
+
+        if (!cancelled) {
+          setCustomers([]);
+        }
       })
       .finally(() => {
-        if (!cancelled) setCustomersLoading(false);
+        if (!cancelled) {
+          setCustomersLoading(false);
+        }
       });
 
-    // Load pending/processing orders for the admin to link tasks to
+    // -----------------------------
+    // Orders
+    // -----------------------------
+
     setOrdersLoading(true);
-    import("../../api/orderApi").then(({ getShopOrders }) => {
-      getShopOrders({ status: "pending" })
-        .then((res) => {
-          if (!cancelled) setOrders(Array.isArray(res.data) ? res.data : []);
-        })
-        .catch(() => {
-          /* orders are optional */
-        })
-        .finally(() => {
-          if (!cancelled) setOrdersLoading(false);
-        });
-    }).catch(() => {});
+
+    getShopOrders({
+      status: "pending",
+    })
+      .then((res) => {
+        if (cancelled) return;
+
+        const data = Array.isArray(res?.data)
+          ? res.data
+          : [];
+
+        setOrders(data);
+      })
+      .catch((err) => {
+        console.error(
+          "Load orders error:",
+          err
+        );
+
+        if (!cancelled) {
+          setOrders([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setOrdersLoading(false);
+        }
+      });
 
     return () => {
       cancelled = true;
     };
   }, [isOpen]);
 
-  // When an order is selected, load its existing tasks to filter employees
+  // ----------------------------------------------------------
+  // Load tasks when order changes
+  // ----------------------------------------------------------
+
   useEffect(() => {
     if (!form.order_id) {
       setOrderTasks([]);
+      setOrderTasksLoading(false);
       return;
     }
+
     let cancelled = false;
+
     setOrderTasksLoading(true);
-    taskApi.getOrderTasks(form.order_id)
-      .then((res) => {
-        if (!cancelled) setOrderTasks(Array.isArray(res) ? res : []);
+
+    taskApi
+      .getOrderTasks(form.order_id)
+      .then((data) => {
+        if (cancelled) return;
+
+        setOrderTasks(
+          Array.isArray(data)
+            ? data
+            : []
+        );
       })
-      .catch(() => {
-        if (!cancelled) setOrderTasks([]);
+      .catch((err) => {
+        console.error(
+          "Load order tasks error:",
+          err
+        );
+
+        if (!cancelled) {
+          setOrderTasks([]);
+        }
       })
       .finally(() => {
-        if (!cancelled) setOrderTasksLoading(false);
+        if (!cancelled) {
+          setOrderTasksLoading(false);
+        }
       });
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
   }, [form.order_id]);
 
-  if (!isOpen) return null;
+  // ----------------------------------------------------------
+  // NOW conditional return
+  // ----------------------------------------------------------
 
-  // Filter employees: exclude those who already have the same selected task types for the selected order.
-  // Business rule: Same Order + Same Task + Same Employee = BLOCKED
-  const availableEmployees = useMemo(() => {
-    if (!form.order_id || orderTasks.length === 0) return employees;
-    // Find employee_ids that already have any of the selected task types for this order
-    const blockedEmployeeIds = new Set(
-      orderTasks
-        .filter((t) => selectedTypes.includes(t.task_type))
-        .map((t) => t.employee_id)
-    );
-    return employees.filter((emp) => !blockedEmployeeIds.has(emp.id));
-  }, [employees, orderTasks, selectedTypes, form.order_id]);
+  if (!isOpen) {
+    return null;
+  }
 
-  // Picking a customer from the dropdown auto-fills name / phone / address.
-  const handleCustomerSelect = (e) => {
-    const id = e.target.value;
-    const customer = customers.find((c) => String(c.id) === id);
+  // ----------------------------------------------------------
+  // Form change
+  // ----------------------------------------------------------
+
+  const handleChange = (e) => {
+    const {
+      name,
+      value,
+    } = e.target;
+
     setForm((prev) => ({
       ...prev,
-      customer_id: id,
-      customer_name: customer?.name || "",
-      customer_phone: customer?.phone || "",
+      [name]: value,
+    }));
+
+    setError("");
+  };
+
+  // ----------------------------------------------------------
+  // Customer selection
+  // ----------------------------------------------------------
+
+  const handleCustomerSelect = (e) => {
+    const customerId = e.target.value;
+
+    const customer = customers.find(
+      (item) =>
+        String(item.id) ===
+        String(customerId)
+    );
+
+    setForm((prev) => ({
+      ...prev,
+
+      customer_id: customerId,
+
+      customer_name:
+        customer?.name || "",
+
+      customer_phone:
+        customer?.phone || "",
+
       customer_address: customer
-        ? [customer.address, customer.city].filter(Boolean).join(", ")
+        ? [
+            customer.address,
+            customer.city,
+          ]
+            .filter(Boolean)
+            .join(", ")
         : "",
     }));
+
+    setError("");
   };
+
+  // ----------------------------------------------------------
+  // Customer name manual edit
+  // ----------------------------------------------------------
 
   const handleNameChange = (e) => {
     const { value } = e.target;
+
     setForm((prev) => ({
       ...prev,
+
       customer_name: value,
-      // Once the admin edits the name manually, the dropdown selection is stale
+
+      // If manually changed,
+      // saved customer selection is no longer reliable.
       customer_id: "",
     }));
+
+    setError("");
   };
+
+  // ----------------------------------------------------------
+  // Task type selection
+  // ----------------------------------------------------------
+
+  const toggleTaskType = (type) => {
+    setSelectedTypes((prev) => {
+      if (prev.includes(type)) {
+        return prev.filter(
+          (item) => item !== type
+        );
+      }
+
+      return [
+        ...prev,
+        type,
+      ];
+    });
+
+    // Employee selection may no longer be valid
+    // after changing task types.
+    setForm((prev) => ({
+      ...prev,
+      employee_id: "",
+    }));
+
+    setError("");
+  };
+
+  // ----------------------------------------------------------
+  // Reset
+  // ----------------------------------------------------------
 
   const resetAndClose = () => {
     setForm(EMPTY_FORM);
-    setSelectedTypes(["pickup"]);
+
+    setSelectedTypes([
+      "pickup",
+    ]);
+
     setError("");
+
     setOrderTasks([]);
-    onClose();
+
+    onClose?.();
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
+  // ----------------------------------------------------------
+  // Submit
+  // ----------------------------------------------------------
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     setError("");
+
+    // -----------------------------
+    // Task type
+    // -----------------------------
+
     if (selectedTypes.length === 0) {
-      setError("Please select at least one task type.");
+      const message =
+        "Please select at least one task type.";
+
+      setError(message);
+      toast.error(message);
+
       return;
     }
+
+    // -----------------------------
+    // Employee
+    // -----------------------------
+
+    if (!form.employee_id) {
+      const message =
+        "Please select an employee.";
+
+      setError(message);
+      toast.error(message);
+
+      return;
+    }
+
+    // -----------------------------
+    // Customer
+    // -----------------------------
+
+    if (!form.customer_name.trim()) {
+      const message =
+        "Customer name is required.";
+
+      setError(message);
+      toast.error(message);
+
+      return;
+    }
+
+    // -----------------------------
+    // Scheduled time
+    // -----------------------------
+
+    if (!form.scheduled_time) {
+      const message =
+        "Scheduled date and time is required.";
+
+      setError(message);
+      toast.error(message);
+
+      return;
+    }
+
+    const scheduledDate =
+      new Date(
+        form.scheduled_time
+      );
+
+    if (
+      Number.isNaN(
+        scheduledDate.getTime()
+      )
+    ) {
+      const message =
+        "Invalid scheduled date and time.";
+
+      setError(message);
+      toast.error(message);
+
+      return;
+    }
+
+    if (
+      scheduledDate < new Date()
+    ) {
+      const message =
+        "Scheduled time cannot be in the past.";
+
+      setError(message);
+      toast.error(message);
+
+      return;
+    }
+
+    // -----------------------------
+    // Employee duplicate check
+    // -----------------------------
+
+    const selectedEmployeeId =
+      Number(form.employee_id);
+
+    const employeeAlreadyAssigned =
+      form.order_id &&
+      orderTasks.some(
+        (task) =>
+          Number(task.employee_id) ===
+            selectedEmployeeId &&
+          selectedTypes.includes(
+            task.task_type
+          )
+      );
+
+    if (employeeAlreadyAssigned) {
+      const message =
+        "This employee is already assigned to one of the selected task types for this order.";
+
+      setError(message);
+      toast.error(message);
+
+      return;
+    }
+
+    // -----------------------------
+    // Payload
+    // -----------------------------
+
+    const payload = {
+      employee_id:
+        selectedEmployeeId,
+
+      task_types:
+        selectedTypes,
+
+      priority:
+        form.priority,
+
+      scheduled_time:
+        form.scheduled_time,
+
+      customer_name:
+        form.customer_name.trim(),
+
+      customer_phone:
+        form.customer_phone.trim() ||
+        null,
+
+      customer_address:
+        form.customer_address.trim() ||
+        null,
+
+      notes:
+        form.notes.trim() ||
+        null,
+    };
+
+    if (form.order_id) {
+      payload.order_id =
+        Number(form.order_id);
+    }
+
+    // -----------------------------
+    // API
+    // -----------------------------
+
     setLoading(true);
+
     try {
-      // Validate scheduled_time is not in the past
-      if (form.scheduled_time && new Date(form.scheduled_time) < new Date()) {
-        setError("Scheduled time cannot be in the past.");
-        setLoading(false);
-        return;
-      }
-      const payload = {
-        employee_id: Number(form.employee_id),
-        task_types: selectedTypes,
-        priority: form.priority,
-        scheduled_time: form.scheduled_time,
-        customer_name: form.customer_name,
-        customer_phone: form.customer_phone || null,
-        customer_address: form.customer_address || null,
-        notes: form.notes || null,
-      };
-      if (form.order_id) payload.order_id = Number(form.order_id);
-      await taskApi.assignTask(payload);
-      toast.success(selectedTypes.length > 1 ? `${selectedTypes.length} tasks assigned successfully` : "Task assigned successfully");
-      onAssigned?.();
+      await taskApi.assignTask(
+        payload
+      );
+
+      toast.success(
+        selectedTypes.length > 1
+          ? `${selectedTypes.length} tasks assigned successfully`
+          : "Task assigned successfully"
+      );
+
+      await onAssigned?.();
+
       resetAndClose();
     } catch (err) {
-      const msg = err.response?.data?.message || "Failed to assign task";
-      setError(msg);
-      toast.error(msg);
+      console.error(
+        "Assign task error:",
+        err
+      );
+
+      const message =
+        err?.response?.data?.message ||
+        "Failed to assign task.";
+
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
+  // ----------------------------------------------------------
+  // UI
+  // ----------------------------------------------------------
+
   return (
-    <div className="fixed inset-0 z-50 bg-[#05282A]/55 backdrop-blur-sm flex items-center justify-center p-4" onClick={resetAndClose}>
+    <div
+      className="
+        fixed inset-0 z-[100]
+        flex items-center justify-center
+        bg-[#05282A]/60
+        backdrop-blur-sm
+        p-4
+      "
+      onMouseDown={(e) => {
+        if (
+          e.target ===
+          e.currentTarget
+        ) {
+          resetAndClose();
+        }
+      }}
+    >
       <div
-        className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-[0_20px_50px_rgba(5,40,42,0.25)]"
-        onClick={(e) => e.stopPropagation()}
+        className="
+          w-full
+          max-w-2xl
+          max-h-[92vh]
+          overflow-hidden
+          rounded-3xl
+          bg-white
+          shadow-[0_25px_80px_rgba(5,40,42,0.28)]
+        "
+        onMouseDown={(e) =>
+          e.stopPropagation()
+        }
       >
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h2
-              className="text-2xl text-[#0F2C2E] leading-tight"
-              style={{ fontFamily: "'Libre Baskerville', Georgia, serif" }}
+
+        {/* HEADER */}
+        <div
+          className="
+            flex items-center
+            justify-between
+            border-b border-[#E4EFED]
+            bg-gradient-to-r
+            from-[#F3FBFA]
+            to-white
+            px-6 py-5
+          "
+        >
+          <div className="flex items-center gap-3">
+
+            <div
+              className="
+                flex h-11 w-11
+                items-center justify-center
+                rounded-2xl
+                bg-[#DFF5F2]
+                text-[#028090]
+              "
             >
-              Assign Task
-            </h2>
-            <p className="text-[13px] text-[#5A7A79] mt-1">Assign a new task to an employee</p>
+              <ClipboardList
+                size={21}
+              />
+            </div>
+
+            <div>
+              <h2
+                className="
+                  text-xl
+                  font-semibold
+                  text-[#12383A]
+                "
+              >
+                Assign Task
+              </h2>
+
+              <p className="mt-0.5 text-xs text-[#6B8583]">
+                Assign workflow tasks to an employee
+              </p>
+            </div>
+
           </div>
+
           <button
+            type="button"
             onClick={resetAndClose}
-            aria-label="Close"
-            className="w-8 h-8 rounded-lg bg-[#EEF7F6] border border-[#D8ECEA] text-[#0F2C2E] flex items-center justify-center hover:bg-[#DFF3F5] transition-colors"
+            disabled={loading}
+            className="
+              flex h-9 w-9
+              items-center justify-center
+              rounded-xl
+              border border-[#DCECE9]
+              bg-white
+              text-[#547371]
+              hover:bg-[#F2FAF9]
+              hover:text-[#12383A]
+              disabled:opacity-50
+            "
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Field label="Link to Order (optional)">
-            <select
-              name="order_id"
-              value={form.order_id}
-              onChange={handleChange}
-              disabled={ordersLoading}
-              className={inputCls}
-            >
-              <option value="">
-                {ordersLoading ? "Loading orders…" : "No order (standalone task)"}
-              </option>
-              {orders.map((o) => (
-                <option key={o.id} value={o.id}>
-                  Order #{o.id}{o.customer?.name ? ` — ${o.customer.name}` : ""} ({o.status})
-                </option>
-              ))}
-            </select>
-          </Field>
+        {/* BODY */}
+        <div className="max-h-[calc(92vh-82px)] overflow-y-auto">
 
-          <Field label="Assign To" required>
-            <select
-              name="employee_id"
-              value={form.employee_id}
-              onChange={handleChange}
-              required
-              disabled={employeesLoading}
-              className={inputCls}
-            >
-              <option value="" disabled>
-                {employeesLoading ? "Loading employees…" : availableEmployees.length === 0 ? "No available employees" : "Select an employee"}
-              </option>
-              {availableEmployees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.name}
-                  {emp.designation ? ` — ${emp.designation}` : ""}
-                  {emp.status === "inactive" ? " (inactive)" : ""}
-                </option>
-              ))}
-            </select>
-            {form.order_id && orderTasks.length > 0 && (
-              <p className="mt-1 text-[11px] text-[#6B8482]">
-                Only showing employees available for the selected task types on this order.
-              </p>
-            )}
-          </Field>
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-5 p-6"
+          >
 
-          <div>
-            <label className="block text-[13px] font-medium text-[#0F2C2E] mb-2">
-              Task Types <span className="text-[#B3261E]">*</span>
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {TASK_TYPE_OPTIONS.map((opt) => {
-                const checked = selectedTypes.includes(opt.value);
-                return (
-                  <label
-                    key={opt.value}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-[13px] font-medium cursor-pointer transition-all ${checked
-                        ? "border-[#028090] bg-[#DFF3F5] text-[#028090]"
-                        : "border-[#D8ECEA] bg-white text-[#6B8482] hover:border-[#A9C9C6]"
-                      }`}
+            {/* ORDER */}
+            <Field label="Link to Order (optional)">
+
+              <select
+                name="order_id"
+                value={form.order_id}
+                onChange={handleChange}
+                disabled={ordersLoading}
+                className={inputCls}
+              >
+
+                <option value="">
+                  {ordersLoading
+                    ? "Loading orders..."
+                    : "No order — standalone task"}
+                </option>
+
+                {orders.map((order) => (
+                  <option
+                    key={order.id}
+                    value={order.id}
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        setSelectedTypes((prev) =>
-                          checked
-                            ? prev.filter((t) => t !== opt.value)
-                            : [...prev, opt.value]
-                        );
-                      }}
-                      className="sr-only"
-                    />
-                    <div
-                      className={"w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors " + (checked ? "border-[#028090] bg-[#028090]" : "border-[#D8ECEA]")}
-                    >
-                      {checked && (
-                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                    {opt.label}
-                  </label>
-                );
-              })}
-            </div>
-            {selectedTypes.length > 1 && (
-              <div className="mt-2 flex flex-wrap items-center gap-1 text-[11px] text-[#6B8482]">
-                <span className="font-medium">Order:</span>
-                {selectedTypes.map((t, i) => (
-                  <span key={t} className="inline-flex items-center gap-1">
-                    {i > 0 && <span className="text-[#A9C9C6]">→</span>}
-                    <span className="px-1.5 py-0.5 rounded bg-[#EEF7F6] text-[#028090] font-medium">
-                      {TASK_TYPE_LABEL[t] || t}
-                    </span>
-                  </span>
+                    Order #{order.id}
+                    {order.customer?.name
+                      ? ` — ${order.customer.name}`
+                      : ""}
+                    {order.status
+                      ? ` (${order.status})`
+                      : ""}
+                  </option>
                 ))}
+
+              </select>
+
+            </Field>
+
+
+            {/* EMPLOYEE */}
+            <Field
+              label="Assign To"
+              required
+            >
+
+              <select
+                name="employee_id"
+                value={form.employee_id}
+                onChange={handleChange}
+                required
+                disabled={
+                  employeesLoading ||
+                  orderTasksLoading
+                }
+                className={inputCls}
+              >
+
+                <option value="">
+                  {employeesLoading
+                    ? "Loading employees..."
+                    : orderTasksLoading
+                      ? "Checking order tasks..."
+                      : availableEmployees.length === 0
+                        ? "No available employees"
+                        : "Select an employee"}
+                </option>
+
+                {availableEmployees.map(
+                  (employee) => (
+                    <option
+                      key={employee.id}
+                      value={employee.id}
+                    >
+                      {employee.name}
+
+                      {employee.designation
+                        ? ` — ${employee.designation}`
+                        : ""}
+                    </option>
+                  )
+                )}
+
+              </select>
+
+              {form.order_id &&
+                orderTasks.length > 0 && (
+                  <p className="mt-1 text-[11px] text-[#6B8482]">
+                    Employees already assigned to the
+                    selected task types are excluded.
+                  </p>
+                )}
+
+            </Field>
+
+
+            {/* TASK TYPES */}
+            <div>
+
+              <label className="block text-[13px] font-medium text-[#0F2C2E] mb-2">
+                Task Types{" "}
+                <span className="text-[#B3261E]">
+                  *
+                </span>
+              </label>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+
+                {TASK_TYPE_OPTIONS.map(
+                  (option) => {
+                    const checked =
+                      selectedTypes.includes(
+                        option.value
+                      );
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() =>
+                          toggleTaskType(
+                            option.value
+                          )
+                        }
+                        className={`
+                          flex items-center
+                          gap-2
+                          rounded-xl
+                          border
+                          px-3 py-2.5
+                          text-left
+                          text-[12px]
+                          font-semibold
+                          transition
+                          ${
+                            checked
+                              ? "border-[#028090] bg-[#DFF3F5] text-[#028090]"
+                              : "border-[#D8ECEA] bg-white text-[#6B8482] hover:border-[#A9C9C6]"
+                          }
+                        `}
+                      >
+
+                        <span
+                          className={`
+                            flex h-4 w-4
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded
+                            border
+                            ${
+                              checked
+                                ? "border-[#028090] bg-[#028090]"
+                                : "border-[#C9DDDA]"
+                            }
+                          `}
+                        >
+                          {checked && (
+                            <svg
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              className="h-3 w-3 text-white"
+                            >
+                              <path
+                                d="M4 10.5L8 14L16 6"
+                                stroke="currentColor"
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          )}
+                        </span>
+
+                        {option.label}
+
+                      </button>
+                    );
+                  }
+                )}
+
+              </div>
+
+              {selectedTypes.length > 0 && (
+                <div
+                  className="
+                    mt-2
+                    flex flex-wrap
+                    items-center
+                    gap-1
+                    text-[11px]
+                    text-[#6B8482]
+                  "
+                >
+
+                  <span className="font-medium">
+                    Workflow:
+                  </span>
+
+                  {selectedTypes.map(
+                    (type, index) => (
+                      <React.Fragment
+                        key={type}
+                      >
+
+                        {index > 0 && (
+                          <span className="text-[#A9C9C6]">
+                            →
+                          </span>
+                        )}
+
+                        <span
+                          className="
+                            rounded-md
+                            bg-[#EEF7F6]
+                            px-1.5 py-0.5
+                            font-medium
+                            text-[#028090]
+                          "
+                        >
+                          {TASK_TYPE_LABEL[type]}
+                        </span>
+
+                      </React.Fragment>
+                    )
+                  )}
+
+                </div>
+              )}
+
+            </div>
+
+
+            {/* PRIORITY */}
+            <Field label="Priority">
+
+              <select
+                name="priority"
+                value={form.priority}
+                onChange={handleChange}
+                className={inputCls}
+              >
+                <option value="normal">
+                  Normal
+                </option>
+
+                <option value="urgent">
+                  Urgent
+                </option>
+              </select>
+
+            </Field>
+
+
+            {/* SCHEDULE */}
+            <Field
+              label="Scheduled Date & Time"
+              required
+            >
+
+              <input
+                name="scheduled_time"
+                type="datetime-local"
+                value={
+                  form.scheduled_time
+                }
+                onChange={handleChange}
+                min={minDateTime}
+                required
+                className={inputCls}
+              />
+
+              <p className="mt-1 text-[11px] text-[#6B8482]">
+                This is the earliest time the employee can
+                start the task.
+              </p>
+
+            </Field>
+
+
+            {/* CUSTOMER */}
+            <div
+              className="
+                rounded-2xl
+                border border-[#D8ECEA]
+                bg-[#FAFDFC]
+                p-4
+              "
+            >
+
+              <div className="mb-4">
+
+                <h3 className="text-sm font-semibold text-[#0F2C2E]">
+                  Customer Details
+                </h3>
+
+                <p className="mt-0.5 text-[11px] text-[#6B8482]">
+                  Select an existing customer or enter
+                  details manually.
+                </p>
+
+              </div>
+
+
+              <Field label="Saved Customer">
+
+                <select
+                  value={
+                    form.customer_id
+                  }
+                  onChange={
+                    handleCustomerSelect
+                  }
+                  disabled={
+                    customersLoading
+                  }
+                  className={inputCls}
+                >
+
+                  <option value="">
+                    {customersLoading
+                      ? "Loading customers..."
+                      : "Choose customer"}
+                  </option>
+
+                  {customers.map(
+                    (customer) => (
+                      <option
+                        key={customer.id}
+                        value={customer.id}
+                      >
+                        {customer.name}
+
+                        {customer.phone
+                          ? ` — ${customer.phone}`
+                          : ""}
+                      </option>
+                    )
+                  )}
+
+                </select>
+
+              </Field>
+
+
+              <div className="mt-4">
+
+                <Field
+                  label="Customer Name"
+                  required
+                >
+
+                  <input
+                    name="customer_name"
+                    value={
+                      form.customer_name
+                    }
+                    onChange={
+                      handleNameChange
+                    }
+                    required
+                    placeholder="Customer name"
+                    className={inputCls}
+                  />
+
+                </Field>
+
+              </div>
+
+
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                <Field label="Customer Phone">
+
+                  <input
+                    name="customer_phone"
+                    value={
+                      form.customer_phone
+                    }
+                    onChange={handleChange}
+                    placeholder="99XXXXXXXX"
+                    className={inputCls}
+                  />
+
+                </Field>
+
+
+                <Field label="Customer Address">
+
+                  <input
+                    name="customer_address"
+                    value={
+                      form.customer_address
+                    }
+                    onChange={handleChange}
+                    placeholder="Sector 62, Noida"
+                    className={inputCls}
+                  />
+
+                </Field>
+
+              </div>
+
+            </div>
+
+
+            {/* NOTES */}
+            <Field label="Notes">
+
+              <textarea
+                name="notes"
+                value={form.notes}
+                onChange={handleChange}
+                rows={3}
+                placeholder="Any special instructions..."
+                className={`${inputCls} resize-none`}
+              />
+
+            </Field>
+
+
+            {/* ERROR */}
+            {error && (
+              <div
+                className="
+                  flex items-start
+                  gap-2
+                  rounded-xl
+                  border
+                  border-[#F5C6C0]
+                  bg-[#FDECEC]
+                  px-3.5 py-3
+                  text-[12px]
+                  text-[#B3261E]
+                "
+              >
+                <AlertTriangle
+                  size={16}
+                  className="mt-0.5 shrink-0"
+                />
+
+                <span>
+                  {error}
+                </span>
               </div>
             )}
-          </div>
 
-          <div>
-            <Field label="Priority">
-              <select name="priority" value={form.priority} onChange={handleChange} className={inputCls}>
-                <option value="normal">Normal</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </Field>
-          </div>
 
-          <Field label="Scheduled Date & Time" required>
-            <input
-              name="scheduled_time"
-              type="datetime-local"
-              value={form.scheduled_time}
-              onChange={handleChange}
-              min={minDateTime}
-              required
-              className={inputCls}
-            />
-          </Field>
-
-          <Field label="Customer" required>
-            <select
-              value={form.customer_id}
-              onChange={handleCustomerSelect}
-              className={inputCls + " cursor-pointer"}
+            {/* WORKFLOW INFO */}
+            <div
+              className="
+                rounded-xl
+                border border-[#D8ECEA]
+                bg-[#EEF7F6]
+                px-4 py-3
+              "
             >
-              <option value="" disabled>
-                {customersLoading
-                  ? "Loading customers…"
-                  : "Choose from saved customers"}
-              </option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.phone ? " | " + c.phone : ""}
-                </option>
-              ))}
-            </select>
-            {!customersLoading && customers.length > 0 && (
-              <p className="mt-1 text-[11px] text-[#6B8482]">
-                Pick a customer to auto-fill their details below.
-              </p>
-            )}
-          </Field>
 
-          <Field label="Customer Name" required>
-            <input
-              name="customer_name"
-              value={form.customer_name}
-              onChange={handleNameChange}
-              required
-              placeholder="e.g. Ananya Verma"
-              className={inputCls}
-            />
-          </Field>
+              <div className="flex items-start gap-2">
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Customer Phone">
-              <input
-                name="customer_phone"
-                value={form.customer_phone}
-                onChange={handleChange}
-                placeholder="99XXXXXXXX"
-                className={inputCls}
-              />
-            </Field>
+                <Sparkles
+                  size={15}
+                  className="mt-0.5 text-[#028090]"
+                />
 
-            <Field label="Customer Address">
-              <input
-                name="customer_address"
-                value={form.customer_address}
-                onChange={handleChange}
-                placeholder="Sector 62, Noida"
-                className={inputCls}
-              />
-            </Field>
-          </div>
+                <div>
 
-          <Field label="Notes">
-            <textarea
-              name="notes"
-              value={form.notes}
-              onChange={handleChange}
-              rows={2}
-              placeholder="Any special instructions…"
-              className={inputCls + " resize-none"}
-            />
-          </Field>
+                  <p className="text-[11px] font-semibold text-[#315957]">
+                    Workflow rule
+                  </p>
 
-          {error && (
-            <div className="text-[13px] text-[#B3261E] bg-[#FDECEC] border border-[#F5C6C0] rounded-lg px-3.5 py-2.5">
-              {error}
+                  <p className="mt-0.5 text-[10px] leading-4 text-[#66817F]">
+                    Tasks follow the laundry workflow.
+                    Urgent tasks do not bypass scheduled
+                    time or previous-task dependency.
+                  </p>
+
+                </div>
+
+              </div>
+
             </div>
-          )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition hover:brightness-105 active:scale-[0.98]"
-            style={{ background: "linear-gradient(135deg, #028090, #00A896)" }}
-          >
-            {loading ? (
-              <>
-                <Loader2 size={16} className="animate-spin" /> Assigning…
-              </>
-            ) : (
-              <>
-                <UserPlus size={16} /> Assign Task
-              </>
-            )}
-          </button>
-        </form>
+
+            {/* ACTIONS */}
+            <div
+              className="
+                flex flex-col-reverse
+                gap-2
+                border-t border-[#E6F0EE]
+                pt-4
+                sm:flex-row
+                sm:justify-end
+              "
+            >
+
+              <button
+                type="button"
+                onClick={resetAndClose}
+                disabled={loading}
+                className="
+                  rounded-xl
+                  border border-[#D8ECEA]
+                  bg-white
+                  px-5 py-2.5
+                  text-sm
+                  font-semibold
+                  text-[#5A7775]
+                  hover:bg-[#F4FAF9]
+                  disabled:opacity-50
+                "
+              >
+                Cancel
+              </button>
+
+
+              <button
+                type="submit"
+                disabled={
+                  loading ||
+                  employeesLoading ||
+                  availableEmployees.length === 0
+                }
+                className="
+                  flex items-center
+                  justify-center
+                  gap-2
+                  rounded-xl
+                  px-5 py-2.5
+                  text-sm
+                  font-semibold
+                  text-white
+                  shadow-lg
+                  disabled:cursor-not-allowed
+                  disabled:opacity-60
+                "
+                style={{
+                  background:
+                    "linear-gradient(135deg, #028090, #00A896)",
+                }}
+              >
+
+                {loading ? (
+                  <>
+                    <Loader2
+                      size={16}
+                      className="animate-spin"
+                    />
+
+                    Assigning...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus
+                      size={16}
+                    />
+
+                    Assign Task
+                  </>
+                )}
+
+              </button>
+
+            </div>
+
+          </form>
+
+        </div>
       </div>
     </div>
   );
