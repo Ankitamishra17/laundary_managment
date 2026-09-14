@@ -512,7 +512,7 @@ const PaymentReports = () => {
       amount: stats.supplierAmount,
     },
     {
-      label: "Salary Payments",
+      label: "Employee Payments",
       type: "SALARY",
       count: stats.salaryCount,
       amount: stats.salaryAmount,
@@ -747,7 +747,7 @@ const PaymentReports = () => {
           </h1>
 
           <p className="mt-1 text-sm" style={{ color: colors.textMuted }}>
-            Analyze customer, supplier and salary payments.
+            Analyze customer, supplier and employee payments.
           </p>
         </div>
 

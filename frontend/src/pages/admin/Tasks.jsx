@@ -1,28 +1,29 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  AlertTriangle,
+  CheckCircle2,
   ClipboardList,
   Clock,
-  Loader2,
-  CheckCircle2,
-  Phone,
-  MapPin,
-  Sparkles,
-  Inbox,
-  Plus,
-  X,
-  AlertTriangle,
-  UserPlus,
   History,
-  CalendarDays,
+  Inbox,
+  Loader2,
+  MapPin,
+  Phone,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  UserPlus,
+  UserX,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
+
 import { taskApi } from "../../api/taskApi";
 import { useEmployees } from "../../hooks/useEmployees";
-import { getShopCustomers } from "../../api/customerApi";
-import { getShopOrders } from "../../api/orderApi";
 import StatusPill from "../../components/layout/StatusPill";
 import TaskFilterTabs from "../../components/layout/TaskFilterTabs";
+import { getShopOrders } from "../../api/orderApi";
 
 const TASK_TYPE_LABEL = {
   pickup: "Pickup",
@@ -33,10 +34,36 @@ const TASK_TYPE_LABEL = {
   delivery: "Delivery",
 };
 
-const TASK_TYPE_OPTIONS = Object.entries(TASK_TYPE_LABEL).map(([value, label]) => ({ value, label }));
+const TASK_TYPE_OPTIONS = Object.entries(TASK_TYPE_LABEL).map(
+  ([value, label]) => ({ value, label }),
+);
 
-function formatScheduled(iso) {
-  return new Date(iso).toLocaleString([], {
+const EMPTY_FORM = {
+  order_id: "",
+  customer_id: "",
+  customer_name: "",
+  customer_phone: "",
+  customer_address: "",
+  notes: "",
+};
+
+const EMPTY_ASSIGNMENTS = {
+  pickup: { employee_id: "", scheduled_time: "", priority: "normal" },
+  wash: { employee_id: "", scheduled_time: "", priority: "normal" },
+  dry: { employee_id: "", scheduled_time: "", priority: "normal" },
+  iron: { employee_id: "", scheduled_time: "", priority: "normal" },
+  pack: { employee_id: "", scheduled_time: "", priority: "normal" },
+  delivery: { employee_id: "", scheduled_time: "", priority: "normal" },
+};
+
+const inputCls =
+  "w-full rounded-lg border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-2.5 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:shadow-[0_0_0_3px_rgba(2,128,144,0.12)] transition";
+
+function formatScheduled(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString([], {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -44,28 +71,13 @@ function formatScheduled(iso) {
   });
 }
 
-/* ------------------------------------------------------------------ */
-/* Presentational helpers                                              */
-/* ------------------------------------------------------------------ */
-
-function StatCard({ icon: Icon, label, value, color, bg }) {
+function Field({ label, required, className = "", children }) {
   return (
-    <div className="group bg-white border border-[#D8ECEA] rounded-2xl p-4 sm:p-5 flex items-center gap-3 sm:gap-4 shadow-[0_1px_2px_rgba(15,44,46,0.04)] hover:shadow-[0_8px_24px_rgba(15,44,46,0.08)] hover:-translate-y-0.5 transition-all duration-300">
-      <div
-        className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-105"
-        style={{ background: bg }}
-      >
-        <Icon size={20} style={{ color }} strokeWidth={2} />
-      </div>
-      <div className="min-w-0">
-        <div className="text-[11px] sm:text-xs text-[#6B8482] font-medium truncate">{label}</div>
-        <div
-          className="text-xl sm:text-2xl text-[#0F2C2E] mt-0.5"
-          style={{ fontFamily: "'Libre Baskerville', Georgia, serif" }}
-        >
-          {value}
-        </div>
-      </div>
+    <div className={className}>
+      <label className="block text-[13px] font-medium text-[#0F2C2E] mb-1.5">
+        {label} {required && <span className="text-[#B3261E]">*</span>}
+      </label>
+      {children}
     </div>
   );
 }
@@ -86,11 +98,49 @@ function PriorityPill({ priority }) {
   );
 }
 
+function InactiveEmployeeBadge() {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md mt-1"
+      style={{ color: "#B3261E", background: "#FDECEC" }}
+    >
+      <UserX size={10} /> EMPLOYEE INACTIVE
+    </span>
+  );
+}
+
+function StatCard({ icon: Icon, label, value, color, bg }) {
+  return (
+    <div className="group bg-white border border-[#D8ECEA] rounded-2xl p-4 sm:p-5 flex items-center gap-3 sm:gap-4 shadow-[0_1px_2px_rgba(15,44,46,0.04)] hover:shadow-[0_8px_24px_rgba(15,44,46,0.08)] hover:-translate-y-0.5 transition-all duration-300">
+      <div
+        className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0"
+        style={{ background: bg }}
+      >
+        <Icon size={20} style={{ color }} strokeWidth={2} />
+      </div>
+      <div className="min-w-0">
+        <div className="text-[11px] sm:text-xs text-[#6B8482] font-medium truncate">
+          {label}
+        </div>
+        <div
+          className="text-xl sm:text-2xl text-[#0F2C2E] mt-0.5"
+          style={{ fontFamily: "'Libre Baskerville', Georgia, serif" }}
+        >
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TableSkeleton() {
   return (
     <div className="p-5 space-y-3">
-      {[...Array(4)].map((_, i) => (
-        <div key={i} className="h-12 rounded-xl bg-[#EEF7F6] animate-pulse" />
+      {[...Array(4)].map((_, index) => (
+        <div
+          key={index}
+          className="h-12 rounded-xl bg-[#EEF7F6] animate-pulse"
+        />
       ))}
     </div>
   );
@@ -99,7 +149,7 @@ function TableSkeleton() {
 function EmptyState({ hasEmployees }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-      <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: "#EEF7F6" }}>
+      <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 bg-[#EEF7F6]">
         <Inbox size={24} className="text-[#028090]" strokeWidth={1.7} />
       </div>
       <p className="text-sm font-medium text-[#0F2C2E]">No tasks yet</p>
@@ -112,564 +162,324 @@ function EmptyState({ hasEmployees }) {
   );
 }
 
-function Field({ label, required, className = "", children }) {
+function ConflictModal({
+  title = "Schedule Conflict",
+  conflicts = [],
+  employeeName,
+  scheduledTime,
+  loading = false,
+  onChooseAnother,
+  onAssignAnyway,
+}) {
   return (
-    <div className={className}>
-      <label className="block text-[13px] font-medium text-[#0F2C2E] mb-1.5">
-        {label} {required && <span className="text-[#B3261E]">*</span>}
-      </label>
-      {children}
+    <div
+      className="fixed inset-0 z-[70] bg-[#05282A]/60 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={() => !loading && onChooseAnother()}
+    >
+      <div
+        className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-[0_20px_60px_rgba(5,40,42,0.3)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#FDECEC] text-[#B3261E] flex items-center justify-center shrink-0">
+            <AlertTriangle size={20} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3
+              className="text-xl text-[#0F2C2E]"
+              style={{ fontFamily: "'Libre Baskerville', Georgia, serif" }}
+            >
+              {title}
+            </h3>
+            <p className="text-[13px] text-[#5A7A79] mt-1">
+              {employeeName
+                ? `${employeeName} already has a task`
+                : "This employee already has a task"}
+              {scheduledTime
+                ? ` scheduled for ${formatScheduled(scheduledTime)}.`
+                : "."}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onChooseAnother}
+            className="w-8 h-8 rounded-lg bg-[#EEF7F6] border border-[#D8ECEA] text-[#0F2C2E] flex items-center justify-center disabled:opacity-50"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {conflicts.length > 0 && (
+          <div className="mt-5 rounded-xl border border-[#F3C7B8] bg-[#FBE4DC] p-3.5">
+            <div className="text-xs font-bold text-[#9A2E12] mb-2">
+              Existing task at the same time
+            </div>
+            <div className="space-y-2">
+              {conflicts.map((conflict) => (
+                <div
+                  key={conflict.id}
+                  className="bg-white rounded-lg border border-[#F3C7B8] px-3 py-2.5"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[12px] font-semibold text-[#0F2C2E]">
+                        {TASK_TYPE_LABEL[conflict.task_type] ||
+                          conflict.task_type}
+                        {conflict.id ? ` #${conflict.id}` : ""}
+                      </div>
+                      <div className="text-[11px] text-[#6B8482] mt-0.5">
+                        {conflict.order_id
+                          ? `Order #${conflict.order_id}`
+                          : "Standalone task"}
+                        {conflict.customer_name
+                          ? ` · ${conflict.customer_name}`
+                          : ""}
+                      </div>
+                    </div>
+                    <PriorityPill priority={conflict.priority} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-5 rounded-xl bg-[#EEF7F6] border border-[#D8ECEA] p-3.5 text-[12px] text-[#496A68] leading-relaxed">
+          <strong className="text-[#0F2C2E]">Important:</strong> Assign Anyway
+          only allows the schedule overlap. It does not skip the order workflow.
+          If this task is waiting for a previous task, the employee will still
+          see it as pending until the dependency is completed.
+        </div>
+
+        <div className="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onChooseAnother}
+            className="px-4 py-2.5 rounded-xl border border-[#D8ECEA] bg-white text-[#0F2C2E] text-sm font-semibold hover:bg-[#EEF7F6] disabled:opacity-50"
+          >
+            Choose Another Employee
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onAssignAnyway}
+            className="px-4 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
+            style={{ background: "linear-gradient(135deg, #028090, #00A896)" }}
+          >
+            {loading && <Loader2 size={15} className="animate-spin" />}
+            {loading ? "Assigning…" : "Assign Anyway"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
-const inputCls =
-  "w-full rounded-lg border border-[#D8ECEA] bg-[#EEF7F6] px-3 py-2.5 text-sm text-[#0F2C2E] outline-none focus:border-[#028090] focus:shadow-[0_0_0_3px_rgba(2,128,144,0.12)] transition";
-
-/* ------------------------------------------------------------------ */
-/* Assign Task Modal                                                   */
-/* ------------------------------------------------------------------ */
-
-const EMPTY_FORM = {
-  employee_id: "",
-  priority: "normal",
-  scheduled_time: "",
-  order_id: "",
-  customer_id: "",
-  customer_name: "",
-  customer_phone: "",
-  customer_address: "",
-  notes: "",
-};
-
 function AssignTaskModal({
   isOpen,
   onClose,
-  employees = [],
+  employees,
   employeesLoading,
   onAssigned,
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
-
-  const [selectedTypes, setSelectedTypes] = useState([
-    "pickup",
-  ]);
-
+  const [assignments, setAssignments] = useState(EMPTY_ASSIGNMENTS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const [customers, setCustomers] = useState([]);
-  const [customersLoading, setCustomersLoading] =
-    useState(false);
-
   const [orders, setOrders] = useState([]);
-  const [ordersLoading, setOrdersLoading] =
-    useState(false);
-
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const [orderTasks, setOrderTasks] = useState([]);
-  const [orderTasksLoading, setOrderTasksLoading] =
-    useState(false);
-
-  // ----------------------------------------------------------
-  // Minimum allowed date/time
-  // ----------------------------------------------------------
+  const [orderTasksLoading, setOrderTasksLoading] = useState(false);
+  const [conflict, setConflict] = useState(null);
 
   const minDateTime = useMemo(() => {
     const now = new Date();
-
-    now.setMinutes(
-      now.getMinutes() - now.getTimezoneOffset()
-    );
-
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     return now.toISOString().slice(0, 16);
   }, []);
 
-  // ----------------------------------------------------------
-  // IMPORTANT:
-  // This hook MUST be before `if (!isOpen) return null`
-  // ----------------------------------------------------------
-
-  const availableEmployees = useMemo(() => {
-    if (
-      !form.order_id ||
-      orderTasks.length === 0
-    ) {
-      return employees;
-    }
-
-    const blockedEmployeeIds = new Set(
-      orderTasks
-        .filter((task) =>
-          selectedTypes.includes(
-            task.task_type
-          )
-        )
-        .map((task) =>
-          Number(task.employee_id)
-        )
-    );
-
-    return employees.filter(
-      (employee) =>
-        !blockedEmployeeIds.has(
-          Number(employee.id)
-        )
-    );
-  }, [
-    employees,
-    orderTasks,
-    selectedTypes,
-    form.order_id,
-  ]);
-
-  // ----------------------------------------------------------
-  // Load customers and orders
-  // ----------------------------------------------------------
-
   useEffect(() => {
     if (!isOpen) return;
-
     let cancelled = false;
 
-    // -----------------------------
-    // Customers
-    // -----------------------------
+    const loadOrders = async () => {
+      setOrdersLoading(true);
+      try {
+        const response = await getShopOrders({ status: "pending" });
+        const data = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+            ? response
+            : [];
+        if (!cancelled) setOrders(data);
+      } catch (err) {
+        if (!cancelled) setOrders([]);
+        if (!cancelled)
+          setError(err.response?.data?.message || "Failed to load orders");
+      } finally {
+        if (!cancelled) setOrdersLoading(false);
+      }
+    };
 
-    setCustomersLoading(true);
-
-    getShopCustomers()
-      .then((res) => {
-        if (cancelled) return;
-
-        const data = Array.isArray(res?.data)
-          ? res.data
-          : [];
-
-        setCustomers(data);
-      })
-      .catch((err) => {
-        console.error(
-          "Load customers error:",
-          err
-        );
-
-        if (!cancelled) {
-          setCustomers([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setCustomersLoading(false);
-        }
-      });
-
-    // -----------------------------
-    // Orders
-    // -----------------------------
-
-    setOrdersLoading(true);
-
-    getShopOrders({
-      status: "pending",
-    })
-      .then((res) => {
-        if (cancelled) return;
-
-        const data = Array.isArray(res?.data)
-          ? res.data
-          : [];
-
-        setOrders(data);
-      })
-      .catch((err) => {
-        console.error(
-          "Load orders error:",
-          err
-        );
-
-        if (!cancelled) {
-          setOrders([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setOrdersLoading(false);
-        }
-      });
-
+    loadOrders();
     return () => {
       cancelled = true;
     };
   }, [isOpen]);
 
-  // ----------------------------------------------------------
-  // Load tasks when order changes
-  // ----------------------------------------------------------
-
   useEffect(() => {
     if (!form.order_id) {
       setOrderTasks([]);
-      setOrderTasksLoading(false);
       return;
     }
 
     let cancelled = false;
+    const loadOrderTasks = async () => {
+      setOrderTasksLoading(true);
+      try {
+        const response = await taskApi.getOrderTasks(form.order_id);
+        const data = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+            ? response
+            : [];
+        if (!cancelled) setOrderTasks(data);
+      } catch {
+        if (!cancelled) setOrderTasks([]);
+      } finally {
+        if (!cancelled) setOrderTasksLoading(false);
+      }
+    };
 
-    setOrderTasksLoading(true);
-
-    taskApi
-      .getOrderTasks(form.order_id)
-      .then((data) => {
-        if (cancelled) return;
-
-        setOrderTasks(
-          Array.isArray(data)
-            ? data
-            : []
-        );
-      })
-      .catch((err) => {
-        console.error(
-          "Load order tasks error:",
-          err
-        );
-
-        if (!cancelled) {
-          setOrderTasks([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setOrderTasksLoading(false);
-        }
-      });
-
+    loadOrderTasks();
     return () => {
       cancelled = true;
     };
   }, [form.order_id]);
 
-  // ----------------------------------------------------------
-  // NOW conditional return
-  // ----------------------------------------------------------
+  const existingTaskTypes = useMemo(
+    () => new Set(orderTasks.map((task) => task.task_type)),
+    [orderTasks],
+  );
 
-  if (!isOpen) {
-    return null;
-  }
+  const selectedTasks = useMemo(
+    () =>
+      Object.entries(assignments)
+        .filter(([, assignment]) => assignment.employee_id)
+        .map(([task_type, assignment]) => ({
+          task_type,
+          employee_id: Number(assignment.employee_id),
+          scheduled_time: assignment.scheduled_time,
+          priority: assignment.priority,
+        })),
+    [assignments],
+  );
 
-  // ----------------------------------------------------------
-  // Form change
-  // ----------------------------------------------------------
+  const selectedTaskCount = selectedTasks.length;
 
-  const handleChange = (e) => {
-    const {
-      name,
-      value,
-    } = e.target;
-
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-
-    setError("");
-  };
-
-  // ----------------------------------------------------------
-  // Customer selection
-  // ----------------------------------------------------------
-
-  const handleCustomerSelect = (e) => {
-    const customerId = e.target.value;
-
-    const customer = customers.find(
-      (item) =>
-        String(item.id) ===
-        String(customerId)
-    );
-
-    setForm((prev) => ({
-      ...prev,
-
-      customer_id: customerId,
-
-      customer_name:
-        customer?.name || "",
-
-      customer_phone:
-        customer?.phone || "",
-
-      customer_address: customer
-        ? [
-            customer.address,
-            customer.city,
-          ]
-            .filter(Boolean)
-            .join(", ")
-        : "",
-    }));
-
-    setError("");
-  };
-
-  // ----------------------------------------------------------
-  // Customer name manual edit
-  // ----------------------------------------------------------
-
-  const handleNameChange = (e) => {
-    const { value } = e.target;
-
-    setForm((prev) => ({
-      ...prev,
-
-      customer_name: value,
-
-      // If manually changed,
-      // saved customer selection is no longer reliable.
-      customer_id: "",
-    }));
-
-    setError("");
-  };
-
-  // ----------------------------------------------------------
-  // Task type selection
-  // ----------------------------------------------------------
-
-  const toggleTaskType = (type) => {
-    setSelectedTypes((prev) => {
-      if (prev.includes(type)) {
-        return prev.filter(
-          (item) => item !== type
-        );
-      }
-
-      return [
-        ...prev,
-        type,
-      ];
-    });
-
-    // Employee selection may no longer be valid
-    // after changing task types.
-    setForm((prev) => ({
-      ...prev,
-      employee_id: "",
-    }));
-
-    setError("");
-  };
-
-  // ----------------------------------------------------------
-  // Reset
-  // ----------------------------------------------------------
-
-  const resetAndClose = () => {
+  const resetAndClose = useCallback(() => {
+    if (loading) return;
     setForm(EMPTY_FORM);
-
-    setSelectedTypes([
-      "pickup",
-    ]);
-
+    setAssignments(EMPTY_ASSIGNMENTS);
     setError("");
-
     setOrderTasks([]);
+    setConflict(null);
+    onClose();
+  }, [loading, onClose]);
 
-    onClose?.();
+  const handleOrderSelect = (e) => {
+    const orderId = e.target.value;
+    const order = orders.find((item) => String(item.id) === String(orderId));
+    const customer = order?.customer;
+
+    if (!orderId || !order) {
+      setForm(EMPTY_FORM);
+      setAssignments(EMPTY_ASSIGNMENTS);
+      setOrderTasks([]);
+      setConflict(null);
+      return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      order_id: String(order.id),
+      customer_id: customer?.id ? String(customer.id) : "",
+      customer_name: customer?.name || order.customer_name || "",
+      customer_phone: customer?.phone || order.customer_phone || "",
+      customer_address: customer
+        ? [customer.address, customer.city].filter(Boolean).join(", ")
+        : order.pickup_address || "",
+    }));
+    setAssignments(EMPTY_ASSIGNMENTS);
+    setError("");
+    setConflict(null);
   };
 
-  // ----------------------------------------------------------
-  // Submit
-  // ----------------------------------------------------------
+  const handleEmployeeChange = (taskType, employeeId) => {
+    setAssignments((prev) => ({
+      ...prev,
+      [taskType]: { ...prev[taskType], employee_id: employeeId },
+    }));
+  };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleTaskScheduleChange = (taskType, scheduled_time) => {
+    setAssignments((prev) => ({
+      ...prev,
+      [taskType]: { ...prev[taskType], scheduled_time },
+    }));
+  };
 
-    setError("");
+  const handleTaskPriorityChange = (taskType, priority) => {
+    setAssignments((prev) => ({
+      ...prev,
+      [taskType]: { ...prev[taskType], priority },
+    }));
+  };
 
-    // -----------------------------
-    // Task type
-    // -----------------------------
+  const buildPayload = () => ({
+    order_id: Number(form.order_id),
+    tasks: selectedTasks,
+    customer_name: form.customer_name,
+    customer_phone: form.customer_phone || null,
+    customer_address: form.customer_address || null,
+    notes: form.notes || null,
+    ...(form.customer_id ? { customer_id: Number(form.customer_id) } : {}),
+  });
 
-    if (selectedTypes.length === 0) {
-      const message =
-        "Please select at least one task type.";
-
-      setError(message);
-      toast.error(message);
-
-      return;
-    }
-
-    // -----------------------------
-    // Employee
-    // -----------------------------
-
-    if (!form.employee_id) {
-      const message =
-        "Please select an employee.";
-
-      setError(message);
-      toast.error(message);
-
-      return;
-    }
-
-    // -----------------------------
-    // Customer
-    // -----------------------------
-
-    if (!form.customer_name.trim()) {
-      const message =
-        "Customer name is required.";
-
-      setError(message);
-      toast.error(message);
-
-      return;
-    }
-
-    // -----------------------------
-    // Scheduled time
-    // -----------------------------
-
-    if (!form.scheduled_time) {
-      const message =
-        "Scheduled date and time is required.";
-
-      setError(message);
-      toast.error(message);
-
-      return;
-    }
-
-    const scheduledDate =
-      new Date(
-        form.scheduled_time
-      );
-
-    if (
-      Number.isNaN(
-        scheduledDate.getTime()
-      )
-    ) {
-      const message =
-        "Invalid scheduled date and time.";
-
-      setError(message);
-      toast.error(message);
-
-      return;
-    }
-
-    if (
-      scheduledDate < new Date()
-    ) {
-      const message =
-        "Scheduled time cannot be in the past.";
-
-      setError(message);
-      toast.error(message);
-
-      return;
-    }
-
-    // -----------------------------
-    // Employee duplicate check
-    // -----------------------------
-
-    const selectedEmployeeId =
-      Number(form.employee_id);
-
-    const employeeAlreadyAssigned =
-      form.order_id &&
-      orderTasks.some(
-        (task) =>
-          Number(task.employee_id) ===
-            selectedEmployeeId &&
-          selectedTypes.includes(
-            task.task_type
-          )
-      );
-
-    if (employeeAlreadyAssigned) {
-      const message =
-        "This employee is already assigned to one of the selected task types for this order.";
-
-      setError(message);
-      toast.error(message);
-
-      return;
-    }
-
-    // -----------------------------
-    // Payload
-    // -----------------------------
-
-    const payload = {
-      employee_id:
-        selectedEmployeeId,
-
-      task_types:
-        selectedTypes,
-
-      priority:
-        form.priority,
-
-      scheduled_time:
-        form.scheduled_time,
-
-      customer_name:
-        form.customer_name.trim(),
-
-      customer_phone:
-        form.customer_phone.trim() ||
-        null,
-
-      customer_address:
-        form.customer_address.trim() ||
-        null,
-
-      notes:
-        form.notes.trim() ||
-        null,
-    };
-
-    if (form.order_id) {
-      payload.order_id =
-        Number(form.order_id);
-    }
-
-    // -----------------------------
-    // API
-    // -----------------------------
-
+  const submitPayload = async (payload, force = false) => {
     setLoading(true);
-
     try {
-      await taskApi.assignTask(
-        payload
-      );
-
+      const requestPayload = force ? { ...payload, force: true } : payload;
+      await taskApi.assignTask(requestPayload);
       toast.success(
-        selectedTypes.length > 1
-          ? `${selectedTypes.length} tasks assigned successfully`
-          : "Task assigned successfully"
+        selectedTaskCount > 1
+          ? `${selectedTaskCount} tasks assigned successfully`
+          : "Task assigned successfully",
       );
-
-      await onAssigned?.();
-
+      onAssigned?.();
       resetAndClose();
     } catch (err) {
-      console.error(
-        "Assign task error:",
-        err
-      );
+      const data = err.response?.data;
+      if (data?.conflict) {
+        const conflictEmployeeId = data.conflicts?.[0]?.employee_id;
+        const selectedEmployee = employees.find(
+          (employee) => Number(employee.id) === Number(conflictEmployeeId),
+        );
+        setConflict({
+          payload,
+          conflicts: data.conflicts || [],
+          employeeName:
+            selectedEmployee?.name ||
+            data.employee?.name ||
+            "Selected employee",
+          scheduledTime: data.conflicts?.[0]?.scheduled_time || null,
+        });
+        return;
+      }
 
-      const message =
-        err?.response?.data?.message ||
-        "Failed to assign task.";
-
+      const message = data?.message || "Failed to assign task";
       setError(message);
       toast.error(message);
     } finally {
@@ -677,694 +487,415 @@ function AssignTaskModal({
     }
   };
 
-  // ----------------------------------------------------------
-  // UI
-  // ----------------------------------------------------------
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setConflict(null);
+
+    if (!form.order_id) {
+      setError("Please select an order.");
+      return;
+    }
+
+    if (!form.customer_name) {
+      setError("Customer details could not be loaded from this order.");
+      return;
+    }
+
+    if (selectedTaskCount === 0) {
+      setError("Please assign at least one task to an employee.");
+      return;
+    }
+
+    for (const task of selectedTasks) {
+      if (!task.scheduled_time) {
+        setError(
+          `${TASK_TYPE_LABEL[task.task_type]} scheduled date & time is required.`,
+        );
+        return;
+      }
+      if (Number.isNaN(new Date(task.scheduled_time).getTime())) {
+        setError(
+          `${TASK_TYPE_LABEL[task.task_type]} scheduled time is invalid.`,
+        );
+        return;
+      }
+      if (new Date(task.scheduled_time).getTime() < Date.now()) {
+        setError(
+          `${TASK_TYPE_LABEL[task.task_type]} scheduled time cannot be in the past.`,
+        );
+        return;
+      }
+      if (!["normal", "urgent"].includes(task.priority)) {
+        setError(`${TASK_TYPE_LABEL[task.task_type]} priority is invalid.`);
+        return;
+      }
+    }
+
+    const duplicateTaskTypes = selectedTasks.filter((task) =>
+      existingTaskTypes.has(task.task_type),
+    );
+    if (duplicateTaskTypes.length > 0) {
+      setError(
+        `These task types are already assigned: ${duplicateTaskTypes
+          .map((task) => TASK_TYPE_LABEL[task.task_type])
+          .join(", ")}`,
+      );
+      return;
+    }
+
+    await submitPayload(buildPayload(), false);
+  };
+
+  if (!isOpen) return null;
 
   return (
-    <div
-      className="
-        fixed inset-0 z-[100]
-        flex items-center justify-center
-        bg-[#05282A]/60
-        backdrop-blur-sm
-        p-4
-      "
-      onMouseDown={(e) => {
-        if (
-          e.target ===
-          e.currentTarget
-        ) {
-          resetAndClose();
-        }
-      }}
-    >
+    <>
       <div
-        className="
-          w-full
-          max-w-2xl
-          max-h-[92vh]
-          overflow-hidden
-          rounded-3xl
-          bg-white
-          shadow-[0_25px_80px_rgba(5,40,42,0.28)]
-        "
-        onMouseDown={(e) =>
-          e.stopPropagation()
-        }
+        className="fixed inset-0 z-50 bg-[#05282A]/55 backdrop-blur-sm flex items-center justify-center p-4"
+        onClick={resetAndClose}
       >
-
-        {/* HEADER */}
         <div
-          className="
-            flex items-center
-            justify-between
-            border-b border-[#E4EFED]
-            bg-gradient-to-r
-            from-[#F3FBFA]
-            to-white
-            px-6 py-5
-          "
+          className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-[0_20px_50px_rgba(5,40,42,0.25)]"
+          onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-3">
-
-            <div
-              className="
-                flex h-11 w-11
-                items-center justify-center
-                rounded-2xl
-                bg-[#DFF5F2]
-                text-[#028090]
-              "
-            >
-              <ClipboardList
-                size={21}
-              />
-            </div>
-
+          <div className="flex items-start justify-between mb-6">
             <div>
               <h2
-                className="
-                  text-xl
-                  font-semibold
-                  text-[#12383A]
-                "
+                className="text-2xl text-[#0F2C2E] leading-tight"
+                style={{ fontFamily: "'Libre Baskerville', Georgia, serif" }}
               >
-                Assign Task
+                Assign Tasks
               </h2>
-
-              <p className="mt-0.5 text-xs text-[#6B8583]">
-                Assign workflow tasks to an employee
+              <p className="text-[13px] text-[#5A7A79] mt-1">
+                Assign different workflow tasks to different employees.
               </p>
             </div>
-
+            <button
+              type="button"
+              onClick={resetAndClose}
+              className="w-8 h-8 rounded-lg bg-[#EEF7F6] border border-[#D8ECEA] text-[#0F2C2E] flex items-center justify-center"
+            >
+              <X size={16} />
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={resetAndClose}
-            disabled={loading}
-            className="
-              flex h-9 w-9
-              items-center justify-center
-              rounded-xl
-              border border-[#DCECE9]
-              bg-white
-              text-[#547371]
-              hover:bg-[#F2FAF9]
-              hover:text-[#12383A]
-              disabled:opacity-50
-            "
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* BODY */}
-        <div className="max-h-[calc(92vh-82px)] overflow-y-auto">
-
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-5 p-6"
-          >
-
-            {/* ORDER */}
-            <Field label="Link to Order (optional)">
-
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <Field label="Order" required>
               <select
-                name="order_id"
                 value={form.order_id}
-                onChange={handleChange}
-                disabled={ordersLoading}
+                onChange={handleOrderSelect}
+                disabled={ordersLoading || loading}
                 className={inputCls}
               >
-
                 <option value="">
-                  {ordersLoading
-                    ? "Loading orders..."
-                    : "No order — standalone task"}
+                  {ordersLoading ? "Loading orders…" : "Select order"}
                 </option>
-
                 {orders.map((order) => (
-                  <option
-                    key={order.id}
-                    value={order.id}
-                  >
+                  <option key={order.id} value={order.id}>
                     Order #{order.id}
-                    {order.customer?.name
-                      ? ` — ${order.customer.name}`
-                      : ""}
-                    {order.status
-                      ? ` (${order.status})`
-                      : ""}
+                    {order.customer?.name ? ` — ${order.customer.name}` : ""}
+                    {order.status ? ` (${order.status})` : ""}
                   </option>
                 ))}
-
               </select>
-
             </Field>
 
-
-            {/* EMPLOYEE */}
-            <Field
-              label="Assign To"
-              required
-            >
-
-              <select
-                name="employee_id"
-                value={form.employee_id}
-                onChange={handleChange}
-                required
-                disabled={
-                  employeesLoading ||
-                  orderTasksLoading
-                }
-                className={inputCls}
-              >
-
-                <option value="">
-                  {employeesLoading
-                    ? "Loading employees..."
-                    : orderTasksLoading
-                      ? "Checking order tasks..."
-                      : availableEmployees.length === 0
-                        ? "No available employees"
-                        : "Select an employee"}
-                </option>
-
-                {availableEmployees.map(
-                  (employee) => (
-                    <option
-                      key={employee.id}
-                      value={employee.id}
-                    >
-                      {employee.name}
-
-                      {employee.designation
-                        ? ` — ${employee.designation}`
-                        : ""}
-                    </option>
-                  )
-                )}
-
-              </select>
-
-              {form.order_id &&
-                orderTasks.length > 0 && (
-                  <p className="mt-1 text-[11px] text-[#6B8482]">
-                    Employees already assigned to the
-                    selected task types are excluded.
-                  </p>
-                )}
-
-            </Field>
-
-
-            {/* TASK TYPES */}
-            <div>
-
-              <label className="block text-[13px] font-medium text-[#0F2C2E] mb-2">
-                Task Types{" "}
-                <span className="text-[#B3261E]">
-                  *
-                </span>
-              </label>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-
-                {TASK_TYPE_OPTIONS.map(
-                  (option) => {
-                    const checked =
-                      selectedTypes.includes(
-                        option.value
-                      );
-
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() =>
-                          toggleTaskType(
-                            option.value
-                          )
-                        }
-                        className={`
-                          flex items-center
-                          gap-2
-                          rounded-xl
-                          border
-                          px-3 py-2.5
-                          text-left
-                          text-[12px]
-                          font-semibold
-                          transition
-                          ${
-                            checked
-                              ? "border-[#028090] bg-[#DFF3F5] text-[#028090]"
-                              : "border-[#D8ECEA] bg-white text-[#6B8482] hover:border-[#A9C9C6]"
-                          }
-                        `}
-                      >
-
-                        <span
-                          className={`
-                            flex h-4 w-4
-                            shrink-0
-                            items-center
-                            justify-center
-                            rounded
-                            border
-                            ${
-                              checked
-                                ? "border-[#028090] bg-[#028090]"
-                                : "border-[#C9DDDA]"
-                            }
-                          `}
-                        >
-                          {checked && (
-                            <svg
-                              viewBox="0 0 20 20"
-                              fill="none"
-                              className="h-3 w-3 text-white"
-                            >
-                              <path
-                                d="M4 10.5L8 14L16 6"
-                                stroke="currentColor"
-                                strokeWidth="2.2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          )}
-                        </span>
-
-                        {option.label}
-
-                      </button>
-                    );
-                  }
-                )}
-
-              </div>
-
-              {selectedTypes.length > 0 && (
-                <div
-                  className="
-                    mt-2
-                    flex flex-wrap
-                    items-center
-                    gap-1
-                    text-[11px]
-                    text-[#6B8482]
-                  "
-                >
-
-                  <span className="font-medium">
-                    Workflow:
-                  </span>
-
-                  {selectedTypes.map(
-                    (type, index) => (
-                      <React.Fragment
-                        key={type}
-                      >
-
-                        {index > 0 && (
-                          <span className="text-[#A9C9C6]">
-                            →
-                          </span>
-                        )}
-
-                        <span
-                          className="
-                            rounded-md
-                            bg-[#EEF7F6]
-                            px-1.5 py-0.5
-                            font-medium
-                            text-[#028090]
-                          "
-                        >
-                          {TASK_TYPE_LABEL[type]}
-                        </span>
-
-                      </React.Fragment>
-                    )
-                  )}
-
-                </div>
-              )}
-
-            </div>
-
-
-            {/* PRIORITY */}
-            <Field label="Priority">
-
-              <select
-                name="priority"
-                value={form.priority}
-                onChange={handleChange}
-                className={inputCls}
-              >
-                <option value="normal">
-                  Normal
-                </option>
-
-                <option value="urgent">
-                  Urgent
-                </option>
-              </select>
-
-            </Field>
-
-
-            {/* SCHEDULE */}
-            <Field
-              label="Scheduled Date & Time"
-              required
-            >
-
-              <input
-                name="scheduled_time"
-                type="datetime-local"
-                value={
-                  form.scheduled_time
-                }
-                onChange={handleChange}
-                min={minDateTime}
-                required
-                className={inputCls}
-              />
-
-              <p className="mt-1 text-[11px] text-[#6B8482]">
-                This is the earliest time the employee can
-                start the task.
-              </p>
-
-            </Field>
-
-
-            {/* CUSTOMER */}
-            <div
-              className="
-                rounded-2xl
-                border border-[#D8ECEA]
-                bg-[#FAFDFC]
-                p-4
-              "
-            >
-
-              <div className="mb-4">
-
-                <h3 className="text-sm font-semibold text-[#0F2C2E]">
-                  Customer Details
-                </h3>
-
-                <p className="mt-0.5 text-[11px] text-[#6B8482]">
-                  Select an existing customer or enter
-                  details manually.
-                </p>
-
-              </div>
-
-
-              <Field label="Saved Customer">
-
-                <select
-                  value={
-                    form.customer_id
-                  }
-                  onChange={
-                    handleCustomerSelect
-                  }
-                  disabled={
-                    customersLoading
-                  }
-                  className={inputCls}
-                >
-
-                  <option value="">
-                    {customersLoading
-                      ? "Loading customers..."
-                      : "Choose customer"}
-                  </option>
-
-                  {customers.map(
-                    (customer) => (
-                      <option
-                        key={customer.id}
-                        value={customer.id}
-                      >
-                        {customer.name}
-
-                        {customer.phone
-                          ? ` — ${customer.phone}`
-                          : ""}
-                      </option>
-                    )
-                  )}
-
-                </select>
-
-              </Field>
-
-
-              <div className="mt-4">
-
-                <Field
-                  label="Customer Name"
-                  required
-                >
-
-                  <input
-                    name="customer_name"
-                    value={
-                      form.customer_name
-                    }
-                    onChange={
-                      handleNameChange
-                    }
-                    required
-                    placeholder="Customer name"
-                    className={inputCls}
-                  />
-
-                </Field>
-
-              </div>
-
-
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-                <Field label="Customer Phone">
-
-                  <input
-                    name="customer_phone"
-                    value={
-                      form.customer_phone
-                    }
-                    onChange={handleChange}
-                    placeholder="99XXXXXXXX"
-                    className={inputCls}
-                  />
-
-                </Field>
-
-
-                <Field label="Customer Address">
-
-                  <input
-                    name="customer_address"
-                    value={
-                      form.customer_address
-                    }
-                    onChange={handleChange}
-                    placeholder="Sector 62, Noida"
-                    className={inputCls}
-                  />
-
-                </Field>
-
-              </div>
-
-            </div>
-
-
-            {/* NOTES */}
-            <Field label="Notes">
-
-              <textarea
-                name="notes"
-                value={form.notes}
-                onChange={handleChange}
-                rows={3}
-                placeholder="Any special instructions..."
-                className={`${inputCls} resize-none`}
-              />
-
-            </Field>
-
-
-            {/* ERROR */}
-            {error && (
-              <div
-                className="
-                  flex items-start
-                  gap-2
-                  rounded-xl
-                  border
-                  border-[#F5C6C0]
-                  bg-[#FDECEC]
-                  px-3.5 py-3
-                  text-[12px]
-                  text-[#B3261E]
-                "
-              >
-                <AlertTriangle
-                  size={16}
-                  className="mt-0.5 shrink-0"
-                />
-
-                <span>
-                  {error}
-                </span>
+            {form.order_id && orderTasksLoading && (
+              <div className="rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-4 py-3 text-xs text-[#6B8482] flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin text-[#028090]" />
+                Checking existing tasks for this order…
               </div>
             )}
 
-
-            {/* WORKFLOW INFO */}
-            <div
-              className="
-                rounded-xl
-                border border-[#D8ECEA]
-                bg-[#EEF7F6]
-                px-4 py-3
-              "
-            >
-
-              <div className="flex items-start gap-2">
-
-                <Sparkles
-                  size={15}
-                  className="mt-0.5 text-[#028090]"
-                />
-
-                <div>
-
-                  <p className="text-[11px] font-semibold text-[#315957]">
-                    Workflow rule
-                  </p>
-
-                  <p className="mt-0.5 text-[10px] leading-4 text-[#66817F]">
-                    Tasks follow the laundry workflow.
-                    Urgent tasks do not bypass scheduled
-                    time or previous-task dependency.
-                  </p>
-
+            {form.order_id && !orderTasksLoading && orderTasks.length > 0 && (
+              <div className="rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] px-4 py-3">
+                <div className="text-xs font-semibold text-[#0F2C2E] mb-2">
+                  Existing Tasks
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  {orderTasks.map((task) => (
+                    <span
+                      key={task.id}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#D8ECEA] text-[11px] text-[#028090]"
+                    >
+                      {TASK_TYPE_LABEL[task.task_type] || task.task_type}
+                      {task.employee?.name && (
+                        <span className="text-[#6B8482]">
+                          → {task.employee.name}
+                        </span>
+                      )}
+                      <span className="text-[#8AA19F]">· {task.status}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-[13px] font-medium text-[#0F2C2E]">
+                  Task Assignments <span className="text-[#B3261E]">*</span>
+                </label>
+                <span className="text-[11px] text-[#6B8482]">
+                  {selectedTaskCount} selected
+                </span>
               </div>
 
+              <div className="border border-[#D8ECEA] rounded-xl overflow-hidden">
+                {TASK_TYPE_OPTIONS.map(({ value: taskType, label }) => {
+                  const assignment = assignments[taskType];
+                  const alreadyExists = existingTaskTypes.has(taskType);
+                  const selectedEmployee = assignment.employee_id;
+
+                  return (
+                    <div
+                      key={taskType}
+                      className={`p-4 border-b last:border-b-0 border-[#EEF7F6] ${
+                        alreadyExists ? "bg-[#FAFDFC]" : "bg-white"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`w-2 h-2 rounded-full ${
+                              selectedEmployee
+                                ? "bg-[#02C39A]"
+                                : alreadyExists
+                                  ? "bg-[#A9C9C6]"
+                                  : "bg-[#D8ECEA]"
+                            }`}
+                          />
+                          <span
+                            className={`text-[13px] font-semibold ${
+                              alreadyExists
+                                ? "text-[#8AA19F]"
+                                : "text-[#0F2C2E]"
+                            }`}
+                          >
+                            {label}
+                          </span>
+                          {alreadyExists && (
+                            <span className="text-[9px] font-bold uppercase tracking-wide text-[#8AA19F] bg-[#EEF7F6] px-1.5 py-0.5 rounded">
+                              Assigned
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {!alreadyExists && (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <Field label="Employee">
+                            <select
+                              value={selectedEmployee}
+                              onChange={(e) =>
+                                handleEmployeeChange(taskType, e.target.value)
+                              }
+                              disabled={
+                                employeesLoading || orderTasksLoading || loading
+                              }
+                              className={inputCls}
+                            >
+                              <option value="">
+                                {employeesLoading
+                                  ? "Loading employees…"
+                                  : "Select employee"}
+                              </option>
+                              {employees.map((employee) => (
+                                <option key={employee.id} value={employee.id}>
+                                  {employee.name}
+                                  {employee.designation
+                                    ? ` — ${employee.designation}`
+                                    : ""}
+                                  {employee.status === "inactive"
+                                    ? " (Inactive)"
+                                    : ""}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+
+                          <Field label="Scheduled Date & Time">
+                            <input
+                              type="datetime-local"
+                              value={assignment.scheduled_time}
+                              min={minDateTime}
+                              onChange={(e) =>
+                                handleTaskScheduleChange(
+                                  taskType,
+                                  e.target.value,
+                                )
+                              }
+                              disabled={!selectedEmployee || loading}
+                              className={`${inputCls} ${!selectedEmployee ? "opacity-60 cursor-not-allowed" : ""}`}
+                            />
+                          </Field>
+
+                          <Field label="Priority">
+                            <select
+                              value={assignment.priority}
+                              onChange={(e) =>
+                                handleTaskPriorityChange(
+                                  taskType,
+                                  e.target.value,
+                                )
+                              }
+                              disabled={!selectedEmployee || loading}
+                              className={`${inputCls} ${!selectedEmployee ? "opacity-60 cursor-not-allowed" : ""}`}
+                            >
+                              <option value="normal">Normal</option>
+                              <option value="urgent">Urgent</option>
+                            </select>
+                          </Field>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] text-[#6B8482]">
+                Each workflow task can have its own employee, scheduled time and
+                priority.
+              </p>
             </div>
 
+            {selectedTasks.length > 0 && (
+              <div className="rounded-xl border border-[#D8ECEA] bg-[#EEF7F6] p-3.5">
+                <div className="text-xs font-semibold text-[#0F2C2E] mb-2">
+                  Assignment Summary
+                </div>
+                <div className="space-y-2">
+                  {selectedTasks.map((task) => {
+                    const employee = employees.find(
+                      (item) => Number(item.id) === Number(task.employee_id),
+                    );
+                    return (
+                      <div
+                        key={task.task_type}
+                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-white rounded-lg px-3 py-2 border border-[#D8ECEA]"
+                      >
+                        <div>
+                          <div className="text-[12px] font-semibold text-[#0F2C2E]">
+                            {TASK_TYPE_LABEL[task.task_type]}
+                          </div>
+                          <div className="text-[11px] text-[#6B8482]">
+                            {employee?.name || "Employee"}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-[#6B8482]">
+                            {formatScheduled(task.scheduled_time)}
+                          </span>
+                          <PriorityPill priority={task.priority} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
-            {/* ACTIONS */}
-            <div
-              className="
-                flex flex-col-reverse
-                gap-2
-                border-t border-[#E6F0EE]
-                pt-4
-                sm:flex-row
-                sm:justify-end
-              "
-            >
-
-              <button
-                type="button"
-                onClick={resetAndClose}
-                disabled={loading}
-                className="
-                  rounded-xl
-                  border border-[#D8ECEA]
-                  bg-white
-                  px-5 py-2.5
-                  text-sm
-                  font-semibold
-                  text-[#5A7775]
-                  hover:bg-[#F4FAF9]
-                  disabled:opacity-50
-                "
-              >
-                Cancel
-              </button>
-
-
-              <button
-                type="submit"
-                disabled={
-                  loading ||
-                  employeesLoading ||
-                  availableEmployees.length === 0
-                }
-                className="
-                  flex items-center
-                  justify-center
-                  gap-2
-                  rounded-xl
-                  px-5 py-2.5
-                  text-sm
-                  font-semibold
-                  text-white
-                  shadow-lg
-                  disabled:cursor-not-allowed
-                  disabled:opacity-60
-                "
-                style={{
-                  background:
-                    "linear-gradient(135deg, #028090, #00A896)",
-                }}
-              >
-
-                {loading ? (
-                  <>
-                    <Loader2
-                      size={16}
-                      className="animate-spin"
-                    />
-
-                    Assigning...
-                  </>
-                ) : (
-                  <>
-                    <UserPlus
-                      size={16}
-                    />
-
-                    Assign Task
-                  </>
+            <div className="rounded-xl border border-[#D8ECEA] bg-white p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className="text-[13px] font-semibold text-[#0F2C2E]">
+                    Customer
+                  </div>
+                  <div className="text-[11px] text-[#6B8482]">
+                    Loaded from the selected order
+                  </div>
+                </div>
+                {form.order_id && (
+                  <CheckCircle2 size={16} className="text-[#02C39A]" />
                 )}
+              </div>
 
-              </button>
-
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Customer Name" required>
+                  <input
+                    value={form.customer_name}
+                    readOnly
+                    className={`${inputCls} cursor-not-allowed bg-[#F5FAF9]`}
+                    placeholder="Customer name"
+                  />
+                </Field>
+                <Field label="Customer Phone">
+                  <input
+                    value={form.customer_phone}
+                    readOnly
+                    className={`${inputCls} cursor-not-allowed bg-[#F5FAF9]`}
+                    placeholder="Phone"
+                  />
+                </Field>
+              </div>
+              <div className="mt-4">
+                <Field label="Customer Address">
+                  <input
+                    value={form.customer_address}
+                    readOnly
+                    className={`${inputCls} cursor-not-allowed bg-[#F5FAF9]`}
+                    placeholder="Address"
+                  />
+                </Field>
+              </div>
             </div>
 
-          </form>
+            <Field label="Notes">
+              <textarea
+                value={form.notes}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, notes: e.target.value }))
+                }
+                rows={2}
+                disabled={loading}
+                placeholder="Any special instructions…"
+                className={`${inputCls} resize-none`}
+              />
+            </Field>
 
+            {error && (
+              <div className="text-[13px] text-[#B3261E] bg-[#FDECEC] border border-[#F5C6C0] rounded-lg px-3.5 py-2.5">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || selectedTaskCount === 0 || !form.order_id}
+              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition"
+              style={{
+                background: "linear-gradient(135deg, #028090, #00A896)",
+              }}
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Assigning…
+                </>
+              ) : (
+                <>
+                  <UserPlus size={16} />
+                  Assign {selectedTaskCount} Task
+                  {selectedTaskCount === 1 ? "" : "s"}
+                </>
+              )}
+            </button>
+          </form>
         </div>
       </div>
-    </div>
+
+      {conflict && (
+        <ConflictModal
+          conflicts={conflict.conflicts}
+          employeeName={conflict.employeeName}
+          scheduledTime={conflict.scheduledTime}
+          loading={loading}
+          onChooseAnother={() => setConflict(null)}
+          onAssignAnyway={() => submitPayload(conflict.payload, true)}
+        />
+      )}
+    </>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* Page                                                                */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* Tab switcher                                                        */
-/* ------------------------------------------------------------------ */
 
 const PAGE_TABS = [
   { key: "active", label: "Active Tasks", icon: ClipboardList },
@@ -1377,20 +908,20 @@ function PageTabs({ active, onChange }) {
       {PAGE_TABS.map(({ key, label, icon: Icon }) => (
         <button
           key={key}
+          type="button"
           onClick={() => onChange(key)}
-          className={active === key ? "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 bg-white text-[#028090] shadow-sm" : "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 text-[#6B8482] hover:text-[#028090] hover:bg-white/50"}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+            active === key
+              ? "bg-white text-[#028090] shadow-sm"
+              : "text-[#6B8482] hover:text-[#028090] hover:bg-white/50"
+          }`}
         >
-          <Icon size={14} />
-          {label}
+          <Icon size={14} /> {label}
         </button>
       ))}
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* Task History Tab                                                    */
-/* ------------------------------------------------------------------ */
 
 function TaskHistoryTab({ employees }) {
   const [history, setHistory] = useState([]);
@@ -1409,16 +940,13 @@ function TaskHistoryTab({ employees }) {
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {};
-      if (filters.employee_id) params.employee_id = filters.employee_id;
-      if (filters.customer) params.customer = filters.customer;
-      if (filters.order_id) params.order_id = filters.order_id;
-      if (filters.task_type) params.task_type = filters.task_type;
-      if (filters.status) params.status = filters.status;
-      if (filters.startDate) params.startDate = filters.startDate;
-      if (filters.endDate) params.endDate = filters.endDate;
+      const params = Object.fromEntries(
+        Object.entries(filters).filter(([, value]) => Boolean(value)),
+      );
       const data = await taskApi.getAdminTaskHistory(params);
-      setHistory(Array.isArray(data) ? data : []);
+      setHistory(
+        Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [],
+      );
       setError("");
     } catch (err) {
       setError(err.response?.data?.message || "Failed to load task history");
@@ -1431,66 +959,78 @@ function TaskHistoryTab({ employees }) {
     fetchHistory();
   }, [fetchHistory]);
 
-  const handleFilterChange = (key, value) => {
+  const setFilter = (key, value) =>
     setFilters((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const clearFilters = () => {
-    setFilters({ employee_id: "", customer: "", order_id: "", task_type: "", status: "", startDate: "", endDate: "" });
-  };
-
-  const hasActiveFilters = Object.values(filters).some(Boolean);
+  const clearFilters = () =>
+    setFilters({
+      employee_id: "",
+      customer: "",
+      order_id: "",
+      task_type: "",
+      status: "",
+      startDate: "",
+      endDate: "",
+    });
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <div className="bg-white border border-[#D8ECEA] rounded-2xl p-4 sm:p-5 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F2C2E]">Filter History</h3>
-          {hasActiveFilters && (
-            <button onClick={clearFilters} className="text-xs text-[#028090] hover:underline font-medium">
+          <h3 className="text-sm font-semibold text-[#0F2C2E]">
+            Filter History
+          </h3>
+          {Object.values(filters).some(Boolean) && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-xs text-[#028090] hover:underline font-medium"
+            >
               Clear All
             </button>
           )}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           <select
             value={filters.employee_id}
-            onChange={(e) => handleFilterChange("employee_id", e.target.value)}
+            onChange={(e) => setFilter("employee_id", e.target.value)}
             className={inputCls}
           >
             <option value="">All Employees</option>
-            {employees.map((emp) => (
-              <option key={emp.id} value={emp.id}>{emp.name}</option>
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.name}
+              </option>
             ))}
           </select>
           <input
-            type="text"
-            placeholder="Customer name"
             value={filters.customer}
-            onChange={(e) => handleFilterChange("customer", e.target.value)}
+            onChange={(e) => setFilter("customer", e.target.value)}
+            placeholder="Customer name"
             className={inputCls}
           />
           <input
             type="number"
-            placeholder="Order ID"
             value={filters.order_id}
-            onChange={(e) => handleFilterChange("order_id", e.target.value)}
+            onChange={(e) => setFilter("order_id", e.target.value)}
+            placeholder="Order ID"
             className={inputCls}
           />
           <select
             value={filters.task_type}
-            onChange={(e) => handleFilterChange("task_type", e.target.value)}
+            onChange={(e) => setFilter("task_type", e.target.value)}
             className={inputCls}
           >
             <option value="">All Task Types</option>
-            {TASK_TYPE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            {TASK_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
             ))}
           </select>
           <select
             value={filters.status}
-            onChange={(e) => handleFilterChange("status", e.target.value)}
+            onChange={(e) => setFilter("status", e.target.value)}
             className={inputCls}
           >
             <option value="">All Statuses</option>
@@ -1502,98 +1042,123 @@ function TaskHistoryTab({ employees }) {
             <input
               type="date"
               value={filters.startDate}
-              onChange={(e) => handleFilterChange("startDate", e.target.value)}
+              onChange={(e) => setFilter("startDate", e.target.value)}
               className={inputCls}
-              placeholder="From"
             />
             <input
               type="date"
               value={filters.endDate}
-              onChange={(e) => handleFilterChange("endDate", e.target.value)}
+              onChange={(e) => setFilter("endDate", e.target.value)}
               className={inputCls}
-              placeholder="To"
             />
           </div>
         </div>
       </div>
 
-      {/* Error banner */}
       {error && (
         <div className="text-sm text-[#9A2E12] bg-[#FBE4DC] border border-[#F3C7B8] rounded-xl px-4 py-3">
           {error}
         </div>
       )}
 
-      {/* History table */}
       <div className="bg-white border border-[#D8ECEA] rounded-2xl shadow-[0_1px_2px_rgba(15,44,46,0.04)] overflow-hidden">
         {loading ? (
           <TableSkeleton />
         ) : history.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: "#EEF7F6" }}>
-              <History size={24} className="text-[#028090]" strokeWidth={1.7} />
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 bg-[#EEF7F6]">
+              <History size={24} className="text-[#028090]" />
             </div>
-            <p className="text-sm font-medium text-[#0F2C2E]">No task history found</p>
-            <p className="text-xs text-[#6B8482] mt-1">Adjust filters or check back later.</p>
+            <p className="text-sm font-medium text-[#0F2C2E]">
+              No task history found
+            </p>
+            <p className="text-xs text-[#6B8482] mt-1">
+              Adjust filters or check back later.
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#EEF7F6] bg-[#FAFDFC]">
-                  <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Order</th>
-                  <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Customer</th>
-                  <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Task Type</th>
-                  <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Employee</th>
-                  <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Assigned</th>
-                  <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Started</th>
-                  <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Completed</th>
-                  <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Status</th>
-                  <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Notes</th>
+                  {[
+                    "Order",
+                    "Customer",
+                    "Task Type",
+                    "Employee",
+                    "Scheduled",
+                    "Started",
+                    "Completed",
+                    "Status",
+                    "Notes",
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5"
+                    >
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {history.map((t) => (
-                  <tr key={t.id} className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC] transition-colors duration-150">
+                {history.map((task) => (
+                  <tr
+                    key={task.id}
+                    className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC]"
+                  >
                     <td className="py-3.5 px-5">
-                      {t.order ? (
-                        <Link to="/admin/orders" className="text-[12px] font-semibold" style={{ color: "#028090" }}>
-                          Order #{t.order.id}
+                      {task.order ? (
+                        <Link
+                          to="/admin/orders"
+                          className="text-[12px] font-semibold text-[#028090]"
+                        >
+                          Order #{task.order.id}
                         </Link>
                       ) : (
                         <span className="text-[11px] text-[#6B8482]">—</span>
                       )}
                     </td>
                     <td className="py-3.5 px-5">
-                      <div className="text-[#0F2C2E] font-medium">{t.customer_name}</div>
-                      {t.customer_phone && (
-                        <div className="text-[11px] text-[#6B8482]">{t.customer_phone}</div>
+                      <div className="text-[#0F2C2E] font-medium">
+                        {task.customer_name || "—"}
+                      </div>
+                      {task.customer_phone && (
+                        <div className="text-[11px] text-[#6B8482]">
+                          {task.customer_phone}
+                        </div>
                       )}
                     </td>
                     <td className="py-3.5 px-5">
-                      <span className="text-[12px] font-semibold" style={{ color: "#028090" }}>
-                        {TASK_TYPE_LABEL[t.task_type] || t.task_type}
+                      <span className="text-[12px] font-semibold text-[#028090]">
+                        {TASK_TYPE_LABEL[task.task_type] || task.task_type}
                       </span>
                     </td>
                     <td className="py-3.5 px-5">
-                      <div className="text-[#0F2C2E] font-medium">{t.employee?.name || "—"}</div>
-                      <div className="text-[11px] text-[#6B8482]">ID: {t.employee_id}</div>
+                      <div className="text-[#0F2C2E] font-medium">
+                        {task.employee?.name || "—"}
+                      </div>
+                      {task.employee_id && (
+                        <div className="text-[11px] text-[#6B8482]">
+                          ID: {task.employee_id}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">
-                      {t.scheduled_time ? formatScheduled(t.scheduled_time) : "—"}
+                      {formatScheduled(task.scheduled_time)}
                     </td>
                     <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">
-                      {t.started_at ? formatScheduled(t.started_at) : "—"}
+                      {formatScheduled(task.started_at)}
                     </td>
                     <td className="py-3.5 px-5 text-[11px] text-[#6B8482] whitespace-nowrap">
-                      {t.completed_at ? formatScheduled(t.completed_at) : "—"}
+                      {formatScheduled(task.completed_at)}
                     </td>
                     <td className="py-3.5 px-5">
-                      <StatusPill status={t.status} />
+                      <StatusPill status={task.status} />
                     </td>
                     <td className="py-3.5 px-5">
                       <div className="text-[11px] text-[#6B8482] max-w-[150px] truncate">
-                        {t.notes || "—"}
+                        {task.notes || "—"}
                       </div>
                     </td>
                   </tr>
@@ -1607,10 +1172,6 @@ function TaskHistoryTab({ employees }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Main Tasks Page                                                     */
-/* ------------------------------------------------------------------ */
-
 export default function Tasks() {
   const { employees, loading: employeesLoading } = useEmployees();
   const [tasks, setTasks] = useState([]);
@@ -1618,13 +1179,18 @@ export default function Tasks() {
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showAssign, setShowAssign] = useState(false);
+  const [reassignTask, setReassignTask] = useState(null);
+  const [reassignLoading, setReassignLoading] = useState(false);
+  const [reassignConflict, setReassignConflict] = useState(null);
   const [activeTab, setActiveTab] = useState("active");
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
     try {
       const data = await taskApi.getAllTasks();
-      setTasks(Array.isArray(data) ? data : []);
+      setTasks(
+        Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [],
+      );
       setError("");
     } catch (err) {
       setError(err.response?.data?.message || "Failed to load tasks");
@@ -1637,32 +1203,86 @@ export default function Tasks() {
     fetchTasks();
   }, [fetchTasks]);
 
+  const activeEmployees = useMemo(
+    () => employees.filter((employee) => employee.status === "active"),
+    [employees],
+  );
+
   const filtered = useMemo(
-    () => (statusFilter === "all" ? tasks : tasks.filter((t) => t.status === statusFilter)),
+    () =>
+      statusFilter === "all"
+        ? tasks
+        : tasks.filter((task) => task.status === statusFilter),
     [tasks, statusFilter],
   );
 
   const stats = useMemo(
     () => ({
       total: tasks.length,
-      pending: tasks.filter((t) => t.status === "pending").length,
-      inProgress: tasks.filter((t) => t.status === "in_progress").length,
-      completed: tasks.filter((t) => t.status === "completed").length,
+      pending: tasks.filter((task) => task.status === "pending").length,
+      inProgress: tasks.filter((task) => task.status === "in_progress").length,
+      completed: tasks.filter((task) => task.status === "completed").length,
     }),
     [tasks],
   );
 
+  const handleReassign = useCallback(
+    async (taskId, newEmployeeId, force = false) => {
+      setReassignLoading(true);
+      try {
+        const data = await taskApi.reassignTask(taskId, newEmployeeId, force);
+        toast.success("Task reassigned successfully");
+        setReassignConflict(null);
+        setReassignTask(null);
+        await fetchTasks();
+        return data;
+      } catch (err) {
+        const data = err.response?.data;
+        if (data?.conflict) {
+          const conflictEmployee = activeEmployees.find(
+            (employee) => Number(employee.id) === Number(newEmployeeId),
+          );
+          setReassignConflict({
+            taskId,
+            newEmployeeId,
+            conflicts: data.conflicts || [],
+            employeeName:
+              conflictEmployee?.name ||
+              data.employee?.name ||
+              "Selected employee",
+            scheduledTime:
+              data.conflicts?.[0]?.scheduled_time ||
+              reassignTask?.scheduled_time ||
+              null,
+          });
+          return;
+        }
+        toast.error(data?.message || "Failed to reassign task");
+      } finally {
+        setReassignLoading(false);
+      }
+    },
+    [activeEmployees, fetchTasks, reassignTask],
+  );
+
+  const closeReassign = () => {
+    if (reassignLoading) return;
+    setReassignTask(null);
+    setReassignConflict(null);
+  };
+
   return (
-    <div className="min-h-screen" style={{ background: "#EEF7F6" }}>
+    <div className="min-h-screen bg-[#EEF7F6]">
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div className="flex items-center gap-3">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: "linear-gradient(135deg, #028090, #02C39A)" }}
+              style={{
+                background: "linear-gradient(135deg, #028090, #02C39A)",
+              }}
             >
-              <Sparkles size={18} className="text-white" strokeWidth={2} />
+              <Sparkles size={18} className="text-white" />
             </div>
             <div>
               <h1
@@ -1679,33 +1299,59 @@ export default function Tasks() {
 
           {activeTab === "active" && (
             <button
+              type="button"
               onClick={() => setShowAssign(true)}
               disabled={!employeesLoading && employees.length === 0}
-              className="flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-lg hover:brightness-105 hover:-translate-y-0.5 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-              style={{ background: "linear-gradient(135deg, #028090, #00A896)" }}
-              title={!employeesLoading && employees.length === 0 ? "Add an employee first" : undefined}
+              className="flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-lg disabled:opacity-50"
+              style={{
+                background: "linear-gradient(135deg, #028090, #00A896)",
+              }}
             >
               <Plus size={16} /> Assign Task
             </button>
           )}
         </div>
 
-        {/* Tab switcher */}
         <PageTabs active={activeTab} onChange={setActiveTab} />
 
         {activeTab === "active" ? (
           <>
-            {/* KPI row */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              <StatCard icon={ClipboardList} label="Total Tasks" value={stats.total} color="#028090" bg="#DFF3F5" />
-              <StatCard icon={Clock} label="Pending" value={stats.pending} color="#9A6A12" bg="#FBF0DC" />
-              <StatCard icon={Loader2} label="In Progress" value={stats.inProgress} color="#0B3B3E" bg="#DCEBEA" />
-              <StatCard icon={CheckCircle2} label="Completed" value={stats.completed} color="#02C39A" bg="#DFF7F1" />
+              <StatCard
+                icon={ClipboardList}
+                label="Total Tasks"
+                value={stats.total}
+                color="#028090"
+                bg="#DFF3F5"
+              />
+              <StatCard
+                icon={Clock}
+                label="Pending"
+                value={stats.pending}
+                color="#9A6A12"
+                bg="#FBF0DC"
+              />
+              <StatCard
+                icon={Loader2}
+                label="In Progress"
+                value={stats.inProgress}
+                color="#0B3B3E"
+                bg="#DCEBEA"
+              />
+              <StatCard
+                icon={CheckCircle2}
+                label="Completed"
+                value={stats.completed}
+                color="#02C39A"
+                bg="#DFF7F1"
+              />
             </div>
 
-            {/* Filter tabs */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <TaskFilterTabs active={statusFilter} onChange={setStatusFilter} />
+              <TaskFilterTabs
+                active={statusFilter}
+                onChange={setStatusFilter}
+              />
               {!loading && (
                 <span className="text-xs text-[#6B8482]">
                   {filtered.length} task{filtered.length !== 1 ? "s" : ""}
@@ -1713,14 +1359,12 @@ export default function Tasks() {
               )}
             </div>
 
-            {/* Error banner */}
             {error && (
               <div className="text-sm text-[#9A2E12] bg-[#FBE4DC] border border-[#F3C7B8] rounded-xl px-4 py-3">
                 {error}
               </div>
             )}
 
-            {/* Content card */}
             <div className="bg-white border border-[#D8ECEA] rounded-2xl shadow-[0_1px_2px_rgba(15,44,46,0.04)] overflow-hidden">
               {loading ? (
                 <TableSkeleton />
@@ -1731,57 +1375,95 @@ export default function Tasks() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-[#EEF7F6] bg-[#FAFDFC]">
-                        <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Task</th>
-                        <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Assigned To</th>
-                        <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Customer</th>
-                        <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Scheduled</th>
-                        <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Priority</th>
-                        <th className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5">Status</th>
+                        {[
+                          "Task",
+                          "Assigned To",
+                          "Customer",
+                          "Scheduled",
+                          "Priority",
+                          "Status",
+                        ].map((heading) => (
+                          <th
+                            key={heading}
+                            className="text-left font-semibold text-[11px] uppercase tracking-wide text-[#6B8482] py-3.5 px-5"
+                          >
+                            {heading}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.map((t) => (
-                        <tr key={t.id} className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC] transition-colors duration-150">
+                      {filtered.map((task) => (
+                        <tr
+                          key={task.id}
+                          className="border-b border-[#EEF7F6] last:border-0 hover:bg-[#FAFDFC]"
+                        >
                           <td className="py-3.5 px-5">
-                            <div className="font-semibold" style={{ color: "#028090" }}>
-                              #{t.id}
+                            <div className="font-semibold text-[#028090]">
+                              #{task.id}
                             </div>
-                            <div className="text-xs text-[#6B8482] mt-0.5">{TASK_TYPE_LABEL[t.task_type] || t.task_type}</div>
-                            {t.order && (
+                            <div className="text-xs text-[#6B8482] mt-0.5">
+                              {TASK_TYPE_LABEL[task.task_type] ||
+                                task.task_type}
+                            </div>
+                            {task.order && (
                               <Link
                                 to="/admin/orders"
-                                className="inline-flex items-center gap-1 text-[11px] font-medium mt-1 px-2 py-0.5 rounded-md"
-                                style={{ backgroundColor: "#DFF3F5", color: "#028090" }}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium mt-1 px-2 py-0.5 rounded-md bg-[#DFF3F5] text-[#028090]"
                               >
-                                <ClipboardList size={11} /> Order #{t.order.id}
+                                <ClipboardList size={11} />
+                                Order #{task.order.id}
                               </Link>
                             )}
                           </td>
                           <td className="py-3.5 px-5">
-                            <div className="text-[#0F2C2E] font-medium">{t.employee?.name || "—"}</div>
-                            {t.employee?.designation && (
-                              <div className="text-[11px] text-[#6B8482] mt-0.5">{t.employee.designation}</div>
-                            )}
-                          </td>
-                          <td className="py-3.5 px-5">
-                            <div className="text-[#0F2C2E] font-medium">{t.customer_name}</div>
-                            {t.customer_phone && (
-                              <div className="flex items-center gap-1 text-[11px] text-[#6B8482] mt-0.5">
-                                <Phone size={11} /> {t.customer_phone}
+                            <div className="text-[#0F2C2E] font-medium">
+                              {task.employee?.name || "—"}
+                            </div>
+                            {task.employee?.designation && (
+                              <div className="text-[11px] text-[#6B8482] mt-0.5">
+                                {task.employee.designation}
                               </div>
                             )}
-                            {t.customer_address && (
+                            {task.employee?.status === "inactive" &&
+                              task.status !== "completed" && (
+                                <div className="mt-1">
+                                  <InactiveEmployeeBadge />
+                                  <button
+                                    type="button"
+                                    onClick={() => setReassignTask(task)}
+                                    className="inline-flex items-center gap-1 text-[10px] font-semibold mt-1 px-2 py-0.5 rounded-md text-[#B3261E] bg-[#FEF2F2]"
+                                  >
+                                    <RefreshCw size={9} /> Reassign
+                                  </button>
+                                </div>
+                              )}
+                          </td>
+                          <td className="py-3.5 px-5">
+                            <div className="text-[#0F2C2E] font-medium">
+                              {task.customer_name || "—"}
+                            </div>
+                            {task.customer_phone && (
                               <div className="flex items-center gap-1 text-[11px] text-[#6B8482] mt-0.5">
-                                <MapPin size={11} /> {t.customer_address}
+                                <Phone size={11} />
+                                {task.customer_phone}
+                              </div>
+                            )}
+                            {task.customer_address && (
+                              <div className="flex items-center gap-1 text-[11px] text-[#6B8482] mt-0.5">
+                                <MapPin size={11} />
+                                {task.customer_address}
                               </div>
                             )}
                           </td>
-                          <td className="py-3.5 px-5 text-[#6B8482] whitespace-nowrap">{formatScheduled(t.scheduled_time)}</td>
-                          <td className="py-3.5 px-5">
-                            <PriorityPill priority={t.priority} />
+                          <td className="py-3.5 px-5 text-[#6B8482] whitespace-nowrap">
+                            {formatScheduled(task.scheduled_time)}
                           </td>
                           <td className="py-3.5 px-5">
-                            <StatusPill status={t.status} />
+                            <PriorityPill priority={task.priority} />
+                          </td>
+                          <td className="py-3.5 px-5">
+                            <StatusPill status={task.status} />
                           </td>
                         </tr>
                       ))}
@@ -1791,16 +1473,21 @@ export default function Tasks() {
               )}
             </div>
 
-            {/* Hint when there are no employees */}
-            {!employeesLoading && employees.length === 0 && tasks.length === 0 && (
-              <div className="flex items-start gap-2.5 rounded-xl border border-[#F3C7B8] bg-[#FBE4DC] px-4 py-3">
-                <AlertTriangle size={16} className="text-[#9A2E12] mt-0.5 shrink-0" />
-                <p className="text-[13px] text-[#9A2E12]">
-                  You need to create an employee first — go to the Employees page and click{" "}
-                  <span className="font-semibold">Add Employee</span>.
-                </p>
-              </div>
-            )}
+            {!employeesLoading &&
+              employees.length === 0 &&
+              tasks.length === 0 && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-[#F3C7B8] bg-[#FBE4DC] px-4 py-3">
+                  <AlertTriangle
+                    size={16}
+                    className="text-[#9A2E12] mt-0.5 shrink-0"
+                  />
+                  <p className="text-[13px] text-[#9A2E12]">
+                    You need to create an employee first — go to the Employees
+                    page and click{" "}
+                    <span className="font-semibold">Add Employee</span>.
+                  </p>
+                </div>
+              )}
           </>
         ) : (
           <TaskHistoryTab employees={employees} />
@@ -1814,6 +1501,119 @@ export default function Tasks() {
         employeesLoading={employeesLoading}
         onAssigned={fetchTasks}
       />
+
+      {reassignTask && (
+        <div
+          className="fixed inset-0 z-50 bg-[#05282A]/55 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={closeReassign}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-6 shadow-[0_20px_50px_rgba(5,40,42,0.25)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-5">
+              <div>
+                <h2
+                  className="text-xl text-[#0F2C2E]"
+                  style={{ fontFamily: "'Libre Baskerville', Georgia, serif" }}
+                >
+                  Reassign Task
+                </h2>
+                <p className="text-[13px] text-[#5A7A79] mt-1">
+                  {TASK_TYPE_LABEL[reassignTask.task_type] ||
+                    reassignTask.task_type}{" "}
+                  task
+                  {reassignTask.order_id
+                    ? ` for Order #${reassignTask.order_id}`
+                    : ""}
+                </p>
+                <p className="text-[11px] text-[#B3261E] mt-1 font-medium">
+                  Currently assigned to:{" "}
+                  {reassignTask.employee?.name || "Unknown"} (Inactive)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeReassign}
+                disabled={reassignLoading}
+                className="w-8 h-8 rounded-lg bg-[#EEF7F6] border border-[#D8ECEA] flex items-center justify-center disabled:opacity-50"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-[13px] font-medium text-[#0F2C2E]">
+                Select Active Employee <span className="text-[#B3261E]">*</span>
+              </label>
+              {activeEmployees.length === 0 ? (
+                <p className="text-[13px] text-[#6B8482] bg-[#EEF7F6] rounded-lg px-3 py-2.5">
+                  No active employees available. Please activate an employee
+                  first.
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-[240px] overflow-y-auto">
+                  {activeEmployees.map((employee) => (
+                    <button
+                      key={employee.id}
+                      type="button"
+                      onClick={() =>
+                        handleReassign(reassignTask.id, employee.id, false)
+                      }
+                      disabled={reassignLoading}
+                      className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#D8ECEA] text-left transition-all hover:border-[#028090] hover:bg-[#EEF7F6] disabled:opacity-50"
+                    >
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, #028090, #02C39A)",
+                        }}
+                      >
+                        {employee.name?.charAt(0)?.toUpperCase() || "E"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-[#0F2C2E] truncate">
+                          {employee.name}
+                        </div>
+                        {employee.designation && (
+                          <div className="text-[11px] text-[#6B8482]">
+                            {employee.designation}
+                          </div>
+                        )}
+                      </div>
+                      {reassignLoading && (
+                        <Loader2
+                          size={14}
+                          className="animate-spin text-[#028090]"
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reassignConflict && reassignTask && (
+        <ConflictModal
+          title="Reassign Schedule Conflict"
+          conflicts={reassignConflict.conflicts}
+          employeeName={reassignConflict.employeeName}
+          scheduledTime={reassignConflict.scheduledTime}
+          loading={reassignLoading}
+          onChooseAnother={() => setReassignConflict(null)}
+          onAssignAnyway={() =>
+            handleReassign(
+              reassignConflict.taskId,
+              reassignConflict.newEmployeeId,
+              true,
+            )
+          }
+        />
+      )}
     </div>
   );
 }

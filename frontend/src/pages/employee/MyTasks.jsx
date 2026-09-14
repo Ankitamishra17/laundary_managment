@@ -2935,7 +2935,7 @@ export default function MyTasks() {
                   </div>
 
                   {/* INVENTORY INFO */}
-                  <div
+                  {/* <div
                     className="mt-4 rounded-xl border p-3"
                     style={{
                       borderColor: `${colors.primaryTeal}26`,
@@ -2975,7 +2975,7 @@ export default function MyTasks() {
                         Delivery do not consume inventory.
                       </p>
                     </div>
-                  </div>
+                  </div> */}
                 </div>
               </div>
             </div>

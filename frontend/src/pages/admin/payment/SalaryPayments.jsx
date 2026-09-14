@@ -521,7 +521,7 @@ const SalaryPayments = () => {
                 fontFamily: "'Libre Baskerville', serif",
               }}
             >
-              Salary Payments
+              Employee Payments
             </h1>
 
             <p className="mt-1 text-sm" style={{ color: colors.textMuted }}>
@@ -554,7 +554,7 @@ const SalaryPayments = () => {
             className="sp-record-btn inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-md sm:flex-none"
           >
             <Plus size={17} />
-            Record Salary Payment
+            Record Employee Payment
           </button>
         </div>
       </div>

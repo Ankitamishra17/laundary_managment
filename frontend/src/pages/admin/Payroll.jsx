@@ -1096,9 +1096,7 @@ export default function Payroll() {
                       Net Salary
                     </p>
 
-                    <p className="mt-1 text-xs text-[#51787C]">
-                      Earned salary + bonus - deduction
-                    </p>
+                    
                   </div>
 
                   <span className="flex items-center text-xl font-bold text-[#028090]">

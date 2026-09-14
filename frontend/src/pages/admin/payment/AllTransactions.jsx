@@ -547,7 +547,7 @@ const AllTransactions = () => {
         />
 
         <StatCard
-          title="Salary Paid"
+          title="Employee Paid"
           value={formatCurrency(stats.salaryPaid)}
           subtitle={`${stats.salaryCount} payments`}
           icon={ArrowUpRight}
