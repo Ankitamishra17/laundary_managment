@@ -262,7 +262,7 @@ export default function PurchaseTable({
 
                       <button
                         type="button"
-                        onClick={() => onDelete?.(purchase)}
+                        onClick={() => onDelete?.(purchase.id)}
                         title="Delete Purchase"
                         className="rounded-lg p-2 text-red-500 transition hover:bg-red-50"
                       >

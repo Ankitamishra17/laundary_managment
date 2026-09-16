@@ -850,7 +850,6 @@ export const updatePurchase = async (req, res) => {
   try {
     const shopId = req.user?.shopId;
     const updatedBy = req.user?.id;
-
     const { id } = req.params;
 
     const {
@@ -881,9 +880,7 @@ export const updatePurchase = async (req, res) => {
         id,
         shopId,
       },
-
       transaction,
-
       lock: transaction.LOCK.UPDATE,
     });
 
@@ -897,37 +894,16 @@ export const updatePurchase = async (req, res) => {
     }
 
     // =================================================
-    // ONLY PENDING PURCHASE CAN BE UPDATED
+    // PAID PURCHASE CANNOT BE UPDATED
+    // PENDING AND PARTIAL ARE ALLOWED
     // =================================================
 
-    if (purchase.status !== "PENDING") {
+    if (purchase.status === "PAID") {
       await transaction.rollback();
 
       return res.status(400).json({
         success: false,
-        message: "Only pending purchases can be updated",
-      });
-    }
-
-    // =================================================
-    // CHECK PAYMENT
-    // =================================================
-
-    const existingPayment = await Payment.findOne({
-      where: {
-        purchaseId: purchase.id,
-        shopId,
-      },
-
-      transaction,
-    });
-
-    if (existingPayment) {
-      await transaction.rollback();
-
-      return res.status(400).json({
-        success: false,
-        message: "Purchase with payment cannot be updated",
+        message: "Paid purchases cannot be updated",
       });
     }
 
@@ -942,7 +918,6 @@ export const updatePurchase = async (req, res) => {
         id: newSupplierId,
         shopId,
       },
-
       transaction,
     });
 
@@ -963,9 +938,7 @@ export const updatePurchase = async (req, res) => {
       where: {
         purchaseId: purchase.id,
       },
-
       transaction,
-
       lock: transaction.LOCK.UPDATE,
     });
 
@@ -980,9 +953,7 @@ export const updatePurchase = async (req, res) => {
           shopId,
           isDeleted: false,
         },
-
         transaction,
-
         lock: transaction.LOCK.UPDATE,
       });
 
@@ -996,7 +967,6 @@ export const updatePurchase = async (req, res) => {
       }
 
       const previousStock = Number(inventoryItem.currentStock);
-
       const quantity = Number(oldItem.quantity);
 
       const newStock = Number((previousStock - quantity).toFixed(2));
@@ -1023,29 +993,17 @@ export const updatePurchase = async (req, res) => {
       await InventoryTransaction.create(
         {
           shopId,
-
           inventoryItemId: inventoryItem.id,
-
           supplierId: purchase.supplierId,
-
           purchaseId: purchase.id,
-
           type: "ADJUSTMENT",
-
-          quantity: quantity,
-
+          quantity,
           previousStock,
-
           newStock,
-
           rate: Number(oldItem.rate),
-
           totalAmount: Number(oldItem.amount),
-
           reason: "Purchase update - stock reversal",
-
           notes: "Old purchase quantity reversed before update",
-
           createdBy: updatedBy,
         },
         {
@@ -1062,7 +1020,6 @@ export const updatePurchase = async (req, res) => {
       where: {
         purchaseId: purchase.id,
       },
-
       transaction,
     });
 
@@ -1086,7 +1043,6 @@ export const updatePurchase = async (req, res) => {
     let subtotal = 0;
 
     const usedItems = new Set();
-
     const preparedItems = [];
 
     for (const item of items) {
@@ -1104,7 +1060,6 @@ export const updatePurchase = async (req, res) => {
       usedItems.add(Number(inventoryItemId));
 
       const itemQuantity = Number(quantity);
-
       const itemRate = Number(rate);
 
       if (!Number.isFinite(itemQuantity) || itemQuantity <= 0) {
@@ -1132,9 +1087,7 @@ export const updatePurchase = async (req, res) => {
           isDeleted: false,
           status: "Active",
         },
-
         transaction,
-
         lock: transaction.LOCK.UPDATE,
       });
 
@@ -1160,15 +1113,65 @@ export const updatePurchase = async (req, res) => {
       });
     }
 
+    // =================================================
+    // CALCULATE TOTAL
+    // =================================================
+
     subtotal = Number(subtotal.toFixed(2));
 
     const discountAmount = Number(discount);
-
     const taxAmount = Number(tax);
+
+    if (
+      !Number.isFinite(discountAmount) ||
+      discountAmount < 0 ||
+      !Number.isFinite(taxAmount) ||
+      taxAmount < 0
+    ) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid discount or tax amount",
+      });
+    }
 
     const totalAmount = Number(
       (subtotal - discountAmount + taxAmount).toFixed(2),
     );
+
+    if (totalAmount < 0) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Total amount cannot be negative",
+      });
+    }
+
+    // =================================================
+    // PRESERVE EXISTING PAYMENT
+    // =================================================
+
+    const paidAmount = Number(purchase.paidAmount || 0);
+
+    if (totalAmount < paidAmount) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Total amount cannot be less than paid amount",
+      });
+    }
+
+    const dueAmount = Number((totalAmount - paidAmount).toFixed(2));
+
+    const status =
+      paidAmount === 0
+        ? "PENDING"
+        : paidAmount < totalAmount
+          ? "PARTIAL"
+          : "PAID";
 
     // =================================================
     // UPDATE PURCHASE
@@ -1190,11 +1193,11 @@ export const updatePurchase = async (req, res) => {
 
         totalAmount,
 
-        paidAmount: 0,
+        paidAmount,
 
-        dueAmount: totalAmount,
+        dueAmount,
 
-        status: "PENDING",
+        status,
 
         notes: remarks || null,
 
@@ -1206,7 +1209,7 @@ export const updatePurchase = async (req, res) => {
     );
 
     // =================================================
-    // ADD NEW STOCK
+    // ADD NEW STOCK AND PURCHASE ITEMS
     // =================================================
 
     for (const item of preparedItems) {
@@ -1276,6 +1279,10 @@ export const updatePurchase = async (req, res) => {
         },
       );
     }
+
+    // =================================================
+    // COMMIT TRANSACTION
+    // =================================================
 
     await transaction.commit();
 

@@ -32,7 +32,6 @@ const categoryOptions = [
 const pricingTypeOptions = [
   "Per Kg",
   "Per Item",
-  "Per Set",
   "Per Piece",
   "Per Pair",
   "Fixed",
