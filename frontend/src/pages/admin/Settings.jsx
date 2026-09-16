@@ -20,7 +20,7 @@ import {
   Link,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { profileApi } from "../../api/profileapi";
+import { profileApi } from "../../api/profileApi";
 
 const colors = {
   primaryTeal: "#028090",

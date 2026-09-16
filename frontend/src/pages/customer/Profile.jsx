@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { getPublicShops } from "../../api/shopApi";
 import { getMyCustomerProfile } from "../../api/customerApi";
-import { profileApi } from "../../api/profileapi";
+import { profileApi } from "../../api/profileApi";
 import { createPassword } from "../../api/authApi";
 import { useAuth } from "../../context/AuthContext";
 import Avatar from "../../components/layout/Avatar";

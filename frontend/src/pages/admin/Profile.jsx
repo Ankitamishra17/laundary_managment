@@ -11,7 +11,7 @@ import {
   CheckCircle2,
   Store,
 } from "lucide-react";
-import { profileApi } from "../../api/profileapi";
+import { profileApi } from "../../api/profileApi";
 import { useAuth } from "../../context/AuthContext";
 
 const colors = {
