@@ -24,6 +24,43 @@ function formatINR(value) {
   return "₹" + Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
+// Formats the pay period using the actual startDate/endDate.
+// Falls back to "Month Year" only if dates are missing.
+function formatPayPeriod(payroll) {
+  if (!payroll) return "-";
+  if (!payroll.startDate || !payroll.endDate) {
+    return MONTH_NAMES[payroll.month] + " " + payroll.year;
+  }
+  const start = new Date(payroll.startDate + "T00:00:00");
+  const end = new Date(payroll.endDate + "T00:00:00");
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return MONTH_NAMES[payroll.month] + " " + payroll.year;
+  }
+  const opts = { day: "2-digit", month: "short", year: "numeric" };
+  return start.toLocaleDateString("en-IN", opts) + " – " + end.toLocaleDateString("en-IN", opts);
+}
+
+// Short label for list rows / card titles, e.g. "12 Aug – 10 Sep 2026"
+function formatPayPeriodShort(payroll) {
+  if (!payroll) return "-";
+  if (!payroll.startDate || !payroll.endDate) {
+    return MONTH_NAMES[payroll.month] + " " + payroll.year;
+  }
+  const start = new Date(payroll.startDate + "T00:00:00");
+  const end = new Date(payroll.endDate + "T00:00:00");
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return MONTH_NAMES[payroll.month] + " " + payroll.year;
+  }
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const startLabel = start.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  const endLabel = end.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  return sameYear ? startLabel + " – " + endLabel : startLabel + " " + start.getFullYear() + " – " + endLabel;
+}
+
 function PayslipDetail({ payroll, onBack }) {
   const printRef = useRef(null);
   const [downloading, setDownloading] = useState(false);
@@ -36,7 +73,7 @@ function PayslipDetail({ payroll, onBack }) {
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({ orientation: canvas.width > canvas.height ? "landscape" : "portrait", unit: "px", format: [canvas.width / 2, canvas.height / 2] });
       pdf.addImage(imgData, "PNG", 0, 0, canvas.width / 2, canvas.height / 2);
-      pdf.save("Payslip-" + (payroll.month) + "-" + payroll.year + ".pdf");
+      pdf.save("Payslip-" + (payroll.startDate || payroll.month) + "-" + (payroll.endDate || payroll.year) + ".pdf");
     } catch (err) {
       console.error("PDF download failed:", err);
       handlePrint();
@@ -50,7 +87,8 @@ function PayslipDetail({ payroll, onBack }) {
     if (!printWindow) { alert("Please allow popups to print."); return; }
     const shop = payroll.shop || {};
     const emp = payroll.employee || {};
-    const html = "<!DOCTYPE html><html><head><title>Payslip</title><link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Libre+Baskerville:wght@400;700&display=swap' rel='stylesheet'><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;color:#0F2C2E;background:#fff;padding:32px}.container{max-width:700px;margin:0 auto}.header{background:linear-gradient(135deg,#05282A 0%,#028090 100%);padding:28px 36px;border-radius:16px 16px 0 0;color:#fff}.header h1{font-size:14px;letter-spacing:2px;text-transform:uppercase;opacity:.7;margin-bottom:4px}.header h2{font-size:26px;font-weight:700}.body{padding:28px 36px;border:1px solid #D8ECEA;border-top:none;border-radius:0 0 16px 16px}.row{display:flex;justify-content:space-between;padding:10px 0;font-size:14px;border-bottom:1px solid #EEF7F6}.row.total{border-top:2px solid #028090;border-bottom:none;font-weight:700;font-size:18px;padding-top:14px;margin-top:8px}.label{color:#5C7A78}.value{font-weight:600}.section{margin-top:20px;padding:16px;background:#EEF7F6;border-radius:12px}.section-title{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#5C7A78;font-weight:700;margin-bottom:12px}.footer{text-align:center;padding-top:20px;border-top:1px solid #D8ECEA;margin-top:24px}.footer p{font-size:11px;color:#5C7A78}@media print{body{padding:0}}</style></head><body><div class='container'><div class='header'><h1>" + (shop.name || "Laundry") + "</h1><h2>PAYSLIP</h2></div><div class='body'><div class='section'><div class='section-title'>Employee Details</div><div class='row'><span class='label'>Name</span><span class='value'>" + (emp.name || "-") + "</span></div><div class='row'><span class='label'>Designation</span><span class='value'>" + (emp.designation || "-") + "</span></div><div class='row'><span class='label'>Pay Period</span><span class='value'>" + MONTH_NAMES[payroll.month] + " " + payroll.year + "</span></div></div><div class='section' style='margin-top:16px'><div class='section-title'>Salary Calculation</div><div class='row'><span class='label'>Daily Rate</span><span class='value'>" + formatINR(payroll.perDaySalary || (payroll.basicSalary / payroll.totalDays)) + "</span></div><div class='row'><span class='label'>Paid Days</span><span class='value'>" + payroll.paidDays + " / " + payroll.totalDays + "</span></div><div class='row'><span class='label'>Unpaid Days</span><span class='value'>" + payroll.unpaidDays + "</span></div><div class='row'><span class='label'>Earned Salary</span><span class='value'>" + formatINR(payroll.earnedSalary) + "</span></div><div class='row'><span class='label'>Overtime</span><span class='value'>" + formatINR(payroll.overtimeAmount) + "</span></div><div class='row'><span class='label'>Allowances</span><span class='value'>" + formatINR(payroll.allowances) + "</span></div><div class='row'><span class='label'>Deductions</span><span class='value'>-" + formatINR(payroll.deductions) + "</span></div><div class='row total'><span class='label'>Net Salary</span><span class='value'>" + formatINR(payroll.netSalary) + "</span></div></div>" + (String(payroll.status).toUpperCase() === "PAID" ? "<div class='section' style='margin-top:16px'><div class='section-title'>Payment Details</div><div class='row'><span class='label'>Status</span><span class='value' style='color:#0B6E63'>PAID</span></div><div class='row'><span class='label'>Amount Paid</span><span class='value'>" + formatINR(payroll.paidAmount) + "</span></div></div>" : "") + "<div class='footer'><p>Thank you for your hard work! · " + (shop.name || "Laundry") + "</p></div></div></div><script>window.onload=function(){window.print();window.close()}</script></body></html>";
+    const payPeriodLabel = formatPayPeriod(payroll);
+    const html = "<!DOCTYPE html><html><head><title>Payslip</title><link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Libre+Baskerville:wght@400;700&display=swap' rel='stylesheet'><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;color:#0F2C2E;background:#fff;padding:32px}.container{max-width:700px;margin:0 auto}.header{background:linear-gradient(135deg,#05282A 0%,#028090 100%);padding:28px 36px;border-radius:16px 16px 0 0;color:#fff}.header h1{font-size:14px;letter-spacing:2px;text-transform:uppercase;opacity:.7;margin-bottom:4px}.header h2{font-size:26px;font-weight:700}.body{padding:28px 36px;border:1px solid #D8ECEA;border-top:none;border-radius:0 0 16px 16px}.row{display:flex;justify-content:space-between;padding:10px 0;font-size:14px;border-bottom:1px solid #EEF7F6}.row.total{border-top:2px solid #028090;border-bottom:none;font-weight:700;font-size:18px;padding-top:14px;margin-top:8px}.label{color:#5C7A78}.value{font-weight:600}.section{margin-top:20px;padding:16px;background:#EEF7F6;border-radius:12px}.section-title{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#5C7A78;font-weight:700;margin-bottom:12px}.footer{text-align:center;padding-top:20px;border-top:1px solid #D8ECEA;margin-top:24px}.footer p{font-size:11px;color:#5C7A78}@media print{body{padding:0}}</style></head><body><div class='container'><div class='header'><h1>" + (shop.name || "Laundry") + "</h1><h2>PAYSLIP</h2></div><div class='body'><div class='section'><div class='section-title'>Employee Details</div><div class='row'><span class='label'>Name</span><span class='value'>" + (emp.name || "-") + "</span></div><div class='row'><span class='label'>Designation</span><span class='value'>" + (emp.designation || "-") + "</span></div><div class='row'><span class='label'>Pay Period</span><span class='value'>" + payPeriodLabel + "</span></div></div><div class='section' style='margin-top:16px'><div class='section-title'>Salary Calculation</div><div class='row'><span class='label'>Daily Rate</span><span class='value'>" + formatINR(payroll.perDaySalary || (payroll.basicSalary / payroll.totalDays)) + "</span></div><div class='row'><span class='label'>Paid Days</span><span class='value'>" + payroll.paidDays + " / " + payroll.totalDays + "</span></div><div class='row'><span class='label'>Unpaid Days</span><span class='value'>" + payroll.unpaidDays + "</span></div><div class='row'><span class='label'>Earned Salary</span><span class='value'>" + formatINR(payroll.earnedSalary) + "</span></div><div class='row'><span class='label'>Overtime</span><span class='value'>" + formatINR(payroll.overtimeAmount) + "</span></div><div class='row'><span class='label'>Allowances</span><span class='value'>" + formatINR(payroll.allowances) + "</span></div><div class='row'><span class='label'>Deductions</span><span class='value'>-" + formatINR(payroll.deductions) + "</span></div><div class='row total'><span class='label'>Net Salary</span><span class='value'>" + formatINR(payroll.netSalary) + "</span></div></div>" + (String(payroll.status).toUpperCase() === "PAID" ? "<div class='section' style='margin-top:16px'><div class='section-title'>Payment Details</div><div class='row'><span class='label'>Status</span><span class='value' style='color:#0B6E63'>PAID</span></div><div class='row'><span class='label'>Amount Paid</span><span class='value'>" + formatINR(payroll.paidAmount) + "</span></div></div>" : "") + "<div class='footer'><p>Thank you for your hard work! · " + (shop.name || "Laundry") + "</p></div></div></div><script>window.onload=function(){window.print();window.close()}</script></body></html>";
     printWindow.document.write(html);
     printWindow.document.close();
   };
@@ -83,7 +121,7 @@ function PayslipDetail({ payroll, onBack }) {
             </div>
             <div className="text-left sm:text-right">
               <h1 className="text-3xl" style={{ fontFamily: "'Libre Baskerville', serif", color: colors.primaryTeal }}>PAYSLIP</h1>
-              <p className="text-sm font-bold mt-1" style={{ color: colors.textDark }}>{MONTH_NAMES[payroll.month]} {payroll.year}</p>
+              <p className="text-sm font-bold mt-1" style={{ color: colors.textDark }}>{formatPayPeriod(payroll)}</p>
               <div className="mt-2">
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: String(payroll.status).toUpperCase() === "PAID" ? "#DFF7F1" : "#FBF0DC", color: String(payroll.status).toUpperCase() === "PAID" ? "#0B6E63" : "#9A6A12" }}>
                   {String(payroll.status).toUpperCase()}
@@ -104,7 +142,7 @@ function PayslipDetail({ payroll, onBack }) {
           <div className="rounded-xl p-4" style={{ backgroundColor: colors.cardTint }}>
             <h3 className="text-[10px] uppercase tracking-widest font-semibold mb-2" style={{ color: colors.textMuted }}>Pay Period</h3>
             <div className="space-y-1.5 text-xs" style={{ color: colors.textDark }}>
-              <div className="flex justify-between"><span style={{ color: colors.textMuted }}>Month</span><span className="font-medium">{MONTH_NAMES[payroll.month]} {payroll.year}</span></div>
+              <div className="flex justify-between"><span style={{ color: colors.textMuted }}>Period</span><span className="font-medium">{formatPayPeriod(payroll)}</span></div>
               <div className="flex justify-between"><span style={{ color: colors.textMuted }}>Total Days</span><span className="font-medium">{payroll.totalDays}</span></div>
               <div className="flex justify-between"><span style={{ color: colors.textMuted }}>Paid Days</span><span className="font-medium">{payroll.paidDays}</span></div>
               <div className="flex justify-between"><span style={{ color: colors.textMuted }}>Unpaid Days</span><span className="font-medium">{payroll.unpaidDays}</span></div>
@@ -212,7 +250,7 @@ export default function MyPayroll() {
                     <Wallet size={18} color={colors.primaryTeal} />
                   </div>
                   <div>
-                    <div className="text-sm font-bold" style={{ color: colors.textDark }}>{MONTH_NAMES[p.month]} {p.year}</div>
+                    <div className="text-sm font-bold" style={{ color: colors.textDark }}>{formatPayPeriodShort(p)}</div>
                     <div className="text-xs mt-0.5" style={{ color: colors.textMuted }}>Daily: {formatINR(p.perDaySalary || p.basicSalary / p.totalDays)} · {p.paidDays} days worked</div>
                   </div>
                 </div>
